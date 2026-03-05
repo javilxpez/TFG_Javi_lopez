@@ -47,6 +47,17 @@
 #define ERR_SERVO_CONFIG_FAIL 0x04  // Servo configuration write failed
 #define ERR_SERVO_SCAN_FAIL   0x05  // No servo found on bus (full scan)
 
+// ── Load Cell AFE Configuration ──────────────────
+// Change these, reflash, and power-cycle ZSC31014 to apply.
+// Gain: 000=1.5, 100=3, 001=6, 101=12, 010=24(default), 110=48, 011=96, 111=192
+#define LC_PREAMP_GAIN      0b111
+// A2D_Offset: 0x1-0xF (0x8=center/default; 0x0=reserved for temp, don't use)
+#define LC_A2D_OFFSET       0x08
+// Gain polarity: 0=negative, 1=positive(default)
+#define LC_GAIN_POLARITY    1
+// Nulling: 0=enabled(default, use for gain>=6), 1=disabled(for gain<6)
+#define LC_DISABLE_NULLING  0
+
 // ── State Machine ────────────────────────────────
 enum State {
   STATE_IDLE,        // Waiting for Python START command
@@ -76,6 +87,15 @@ uint16_t lastBridge = 0;
 uint8_t lastLCStatus = 0;
 bool lastLCValid = false;
 
+// Servo connection tracking
+bool servoConnected = false;
+uint8_t servoFailCount = 0;
+unsigned long lastServoProbeTime = 0;
+
+// ── Global State ─────────────────────────────────
+bool loadCellOK = false;
+bool lcConfigApplied = false;
+
 // ── Modbus ───────────────────────────────────────
 ModbusMaster servo;
 
@@ -101,7 +121,7 @@ static uint8_t crc8(const uint8_t *data, uint8_t len) {
 //   1-4   t_ms          uint32 LE
 //   5-6   bridge        uint16 LE
 //   7     lc_status     uint8
-//   8     lc_flags      uint8   (bit0=valid, bit1=stale_timeout; or error_code when state=ERROR)
+//   8     lc_flags      uint8   (bit0=valid, bit1=servo_connected, bit2=config_ok; or error_code when state=ERROR)
 //   9-10  rpm           int16 LE
 //   11-12 torque_x10    int16 LE
 //   13    servo_state   uint8
@@ -123,8 +143,13 @@ void telemetrySend(uint32_t t, uint16_t bridge, uint8_t lcStatus, bool lcValid,
   *p++ = (bridge >> 0) & 0xFF;
   *p++ = (bridge >> 8) & 0xFF;
   *p++ = lcStatus;
-  // lc_flags: bit0 = valid during normal operation; error_code when state == ERROR
-  uint8_t flags = (state == STATE_ERROR) ? errorCode : (lcValid ? 0x01 : 0x00);
+  // lc_flags: bit0=valid, bit1=servo_connected, bit2=config_ok; or error_code when state == ERROR
+  uint8_t flags;
+  if (state == STATE_ERROR) {
+    flags = errorCode;
+  } else {
+    flags = (lcValid ? 0x01 : 0x00) | (servoConnected ? 0x02 : 0x00) | (lcConfigApplied ? 0x04 : 0x00);
+  }
   *p++ = flags;
   *p++ = (rpm >>  0) & 0xFF;
   *p++ = (rpm >>  8) & 0xFF;
@@ -157,6 +182,7 @@ void processCommand(const uint8_t *payload, uint8_t len) {
 
   switch (cmd) {
     case CMD_START:
+      if (currentState == STATE_ERROR) break;  // refuse if halted
       if (len >= 2) {
         modeTorque = (payload[1] != 0);
         scanID = 1;
@@ -228,9 +254,6 @@ void checkCommands() {
 //  LOAD CELL
 // ═════════════════════════════════════════════════
 bool loadCellInit() {
-  Wire.begin(LC_SDA_PIN, LC_SCL_PIN);
-  Wire.setClock(LC_I2C_FREQ);
-
   Wire.beginTransmission(ZSC31014_ADDR);
   uint8_t err = Wire.endTransmission();
   if (err != 0) return false;
@@ -272,6 +295,76 @@ bool loadCellRead(uint16_t &bridgeRaw, uint8_t &status) {
   return false;
 }
 
+// ── Load Cell EEPROM Configuration ──────────────
+// Offset_B values for A2D_Offset 0x0–0xF (EEPROM word 0x03)
+static const uint16_t OFFSET_B_LUT[] = {
+  0xE000, 0xE400, 0xE800, 0xEC00, 0xF000, 0xF400, 0xF800, 0xFC00,
+  0x0000, 0x0400, 0x0800, 0x0C00, 0x1000, 0x1400, 0x1800, 0x1C00
+};
+
+static bool zscCommand(uint8_t cmd, uint16_t data) {
+  Wire.beginTransmission(ZSC31014_ADDR);
+  Wire.write(cmd);
+  Wire.write((data >> 8) & 0xFF);
+  Wire.write(data & 0xFF);
+  return Wire.endTransmission() == 0;
+}
+
+static bool zscReadResponse(uint16_t &value) {
+  if (Wire.requestFrom((uint8_t)ZSC31014_ADDR, (uint8_t)3) < 3) return false;
+  uint8_t ack = Wire.read();
+  uint8_t msb = Wire.read();
+  uint8_t lsb = Wire.read();
+  if (ack != 0x5A) return false;
+  value = ((uint16_t)msb << 8) | lsb;
+  return true;
+}
+
+// Try to enter command mode and configure gain/offset in EEPROM.
+// Returns true if config was verified/updated, false if command mode unavailable.
+// Command mode only available within 1.5ms of ZSC31014 power-on.
+bool loadCellConfigureEEPROM() {
+  // Enter command mode (Start_CM)
+  if (!zscCommand(0xA0, 0x0000)) return false;
+  delayMicroseconds(100);
+
+  bool ok = false;
+  uint16_t current = 0;
+
+  // Read current B_Config (word 0x0F)
+  if (!zscCommand(0x0F, 0x0000)) goto done;
+  delayMicroseconds(100);
+  if (!zscReadResponse(current)) goto done;
+
+  {
+    // Build desired B_Config, preserve bits [15:13]
+    uint16_t desired = (current & 0xE000)
+      | ((uint16_t)(LC_DISABLE_NULLING & 1) << 12)
+      | (0b10 << 10)             // PreAmp_Mux = bridge
+      | (1 << 9)                 // Bsink
+      | (1 << 8)                 // LongInt
+      | ((uint16_t)(LC_GAIN_POLARITY & 1) << 7)
+      | ((uint16_t)(LC_PREAMP_GAIN & 0x07) << 4)
+      | ((uint16_t)(LC_A2D_OFFSET & 0x0F));
+
+    if (current != desired) {
+      // Write B_Config (cmd = 0x40 + 0x0F)
+      if (!zscCommand(0x4F, desired)) goto done;
+      delay(15);
+      // Write matching Offset_B (word 0x03, cmd = 0x40 + 0x03)
+      if (!zscCommand(0x43, OFFSET_B_LUT[LC_A2D_OFFSET & 0x0F])) goto done;
+      delay(15);
+    }
+  }
+  ok = true;
+
+done:
+  // Exit command mode (Start_NOM — recalculates EEPROM checksum)
+  zscCommand(0x80, 0x0000);
+  delay(15);
+  return ok;
+}
+
 // ═════════════════════════════════════════════════
 //  SERVO MOTOR
 // ═════════════════════════════════════════════════
@@ -279,7 +372,7 @@ void servoInit() {
   pinMode(MB_EN_GPIO, OUTPUT);
   digitalWrite(MB_EN_GPIO, LOW);
   Serial0.begin(115200, SERIAL_8N1, MB_RX_GPIO, MB_TX_GPIO);
-  Serial0.setTimeout(100);
+  Serial0.setTimeout(20);  // ~1ms frame at 115200, 20ms is plenty of margin
   servo.preTransmission(preTransmission);
   servo.postTransmission(postTransmission);
 }
@@ -299,6 +392,10 @@ bool servoScanStep() {
 bool servoConfigure(uint8_t id) {
   servo.begin(id, Serial0);
 
+  // Stop servo first — config registers are locked while running
+  servo.writeSingleRegister(1041, 0);  // Servo OFF
+  delay(10);
+
   if (modeTorque) {
     if (servo.writeSingleRegister(0, 2) != 0) return false;      // Torque mode
     if (servo.writeSingleRegister(833, 40) != 0) return false;   // Ref torque 4.0%
@@ -314,7 +411,7 @@ bool servoConfigure(uint8_t id) {
   return true;
 }
 
-void servoReadMonitoring() {
+bool servoReadMonitoring() {
   servo.begin(servoID, Serial0);
 
   uint8_t r1 = servo.readHoldingRegisters(16385, 1);
@@ -324,13 +421,13 @@ void servoReadMonitoring() {
   uint8_t r2 = servo.readHoldingRegisters(16387, 1);
   if (r2 == servo.ku8MBSuccess)
     motorTorqueX10 = (int16_t)servo.getResponseBuffer(0);
+
+  return (r1 == servo.ku8MBSuccess || r2 == servo.ku8MBSuccess);
 }
 
 // ═════════════════════════════════════════════════
 //  MAIN
 // ═════════════════════════════════════════════════
-bool loadCellOK = false;
-
 void setup() {
   Serial.begin(115200);
   { unsigned long t0 = millis(); while (!Serial && millis() - t0 < 3000) delay(10); }
@@ -340,9 +437,25 @@ void setup() {
   Serial.println("#  ZSC31014 + Servo — Xiao S3");
   Serial.println("# ═══════════════════════════════════════");
 
-  // Init load cell
+  // Init I2C bus
+  Wire.begin(LC_SDA_PIN, LC_SCL_PIN);
+  Wire.setClock(LC_I2C_FREQ);
+
+  // Try EEPROM config (needs power-on command mode window)
+  lcConfigApplied = loadCellConfigureEEPROM();
+  Serial.printf("# LC Config: %s\n", lcConfigApplied ? "OK" : "Power cycle needed");
+
+  // Init load cell — required, error if missing
   loadCellOK = loadCellInit();
   Serial.printf("# Load Cell: %s\n", loadCellOK ? "OK" : "NOT FOUND");
+  if (!loadCellOK) {
+    errorCode = ERR_LC_NOT_FOUND;
+    currentState = STATE_ERROR;
+    Serial.println("# ERROR: Load cell not found, system halted");
+    Serial.flush();
+    delay(50);
+    return;
+  }
 
   // Init modbus hardware (don't scan yet — wait for command)
   servoInit();
@@ -385,6 +498,8 @@ void loop() {
     case STATE_CONFIGURING:
       if (servoConfigure(servoID)) {
         errorCode = ERR_NONE;
+        servoConnected = true;
+        servoFailCount = 0;
         lcPhase = LC_REQUEST;
         lastBridge = 0;
         lastLCStatus = 0;
@@ -400,36 +515,59 @@ void loop() {
 
     case STATE_RUNNING:
       if (now - lastActionTime >= 10) {
-        // Synchronized: fetch LC (requested last cycle), read motor, then send
-        if (loadCellOK && lcPhase == LC_WAIT && now - lcRequestTime >= 2) {
-          uint16_t bridge;
-          uint8_t status;
-          if (loadCellFetch(bridge, status)) {
-            if (status == LC_STATUS_VALID) {
-              lastBridge = bridge;
-              lastLCStatus = status;
-              lastLCValid = true;
-            } else if (now - lcRequestTime > 50) {
-              errorCode = ERR_LC_STALE_TIMEOUT;
+        // Load cell state machine: request once, fetch until valid or timeout
+        if (loadCellOK) {
+          if (lcPhase == LC_REQUEST) {
+            loadCellMeasurementRequest();
+            lcRequestTime = now;
+            lcPhase = LC_WAIT;
+          } else if (now - lcRequestTime >= 2) {
+            uint16_t bridge;
+            uint8_t status;
+            if (loadCellFetch(bridge, status)) {
+              if (status == LC_STATUS_VALID) {
+                lastBridge = bridge;
+                lastLCStatus = status;
+                lastLCValid = true;
+                lcPhase = LC_REQUEST;  // ready for next measurement
+              } else if (now - lcRequestTime > 50) {
+                errorCode = ERR_LC_STALE_TIMEOUT;
+                goto error_stop;
+              }
+              // else stale — retry fetch next cycle (no re-request)
+            } else {
+              errorCode = ERR_LC_I2C_FAIL;
               goto error_stop;
             }
-          } else {
-            errorCode = ERR_LC_I2C_FAIL;
-            goto error_stop;
           }
         }
 
-        servoReadMonitoring();
+        // Servo: read if connected, probe if disconnected
+        if (servoConnected) {
+          if (servoReadMonitoring()) {
+            servoFailCount = 0;
+          } else {
+            servoFailCount++;
+            if (servoFailCount >= 3) {
+              servoConnected = false;
+              motorRPM = 0;
+              motorTorqueX10 = 0;
+              lastServoProbeTime = now;
+            }
+          }
+        } else if (now - lastServoProbeTime >= 2000) {
+          // Probe once every 2s — single read to avoid blocking
+          servo.begin(servoID, Serial0);
+          if (servo.readHoldingRegisters(16385, 1) == servo.ku8MBSuccess) {
+            // Servo is back — reconfigure to restore settings
+            currentState = STATE_CONFIGURING;
+          }
+          lastServoProbeTime = now;
+        }
+
         telemetrySend(now, lastBridge, lastLCStatus, lastLCValid,
                       motorRPM, motorTorqueX10,
                       (uint8_t)currentState, modeTorque ? 1 : 0);
-
-        // Request next LC measurement (will be fetched at start of next cycle)
-        if (loadCellOK) {
-          loadCellMeasurementRequest();
-          lcRequestTime = now;
-          lcPhase = LC_WAIT;
-        }
 
         lastActionTime = now;
         lastTelemetryTime = now;
