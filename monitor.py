@@ -243,12 +243,6 @@ def render(data: dict, meta: dict):
             lines.append(f"  {label:<{label_w}}  │  {value}")
 
     lines.append("─" * 56)
-    lines.append(f"  {'Brake Resistor':<{label_w}}  │  C00_10–C00_13")
-    lines.append(f"  {'  Selection':<{label_w}}  │  {BRAKE_RES_SEL} (External)")
-    lines.append(f"  {'  Power':<{label_w}}  │  {BRAKE_RES_POW} W")
-    lines.append(f"  {'  Ohmic':<{label_w}}  │  {BRAKE_RES_OHM} Ω")
-    lines.append(f"  {'  Dissipation':<{label_w}}  │  {BRAKE_RES_DISS} %")
-    lines.append("─" * 56)
     lines.append(f"{DIM}  [1] Start Torque  [2] Start Speed  [s] Stop  [q] Quit{RESET}")
 
     sys.stdout.write(CURSOR_HOME + "\033[K\n".join(lines) + "\033[K" + CLEAR_DOWN + "\n")
