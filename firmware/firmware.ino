@@ -398,12 +398,12 @@ bool servoConfigure(uint8_t id) {
 
   if (modeTorque) {
     if (servo.writeSingleRegister(0, 2) != 0) return false;      // Torque mode
-    if (servo.writeSingleRegister(833, 40) != 0) return false;   // Ref torque 4.0%
-    if (servo.writeSingleRegister(839, 100) != 0) return false;  // Torque limit+
-    if (servo.writeSingleRegister(840, 100) != 0) return false;  // Torque limit-
+    if (servo.writeSingleRegister(833, 0) != 0) return false;   // Ref torque 0.0%
+    if (servo.writeSingleRegister(839, 500) != 0) return false;  // Torque limit speed+
+    if (servo.writeSingleRegister(840, 500) != 0) return false;  // Torque limit speed-
   } else {
     if (servo.writeSingleRegister(0, 1) != 0) return false;      // Speed mode
-    if (servo.writeSingleRegister(4614, 100) != 0) return false; // 100 RPM
+    if (servo.writeSingleRegister(801, 0) != 0) return false; // 100 RPM
   }
 
   // Servo ON
@@ -546,6 +546,25 @@ void loop() {
         if (servoConnected) {
           if (servoReadMonitoring()) {
             servoFailCount = 0;
+
+            int16_t baseRead = lastBridge - 8205;
+            int16_t deadband = -5;
+            int16_t thsld = 320;
+
+            if (baseRead < deadband) {
+              if (modeTorque) {
+                if (servo.writeSingleRegister(833, baseRead*8 + thsld) != 0);   // Ref torque 0%
+              } else {
+                if (servo.writeSingleRegister(801, baseRead*8 + thsld) != 0); // 100 RPM
+              }
+            } else {
+              if (modeTorque) {
+                if (servo.writeSingleRegister(833, 0) != 0);   // Ref torque 0%
+              } else {
+                if (servo.writeSingleRegister(801, 0) != 0); // 100 RPM
+              }
+            }
+
           } else {
             servoFailCount++;
             if (servoFailCount >= 3) {
