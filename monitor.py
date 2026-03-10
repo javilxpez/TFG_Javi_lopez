@@ -68,8 +68,9 @@ ERROR_CODES = {
 # v1 kept for backwards compat, v2 is current
 DECODERS = {
     0x01: ("<BIHBB", ("packet_id", "t_ms", "bridge", "lc_status", "lc_flags")),
-    0x02: ("<BIHBBhhBB", ("packet_id", "t_ms", "bridge", "lc_status", "lc_flags",
-                           "rpm", "torque_x10", "servo_state", "mode")),
+    0x02: ("<BIHBBhhBBhh", ("packet_id", "t_ms", "bridge", "lc_status", "lc_flags",
+                             "rpm", "torque_x10", "servo_state", "mode",
+                             "servo_ref", "base_read")),
 }
 
 # ── ANSI ──────────────────────────────────────────
@@ -212,10 +213,14 @@ def render(data: dict, meta: dict):
     # Motor
     rows.append(("RPM",         f"{rpm:>6d}"))
     rows.append(("Torque",      f"{torque:>6.1f}%  {bar(torque, lo=-100, hi=100)}"))
+    rows.append(("", ""))
 
-    # ── Expand here ──────────────────────────────
-    # rows.append(("New Field", f"{data.get('new_field', 0)}"))
-    # ─────────────────────────────────────────────
+    # Control loop
+    servo_ref  = data.get("servo_ref", 0)
+    base_read  = data.get("base_read", 0)
+    ref_unit   = "×10%" if mode == 1 else "RPM"
+    rows.append(("Base Read",   f"{base_read:>6d}  {bar(base_read, lo=-500, hi=500)}"))
+    rows.append(("Servo Ref",   f"{servo_ref:>6d} {ref_unit}"))
 
     label_w = max((len(r[0]) for r in rows if r[0]), default=12)
 
@@ -235,9 +240,8 @@ def render(data: dict, meta: dict):
 
     lines.append("─" * 56)
     lines.append(f"{DIM}  [1] Start Torque  [2] Start Speed  [s] Stop  [q] Quit{RESET}")
-    lines.append(f"{DIM}  [t] Set Torque Ref  [v] Set Speed Ref{RESET}")
 
-    sys.stdout.write(CURSOR_HOME + "\n".join(lines) + CLEAR_DOWN + "\n")
+    sys.stdout.write(CURSOR_HOME + "\033[K\n".join(lines) + "\033[K" + CLEAR_DOWN + "\n")
     sys.stdout.flush()
 
 
@@ -273,18 +277,15 @@ def read_packet(ser: serial.Serial) -> bytes | None:
 
 
 def drain_text(ser: serial.Serial):
-    ser.timeout = 0.5
-    while True:
+    ser.timeout = 0.1
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline:
         line = ser.readline()
         if not line:
             break
         text = line.decode(errors="replace").strip()
         if text.startswith("#"):
             print(text)
-        elif text == "":
-            continue
-        else:
-            break
     ser.timeout = 0.1  # Fast for interleaved read + keyboard
 
 
@@ -314,32 +315,6 @@ def input_thread(ser: serial.Serial, running: threading.Event):
                 send_start(ser, torque=False)
             elif ch in ("s", "S"):
                 send_stop(ser)
-            elif ch in ("t", "T"):
-                # Quick inline prompt — print below dashboard
-                sys.stdout.write(f"\033[25;1H\033[K  Torque ref (x10, e.g. 40=4.0%): ")
-                sys.stdout.flush()
-                # Restore cooked mode briefly for line input
-                if os.name != "nt":
-                    termios.tcsetattr(fd, termios.TCSANOW, old)
-                try:
-                    val = int(input())
-                    send_set_param(ser, PARAM_TORQUE_REF, val)
-                except (ValueError, EOFError):
-                    pass
-                if os.name != "nt":
-                    tty.setcbreak(fd)
-            elif ch in ("v", "V"):
-                sys.stdout.write(f"\033[25;1H\033[K  Speed RPM: ")
-                sys.stdout.flush()
-                if os.name != "nt":
-                    termios.tcsetattr(fd, termios.TCSANOW, old)
-                try:
-                    val = int(input())
-                    send_set_param(ser, PARAM_SPEED_REF, val)
-                except (ValueError, EOFError):
-                    pass
-                if os.name != "nt":
-                    tty.setcbreak(fd)
             elif ch in ("q", "Q"):
                 running.clear()
                 break

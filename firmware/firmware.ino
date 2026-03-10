@@ -138,7 +138,7 @@ static uint8_t crc8(const uint8_t *data, uint8_t len) {
 // ═════════════════════════════════════════════════
 //  TELEMETRY (ESP → Python)
 // ═════════════════════════════════════════════════
-// Packet v2 payload (17 bytes):
+// Packet v2 payload (19 bytes):
 //   0     packet_id     uint8
 //   1-4   t_ms          uint32 LE
 //   5-6   bridge        uint16 LE
@@ -149,13 +149,14 @@ static uint8_t crc8(const uint8_t *data, uint8_t len) {
 //   13    servo_state   uint8
 //   14    mode          uint8   (0=speed, 1=torque)
 //   15-16 servo_ref     int16 LE  (last reference written to servo)
+//   17-18 base_read     int16 LE  (bridge - zeroOffset)
 
 static uint8_t txBuf[64];
 
 void telemetrySend(uint32_t t, uint16_t bridge, uint8_t lcStatus, bool lcValid,
                    int16_t rpm, int16_t torqueX10,
                    uint8_t state, uint8_t mode) {
-  uint8_t payloadLen = 17;
+  uint8_t payloadLen = 19;
   uint8_t *p = txBuf;
 
   *p++ = PACKET_ID;
@@ -182,6 +183,8 @@ void telemetrySend(uint32_t t, uint16_t bridge, uint8_t lcStatus, bool lcValid,
   *p++ = mode;
   *p++ = (ctrl.servoRef >> 0) & 0xFF;
   *p++ = (ctrl.servoRef >> 8) & 0xFF;
+  *p++ = (ctrl.baseRead >> 0) & 0xFF;
+  *p++ = (ctrl.baseRead >> 8) & 0xFF;
 
   uint8_t frame[3 + payloadLen + 1];
   frame[0] = SYNC_0;
