@@ -351,6 +351,13 @@
 #define MB_C10_33   4147  // Positioning threshold equivalent upon homing completed
 #define MB_C10_34   4148  // Mode of homing upon hit-and-stop
 
+// F31 —[Reset Parameters]
+#define MB_F31_00   12544  // Fault reset        — clears active alarms after root cause is fixed
+#define MB_F31_01   12545  // Program reset      — restarts internal firmware without power cycling
+#define MB_F31_02   12546  // Parameter init     — ⚠ FACTORY RESET: restores all params to default (clears station ID & baud)
+#define MB_F31_04   12548  // Fault record init  — clears saved fault history from drive memory
+#define MB_F31_10   12560  // Encoder data reset — resets encoder position data (absolute encoders / after maintenance)
+
 // ── Error Codes ─────────────────────────────────
 #define ERR_NONE              0x00
 #define ERR_LC_STALE_TIMEOUT  0x01  // Load cell stuck returning stale data >50ms
