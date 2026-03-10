@@ -39,6 +39,16 @@
 #define PARAM_TORQUE_LIM_POS 0x03
 #define PARAM_TORQUE_LIM_NEG 0x04
 
+// ── Modbus Register Addresses ────────────────────
+#define MB_REG_CONTROL_MODE    0      // 1=speed, 2=torque
+#define MB_REG_SPEED_REF       801    // Speed reference (RPM)
+#define MB_REG_TORQUE_REF      833    // Torque reference (×10 %)
+#define MB_REG_TORQUE_LIM_POS  839    // Torque limit positive
+#define MB_REG_TORQUE_LIM_NEG  840    // Torque limit negative
+#define MB_REG_SERVO_ENABLE    1041   // Servo ON/OFF (C04.11)
+#define MB_REG_MON_RPM         16385  // Monitoring: motor RPM
+#define MB_REG_MON_TORQUE      16387  // Monitoring: motor torque ×10
+
 // ── Error Codes ─────────────────────────────────
 #define ERR_NONE              0x00
 #define ERR_LC_STALE_TIMEOUT  0x01  // Load cell stuck returning stale data >50ms
@@ -195,7 +205,7 @@ void processCommand(const uint8_t *payload, uint8_t len) {
       // Attempt servo OFF before going idle
       if (servoID > 0) {
         servo.begin(servoID, Serial0);
-        servo.writeSingleRegister(1041, 0);  // Servo OFF (C04.11)
+        servo.writeSingleRegister(MB_REG_SERVO_ENABLE, 0);  // Servo OFF
       }
       motorRPM = 0;
       motorTorqueX10 = 0;
@@ -208,10 +218,10 @@ void processCommand(const uint8_t *payload, uint8_t len) {
         int16_t value = (int16_t)(payload[2] | (payload[3] << 8));
         servo.begin(servoID, Serial0);
         switch (paramID) {
-          case PARAM_TORQUE_REF:     servo.writeSingleRegister(833, value);  break;
-          case PARAM_SPEED_REF:      servo.writeSingleRegister(4614, value); break;
-          case PARAM_TORQUE_LIM_POS: servo.writeSingleRegister(839, value);  break;
-          case PARAM_TORQUE_LIM_NEG: servo.writeSingleRegister(840, value);  break;
+          case PARAM_TORQUE_REF:     servo.writeSingleRegister(MB_REG_TORQUE_REF, value);     break;
+          case PARAM_SPEED_REF:      servo.writeSingleRegister(MB_REG_SPEED_REF, value);      break;
+          case PARAM_TORQUE_LIM_POS: servo.writeSingleRegister(MB_REG_TORQUE_LIM_POS, value); break;
+          case PARAM_TORQUE_LIM_NEG: servo.writeSingleRegister(MB_REG_TORQUE_LIM_NEG, value); break;
         }
       }
       break;
@@ -379,7 +389,7 @@ void servoInit() {
 
 bool servoScanStep() {
   servo.begin(scanID, Serial0);
-  uint8_t result = servo.readHoldingRegisters(0, 1);
+  uint8_t result = servo.readHoldingRegisters(MB_REG_CONTROL_MODE, 1);
   if (result == servo.ku8MBSuccess) {
     servoID = scanID;
     return true;
@@ -393,32 +403,32 @@ bool servoConfigure(uint8_t id) {
   servo.begin(id, Serial0);
 
   // Stop servo first — config registers are locked while running
-  servo.writeSingleRegister(1041, 0);  // Servo OFF
+  servo.writeSingleRegister(MB_REG_SERVO_ENABLE, 0);  // Servo OFF
   delay(10);
 
   if (modeTorque) {
-    if (servo.writeSingleRegister(0, 2) != 0) return false;      // Torque mode
-    if (servo.writeSingleRegister(833, 0) != 0) return false;   // Ref torque 0.0%
-    if (servo.writeSingleRegister(839, 500) != 0) return false;  // Torque limit speed+
-    if (servo.writeSingleRegister(840, 500) != 0) return false;  // Torque limit speed-
+    if (servo.writeSingleRegister(MB_REG_CONTROL_MODE,   2)   != 0) return false;  // Torque mode
+    if (servo.writeSingleRegister(MB_REG_TORQUE_REF,     0)   != 0) return false;  // Ref torque 0.0%
+    if (servo.writeSingleRegister(MB_REG_TORQUE_LIM_POS, 500) != 0) return false;  // Torque limit+
+    if (servo.writeSingleRegister(MB_REG_TORQUE_LIM_NEG, 500) != 0) return false;  // Torque limit-
   } else {
-    if (servo.writeSingleRegister(0, 1) != 0) return false;      // Speed mode
-    if (servo.writeSingleRegister(801, 0) != 0) return false; // 100 RPM
+    if (servo.writeSingleRegister(MB_REG_CONTROL_MODE, 1) != 0) return false;  // Speed mode
+    if (servo.writeSingleRegister(MB_REG_SPEED_REF,    0) != 0) return false;  // Ref speed 0 RPM
   }
 
   // Servo ON
-  if (servo.writeSingleRegister(1041, 1) != 0) return false;
+  if (servo.writeSingleRegister(MB_REG_SERVO_ENABLE, 1) != 0) return false;
   return true;
 }
 
 bool servoReadMonitoring() {
   servo.begin(servoID, Serial0);
 
-  uint8_t r1 = servo.readHoldingRegisters(16385, 1);
+  uint8_t r1 = servo.readHoldingRegisters(MB_REG_MON_RPM, 1);
   if (r1 == servo.ku8MBSuccess)
     motorRPM = (int16_t)servo.getResponseBuffer(0);
 
-  uint8_t r2 = servo.readHoldingRegisters(16387, 1);
+  uint8_t r2 = servo.readHoldingRegisters(MB_REG_MON_TORQUE, 1);
   if (r2 == servo.ku8MBSuccess)
     motorTorqueX10 = (int16_t)servo.getResponseBuffer(0);
 
@@ -553,15 +563,15 @@ void loop() {
 
             if (baseRead < deadband) {
               if (modeTorque) {
-                if (servo.writeSingleRegister(833, baseRead*8 + thsld) != 0);   // Ref torque 0%
+                if (servo.writeSingleRegister(MB_REG_TORQUE_REF, baseRead*8 + thsld) != 0);
               } else {
-                if (servo.writeSingleRegister(801, baseRead*8 + thsld) != 0); // 100 RPM
+                if (servo.writeSingleRegister(MB_REG_SPEED_REF, baseRead*8 + thsld) != 0);
               }
             } else {
               if (modeTorque) {
-                if (servo.writeSingleRegister(833, 0) != 0);   // Ref torque 0%
+                if (servo.writeSingleRegister(MB_REG_TORQUE_REF, 0) != 0);
               } else {
-                if (servo.writeSingleRegister(801, 0) != 0); // 100 RPM
+                if (servo.writeSingleRegister(MB_REG_SPEED_REF, 0) != 0);
               }
             }
 
@@ -577,7 +587,7 @@ void loop() {
         } else if (now - lastServoProbeTime >= 2000) {
           // Probe once every 2s — single read to avoid blocking
           servo.begin(servoID, Serial0);
-          if (servo.readHoldingRegisters(16385, 1) == servo.ku8MBSuccess) {
+          if (servo.readHoldingRegisters(MB_REG_MON_RPM, 1) == servo.ku8MBSuccess) {
             // Servo is back — reconfigure to restore settings
             currentState = STATE_CONFIGURING;
           }
@@ -595,7 +605,7 @@ void loop() {
       error_stop:
         // Emergency stop: servo OFF
         servo.begin(servoID, Serial0);
-        servo.writeSingleRegister(1041, 0);
+        servo.writeSingleRegister(MB_REG_SERVO_ENABLE, 0);
         motorRPM = 0;
         motorTorqueX10 = 0;
         lastLCValid = false;
