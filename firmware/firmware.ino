@@ -416,6 +416,15 @@ struct ControlState {
   uint8_t  lastLCStatus      = 0;
   bool     lastLCValid       = false;
 
+  // Servo tuning
+  int16_t  stiffness         = 13;   // C00_05: stiffness level (0–31)
+
+  // Torque & speed limits
+  int16_t  torqueLimIntPos   = 500;  // C03_43: internal positive torque limit (×10 %)
+  int16_t  torqueLimIntNeg   = 500;  // C03_44: internal negative torque limit (×10 %)
+  int16_t  speedLimTorqPos   = 3000; // C03_47: positive speed limit in torque mode (RPM)
+  int16_t  speedLimTorqNeg   = 3000; // C03_48: negative speed limit in torque mode (RPM)
+
   // Controller
   int16_t  zeroOffset        = 8205; // bridge value at zero load
   int16_t  baseRead          = 0;    // lastBridge - zeroOffset
@@ -733,6 +742,9 @@ bool servoConfigure(uint8_t id) {
   servo.writeSingleRegister(MB_REG_SERVO_ENABLE, 0);  // Servo OFF
   delay(10);
 
+  // Stiffness level (C00_05)
+  servo.writeSingleRegister(MB_C00_05, ctrl.stiffness);
+
   // Braking resistor configuration (C00_10–C00_13)
   servo.writeSingleRegister(MB_REG_BRAKE_RES_SEL, BRAKE_RES_SEL_VAL);
   servo.writeSingleRegister(MB_REG_BRAKE_RES_POW, BRAKE_RES_POW_VAL);
@@ -740,10 +752,12 @@ bool servoConfigure(uint8_t id) {
   servo.writeSingleRegister(MB_REG_BRAKE_RES_DISS, BRAKE_RES_DISS_VAL);
 
   if (ctrl.modeTorque) {
-    if (servo.writeSingleRegister(MB_REG_CONTROL_MODE,   2)   != 0) return false;  // Torque mode
-    if (servo.writeSingleRegister(MB_REG_TORQUE_REF,     0)   != 0) return false;  // Ref torque 0.0%
-    if (servo.writeSingleRegister(MB_REG_TORQUE_LIM_POS, 500) != 0) return false;  // Torque limit+
-    if (servo.writeSingleRegister(MB_REG_TORQUE_LIM_NEG, 500) != 0) return false;  // Torque limit-
+    if (servo.writeSingleRegister(MB_REG_CONTROL_MODE,   2)                    != 0) return false;  // Torque mode
+    if (servo.writeSingleRegister(MB_REG_TORQUE_REF,     0)                    != 0) return false;  // Ref torque 0.0%
+    if (servo.writeSingleRegister(MB_C03_43,  ctrl.torqueLimIntPos)            != 0) return false;  // Internal torque limit+
+    if (servo.writeSingleRegister(MB_C03_44,  ctrl.torqueLimIntNeg)            != 0) return false;  // Internal torque limit-
+    if (servo.writeSingleRegister(MB_REG_TORQUE_LIM_POS, ctrl.speedLimTorqPos) != 0) return false;  // Speed limit in torque mode+
+    if (servo.writeSingleRegister(MB_REG_TORQUE_LIM_NEG, ctrl.speedLimTorqNeg) != 0) return false;  // Speed limit in torque mode-
   } else {
     if (servo.writeSingleRegister(MB_REG_CONTROL_MODE, 1) != 0) return false;  // Speed mode
     if (servo.writeSingleRegister(MB_REG_SPEED_REF,    0) != 0) return false;  // Ref speed 0 RPM
