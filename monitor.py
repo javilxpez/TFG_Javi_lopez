@@ -11,8 +11,6 @@ Controls (keyboard):
     1  Start in TORQUE mode
     2  Start in SPEED mode
     s  Stop (servo OFF, back to idle)
-    t  Set torque reference (prompts for value)
-    v  Set speed reference (prompts for value)
     q  Quit
 
 Dependencies:
@@ -31,6 +29,12 @@ import serial
 # ── Config ────────────────────────────────────────
 BAUD = 115200
 SYNC = bytes([0xAA, 0x55])
+
+# Braking resistor configuration (C00_10–C00_13)
+BRAKE_RES_SEL = 1     # C00_10: External resistor
+BRAKE_RES_POW = 1000  # C00_11: Resistor power (W)
+BRAKE_RES_OHM = 235   # C00_12: Ohmic value (Ω)
+BRAKE_RES_DISS = 30   # C00_13: Resistor dissipation (%)
 
 # Command IDs
 CMD_START     = 0x01
@@ -238,6 +242,12 @@ def render(data: dict, meta: dict):
         else:
             lines.append(f"  {label:<{label_w}}  │  {value}")
 
+    lines.append("─" * 56)
+    lines.append(f"  {'Brake Resistor':<{label_w}}  │  C00_10–C00_13")
+    lines.append(f"  {'  Selection':<{label_w}}  │  {BRAKE_RES_SEL} (External)")
+    lines.append(f"  {'  Power':<{label_w}}  │  {BRAKE_RES_POW} W")
+    lines.append(f"  {'  Ohmic':<{label_w}}  │  {BRAKE_RES_OHM} Ω")
+    lines.append(f"  {'  Dissipation':<{label_w}}  │  {BRAKE_RES_DISS} %")
     lines.append("─" * 56)
     lines.append(f"{DIM}  [1] Start Torque  [2] Start Speed  [s] Stop  [q] Quit{RESET}")
 

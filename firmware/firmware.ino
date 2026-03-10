@@ -49,6 +49,17 @@
 #define MB_REG_MON_RPM         16385  // Monitoring: motor RPM
 #define MB_REG_MON_TORQUE      16387  // Monitoring: motor torque ×10
 
+// ── Braking Resistor Configuration ───────────────
+#define MB_REG_BRAKE_RES_SEL   16    // C00_10: resistor selection (1=external)
+#define MB_REG_BRAKE_RES_POW   17    // C00_11: resistor power (W)
+#define MB_REG_BRAKE_RES_OHM   18    // C00_12: resistor ohmic value (Ω)
+#define MB_REG_BRAKE_RES_DISS  19    // C00_13: resistor dissipation (%)
+
+#define BRAKE_RES_SEL_VAL      1     // External resistor
+#define BRAKE_RES_POW_VAL      1000  // 1000 W
+#define BRAKE_RES_OHM_VAL      235   // 235 Ω
+#define BRAKE_RES_DISS_VAL     30    // Resistor dissipation (%)
+
 // ── Error Codes ─────────────────────────────────
 #define ERR_NONE              0x00
 #define ERR_LC_STALE_TIMEOUT  0x01  // Load cell stuck returning stale data >50ms
@@ -423,6 +434,12 @@ bool servoConfigure(uint8_t id) {
   // Stop servo first — config registers are locked while running
   servo.writeSingleRegister(MB_REG_SERVO_ENABLE, 0);  // Servo OFF
   delay(10);
+
+  // Braking resistor configuration (C00_10–C00_13)
+  servo.writeSingleRegister(MB_REG_BRAKE_RES_SEL, BRAKE_RES_SEL_VAL);
+  servo.writeSingleRegister(MB_REG_BRAKE_RES_POW, BRAKE_RES_POW_VAL);
+  servo.writeSingleRegister(MB_REG_BRAKE_RES_OHM, BRAKE_RES_OHM_VAL);
+  servo.writeSingleRegister(MB_REG_BRAKE_RES_DISS, BRAKE_RES_DISS_VAL);
 
   if (ctrl.modeTorque) {
     if (servo.writeSingleRegister(MB_REG_CONTROL_MODE,   2)   != 0) return false;  // Torque mode
