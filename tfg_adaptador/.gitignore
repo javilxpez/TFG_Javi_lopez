@@ -1,0 +1,19 @@
+# Archivos de respaldo y temporales de KiCad
+*.bak
+*.kicad_pcb-bak
+*.kicad_sch-bak
+*-backups/
+*.lck
+fp-info-cache
+_autosave-*
+
+# Archivos de red y visualización
+*.cadstar
+*.net
+*.ses
+
+# Salidas de fabricación (opcional)
+# Descomenta estas líneas si no quieres subir tus Gerbers
+# gerber/
+# plots/
+# pdf/
