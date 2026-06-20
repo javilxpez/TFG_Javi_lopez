@@ -1,0 +1,4 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "terminal02x08")(type "KiCad")(uri "C:/Users/javil/Documents/KiCad/extlib/terminal02x08/terminal02x08.kicad_sym")(options "")(descr ""))
+)
