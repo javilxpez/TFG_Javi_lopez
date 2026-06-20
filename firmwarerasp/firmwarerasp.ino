@@ -7,6 +7,9 @@
 #include <ModbusMaster.h>
 #include <SerialPIO.h>   // PIO-based UART: permite TX/RX en cualquier GPIO
 
+// I2C1 en GP2 (SDA) / GP3 (SCL) — Wire1 no disponible en este core, usar TwoWire
+static TwoWire I2C1Bus(i2c1, 2, 3);
+
 // ── Pin Assignments ──────────────────────────────
 #define LC_SDA_PIN   2    // GP2 (I2C1 SDA)
 #define LC_SCL_PIN   3    // GP3 (I2C1 SCL)
@@ -613,28 +616,28 @@ void checkCommands() {
 //  LOAD CELL
 // ═════════════════════════════════════════════════
 bool loadCellInit() {
-  Wire1.beginTransmission(ZSC31014_ADDR);
-  uint8_t err = Wire1.endTransmission();
+  I2C1Bus.beginTransmission(ZSC31014_ADDR);
+  uint8_t err = I2C1Bus.endTransmission();
   if (err != 0) return false;
 
   // Discard initial stale read
-  Wire1.requestFrom((uint8_t)ZSC31014_ADDR, (uint8_t)2);
-  while (Wire1.available()) Wire1.read();
+  I2C1Bus.requestFrom((uint8_t)ZSC31014_ADDR, (uint8_t)2);
+  while (I2C1Bus.available()) I2C1Bus.read();
   delay(5);
   return true;
 }
 
 void loadCellMeasurementRequest() {
-  Wire1.requestFrom((uint8_t)ZSC31014_ADDR, (uint8_t)2);
-  while (Wire1.available()) Wire1.read();
+  I2C1Bus.requestFrom((uint8_t)ZSC31014_ADDR, (uint8_t)2);
+  while (I2C1Bus.available()) I2C1Bus.read();
 }
 
 bool loadCellFetch(uint16_t &bridgeRaw, uint8_t &status) {
-  uint8_t count = Wire1.requestFrom((uint8_t)ZSC31014_ADDR, (uint8_t)2);
+  uint8_t count = I2C1Bus.requestFrom((uint8_t)ZSC31014_ADDR, (uint8_t)2);
   if (count < 2) return false;
 
-  uint8_t msb = Wire1.read();
-  uint8_t lsb = Wire1.read();
+  uint8_t msb = I2C1Bus.read();
+  uint8_t lsb = I2C1Bus.read();
 
   status = (msb >> 6) & 0x03;
   bridgeRaw = ((uint16_t)(msb & 0x3F) << 8) | lsb;
@@ -662,18 +665,18 @@ static const uint16_t OFFSET_B_LUT[] = {
 };
 
 static bool zscCommand(uint8_t cmd, uint16_t data) {
-  Wire1.beginTransmission(ZSC31014_ADDR);
-  Wire1.write(cmd);
-  Wire1.write((data >> 8) & 0xFF);
-  Wire1.write(data & 0xFF);
-  return Wire1.endTransmission() == 0;
+  I2C1Bus.beginTransmission(ZSC31014_ADDR);
+  I2C1Bus.write(cmd);
+  I2C1Bus.write((data >> 8) & 0xFF);
+  I2C1Bus.write(data & 0xFF);
+  return I2C1Bus.endTransmission() == 0;
 }
 
 static bool zscReadResponse(uint16_t &value) {
-  if (Wire1.requestFrom((uint8_t)ZSC31014_ADDR, (uint8_t)3) < 3) return false;
-  uint8_t ack = Wire1.read();
-  uint8_t msb = Wire1.read();
-  uint8_t lsb = Wire1.read();
+  if (I2C1Bus.requestFrom((uint8_t)ZSC31014_ADDR, (uint8_t)3) < 3) return false;
+  uint8_t ack = I2C1Bus.read();
+  uint8_t msb = I2C1Bus.read();
+  uint8_t lsb = I2C1Bus.read();
   if (ack != 0x5A) return false;
   value = ((uint16_t)msb << 8) | lsb;
   return true;
@@ -812,10 +815,8 @@ void setup() {
   Serial.println("# ═══════════════════════════════════════");
 
   // Init I2C1 bus on GP2 (SDA) / GP3 (SCL)
-  Wire1.setSDA(LC_SDA_PIN);
-  Wire1.setSCL(LC_SCL_PIN);
-  Wire1.begin();
-  Wire1.setClock(LC_I2C_FREQ);
+  I2C1Bus.begin();
+  I2C1Bus.setClock(LC_I2C_FREQ);
 
   // Try EEPROM config (needs power-on command mode window)
   ctrl.lcConfigApplied = loadCellConfigureEEPROM();

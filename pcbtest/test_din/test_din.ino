@@ -3,7 +3,7 @@
 
 #define DIN1_PIN  16
 #define DIN2_PIN  17
-#define DIN3_PIN  18
+#define DIN3_PIN  18 
 #define DIN4_PIN  19
 
 static const uint8_t pins[4] = {DIN1_PIN, DIN2_PIN, DIN3_PIN, DIN4_PIN};
