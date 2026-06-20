@@ -1,19 +1,20 @@
 // ═══════════════════════════════════════════════════════════
-//  ZSC31014 Load Cell + Servo Motor — Xiao S3
+//  ZSC31014 Load Cell + Servo Motor — Raspberry Pi Pico 2
 //  Binary telemetry + command protocol
 // ═══════════════════════════════════════════════════════════
 
 #include <Wire.h>
 #include <ModbusMaster.h>
+#include <SerialPIO.h>   // PIO-based UART: permite TX/RX en cualquier GPIO
 
 // ── Pin Assignments ──────────────────────────────
-#define LC_SDA_PIN   D4
-#define LC_SCL_PIN   D5
+#define LC_SDA_PIN   2    // GP2 (I2C1 SDA)
+#define LC_SCL_PIN   3    // GP3 (I2C1 SCL)
 #define LC_I2C_FREQ  100000
 
-#define MB_TX_GPIO   43   // Physical D6
-#define MB_RX_GPIO   44   // Physical D7
-#define MB_EN_GPIO   D3   // DE/RE direction control
+#define MB_TX_GPIO   14   // GP14 (DI → RS485, via SerialPIO)
+#define MB_RX_GPIO   13   // GP13 (RO ← RS485, via SerialPIO)
+#define MB_EN_GPIO   12   // GP12 (DE/RE direction control)
 
 // ── Device Addresses ─────────────────────────────
 #define ZSC31014_ADDR 0x28
@@ -28,14 +29,14 @@
 #define SYNC_1      0x55
 #define PACKET_ID   0x02  // v2: load cell + motor
 
-// Command IDs (Python → ESP)
+// Command IDs (Python → Pico)
 #define CMD_START     0x01  // payload: uint8 mode (0=speed, 1=torque)
 #define CMD_STOP      0x02  // no payload
 #define CMD_SET_PARAM 0x03  // payload: uint8 param_id, int16_le value
 
 // Param IDs for CMD_SET_PARAM
-#define PARAM_TORQUE_REF  0x01  // torque x10 (e.g. 40 = 4.0%)
-#define PARAM_SPEED_REF   0x02  // RPM
+#define PARAM_TORQUE_REF     0x01  // torque x10 (e.g. 40 = 4.0%)
+#define PARAM_SPEED_REF      0x02  // RPM
 #define PARAM_TORQUE_LIM_POS 0x03
 #define PARAM_TORQUE_LIM_NEG 0x04
 
@@ -418,8 +419,8 @@ struct ControlState {
 
   // Servo tuning
   int16_t  stiffness         = 3;   // C00_05: stiffness level (0–31)
-  int16_t  accelRate         = 3;  // C03_22: acceleration rate
-  int16_t  decelRate         = 3;  // C03_24: deceleration rate
+  int16_t  accelRate         = 3;   // C03_22: acceleration rate
+  int16_t  decelRate         = 3;   // C03_24: deceleration rate
 
   // Torque & speed limits
   int16_t  torqueLimIntPos   = 500;  // C03_43: internal positive torque limit (×10 %)
@@ -446,6 +447,9 @@ struct ControlState {
 static ControlState ctrl;
 
 // ── Modbus ───────────────────────────────────────
+// SerialPIO: UART por PIO, funciona en cualquier GPIO (necesario para GP14 TX)
+static SerialPIO Serial485(MB_TX_GPIO, MB_RX_GPIO);
+
 ModbusMaster servo;
 
 void preTransmission()  { digitalWrite(MB_EN_GPIO, HIGH); }
@@ -463,7 +467,7 @@ static uint8_t crc8(const uint8_t *data, uint8_t len) {
 }
 
 // ═════════════════════════════════════════════════
-//  TELEMETRY (ESP → Python)
+//  TELEMETRY (Pico → Python)
 // ═════════════════════════════════════════════════
 // Packet v2 payload (19 bytes):
 //   0     packet_id     uint8
@@ -524,7 +528,7 @@ void telemetrySend(uint32_t t, uint16_t bridge, uint8_t lcStatus, bool lcValid,
 }
 
 // ═════════════════════════════════════════════════
-//  COMMAND RECEPTION (Python → ESP)
+//  COMMAND RECEPTION (Python → Pico)
 // ═════════════════════════════════════════════════
 static uint8_t rxBuf[64];
 static uint8_t rxPos = 0;
@@ -549,7 +553,7 @@ void processCommand(const uint8_t *payload, uint8_t len) {
     case CMD_STOP:
       // Attempt servo OFF before going idle
       if (ctrl.servoID > 0) {
-        servo.begin(ctrl.servoID, Serial0);
+        servo.begin(ctrl.servoID, Serial485);
         servo.writeSingleRegister(MB_REG_SERVO_ENABLE, 0);  // Servo OFF
       }
       ctrl.motorRPM = 0;
@@ -561,7 +565,7 @@ void processCommand(const uint8_t *payload, uint8_t len) {
       if (len >= 4 && ctrl.currentState == STATE_RUNNING && ctrl.servoID > 0) {
         uint8_t paramID = payload[1];
         int16_t value = (int16_t)(payload[2] | (payload[3] << 8));
-        servo.begin(ctrl.servoID, Serial0);
+        servo.begin(ctrl.servoID, Serial485);
         switch (paramID) {
           case PARAM_TORQUE_REF:     servo.writeSingleRegister(MB_REG_TORQUE_REF, value);     break;
           case PARAM_SPEED_REF:      servo.writeSingleRegister(MB_REG_SPEED_REF, value);      break;
@@ -609,28 +613,28 @@ void checkCommands() {
 //  LOAD CELL
 // ═════════════════════════════════════════════════
 bool loadCellInit() {
-  Wire.beginTransmission(ZSC31014_ADDR);
-  uint8_t err = Wire.endTransmission();
+  Wire1.beginTransmission(ZSC31014_ADDR);
+  uint8_t err = Wire1.endTransmission();
   if (err != 0) return false;
 
   // Discard initial stale read
-  Wire.requestFrom((uint8_t)ZSC31014_ADDR, (uint8_t)2);
-  while (Wire.available()) Wire.read();
+  Wire1.requestFrom((uint8_t)ZSC31014_ADDR, (uint8_t)2);
+  while (Wire1.available()) Wire1.read();
   delay(5);
   return true;
 }
 
 void loadCellMeasurementRequest() {
-  Wire.requestFrom((uint8_t)ZSC31014_ADDR, (uint8_t)2);
-  while (Wire.available()) Wire.read();
+  Wire1.requestFrom((uint8_t)ZSC31014_ADDR, (uint8_t)2);
+  while (Wire1.available()) Wire1.read();
 }
 
 bool loadCellFetch(uint16_t &bridgeRaw, uint8_t &status) {
-  uint8_t count = Wire.requestFrom((uint8_t)ZSC31014_ADDR, (uint8_t)2);
+  uint8_t count = Wire1.requestFrom((uint8_t)ZSC31014_ADDR, (uint8_t)2);
   if (count < 2) return false;
 
-  uint8_t msb = Wire.read();
-  uint8_t lsb = Wire.read();
+  uint8_t msb = Wire1.read();
+  uint8_t lsb = Wire1.read();
 
   status = (msb >> 6) & 0x03;
   bridgeRaw = ((uint16_t)(msb & 0x3F) << 8) | lsb;
@@ -658,18 +662,18 @@ static const uint16_t OFFSET_B_LUT[] = {
 };
 
 static bool zscCommand(uint8_t cmd, uint16_t data) {
-  Wire.beginTransmission(ZSC31014_ADDR);
-  Wire.write(cmd);
-  Wire.write((data >> 8) & 0xFF);
-  Wire.write(data & 0xFF);
-  return Wire.endTransmission() == 0;
+  Wire1.beginTransmission(ZSC31014_ADDR);
+  Wire1.write(cmd);
+  Wire1.write((data >> 8) & 0xFF);
+  Wire1.write(data & 0xFF);
+  return Wire1.endTransmission() == 0;
 }
 
 static bool zscReadResponse(uint16_t &value) {
-  if (Wire.requestFrom((uint8_t)ZSC31014_ADDR, (uint8_t)3) < 3) return false;
-  uint8_t ack = Wire.read();
-  uint8_t msb = Wire.read();
-  uint8_t lsb = Wire.read();
+  if (Wire1.requestFrom((uint8_t)ZSC31014_ADDR, (uint8_t)3) < 3) return false;
+  uint8_t ack = Wire1.read();
+  uint8_t msb = Wire1.read();
+  uint8_t lsb = Wire1.read();
   if (ack != 0x5A) return false;
   value = ((uint16_t)msb << 8) | lsb;
   return true;
@@ -726,14 +730,14 @@ done:
 void servoInit() {
   pinMode(MB_EN_GPIO, OUTPUT);
   digitalWrite(MB_EN_GPIO, LOW);
-  Serial0.begin(115200, SERIAL_8N1, MB_RX_GPIO, MB_TX_GPIO);
-  Serial0.setTimeout(20);  // ~1ms frame at 115200, 20ms is plenty of margin
+  Serial485.begin(115200);
+  Serial485.setTimeout(20);  // ~1ms frame at 115200, 20ms is plenty of margin
   servo.preTransmission(preTransmission);
   servo.postTransmission(postTransmission);
 }
 
 bool servoScanStep() {
-  servo.begin(ctrl.scanID, Serial0);
+  servo.begin(ctrl.scanID, Serial485);
   uint8_t result = servo.readHoldingRegisters(MB_REG_CONTROL_MODE, 1);
   if (result == servo.ku8MBSuccess) {
     ctrl.servoID = ctrl.scanID;
@@ -745,7 +749,7 @@ bool servoScanStep() {
 }
 
 bool servoConfigure(uint8_t id) {
-  servo.begin(id, Serial0);
+  servo.begin(id, Serial485);
 
   // Stop servo first — config registers are locked while running
   servo.writeSingleRegister(MB_REG_SERVO_ENABLE, 0);  // Servo OFF
@@ -782,7 +786,7 @@ bool servoConfigure(uint8_t id) {
 }
 
 bool servoReadMonitoring() {
-  servo.begin(ctrl.servoID, Serial0);
+  servo.begin(ctrl.servoID, Serial485);
 
   uint8_t r1 = servo.readHoldingRegisters(MB_REG_MON_RPM, 1);
   if (r1 == servo.ku8MBSuccess)
@@ -804,12 +808,14 @@ void setup() {
 
   // Debug header (text, Python skips # lines)
   Serial.println("# ═══════════════════════════════════════");
-  Serial.println("#  ZSC31014 + Servo — Xiao S3");
+  Serial.println("#  ZSC31014 + Servo — Raspberry Pi Pico 2");
   Serial.println("# ═══════════════════════════════════════");
 
-  // Init I2C bus
-  Wire.begin(LC_SDA_PIN, LC_SCL_PIN);
-  Wire.setClock(LC_I2C_FREQ);
+  // Init I2C1 bus on GP2 (SDA) / GP3 (SCL)
+  Wire1.setSDA(LC_SDA_PIN);
+  Wire1.setSCL(LC_SCL_PIN);
+  Wire1.begin();
+  Wire1.setClock(LC_I2C_FREQ);
 
   // Try EEPROM config (needs power-on command mode window)
   ctrl.lcConfigApplied = loadCellConfigureEEPROM();
@@ -946,7 +952,7 @@ void loop() {
           }
         } else if (now - ctrl.lastServoProbeTime >= 2000) {
           // Probe once every 2s — single read to avoid blocking
-          servo.begin(ctrl.servoID, Serial0);
+          servo.begin(ctrl.servoID, Serial485);
           if (servo.readHoldingRegisters(MB_REG_MON_RPM, 1) == servo.ku8MBSuccess) {
             // Servo is back — reconfigure to restore settings
             ctrl.currentState = STATE_CONFIGURING;
@@ -964,7 +970,7 @@ void loop() {
 
       error_stop:
         // Emergency stop: servo OFF
-        servo.begin(ctrl.servoID, Serial0);
+        servo.begin(ctrl.servoID, Serial485);
         servo.writeSingleRegister(MB_REG_SERVO_ENABLE, 0);
         ctrl.motorRPM = 0;
         ctrl.motorTorqueX10 = 0;
