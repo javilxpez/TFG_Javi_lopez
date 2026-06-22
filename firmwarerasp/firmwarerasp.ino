@@ -456,7 +456,7 @@ static SerialPIO Serial485(MB_TX_GPIO, MB_RX_GPIO);
 ModbusMaster servo;
 
 void preTransmission()  { digitalWrite(MB_EN_GPIO, HIGH); }
-void postTransmission() { digitalWrite(MB_EN_GPIO, LOW);  }
+void postTransmission() { delayMicroseconds(200); digitalWrite(MB_EN_GPIO, LOW); }
 
 // ── CRC8 ─────────────────────────────────────────
 static uint8_t crc8(const uint8_t *data, uint8_t len) {
