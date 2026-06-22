@@ -408,6 +408,8 @@ struct ControlState {
   bool     servoConnected    = false;
   uint8_t  servoFailCount    = 0;
   unsigned long lastServoProbeTime = 0;
+  unsigned long scanStartTime      = 0;
+  uint8_t  configureRetries        = 0;
   int16_t  motorRPM          = 0;
   int16_t  motorTorqueX10    = 0;  // torque * 10
 
@@ -549,6 +551,8 @@ void processCommand(const uint8_t *payload, uint8_t len) {
         ctrl.modeTorque = (payload[1] != 0);
         ctrl.scanID = 1;
         ctrl.servoID = 0;
+        ctrl.scanStartTime = millis();
+        ctrl.configureRetries = 0;
         ctrl.currentState = STATE_SCANNING;
       }
       break;
@@ -583,6 +587,29 @@ void processCommand(const uint8_t *payload, uint8_t len) {
 void checkCommands() {
   while (Serial.available()) {
     uint8_t b = Serial.read();
+
+    // Debug shortcut: 's' = CMD_START torque, 'x' = CMD_STOP
+    if (b == 's' && ctrl.currentState != STATE_ERROR) {
+      ctrl.modeTorque = true;
+      ctrl.scanID = 1;
+      ctrl.servoID = 0;
+      ctrl.scanStartTime = millis();
+      ctrl.configureRetries = 0;
+      ctrl.currentState = STATE_SCANNING;
+      Serial.println("# [s] START torque mode");
+      continue;
+    }
+    if (b == 'x') {
+      if (ctrl.servoID > 0) {
+        servo.begin(ctrl.servoID, Serial485);
+        servo.writeSingleRegister(MB_REG_SERVO_ENABLE, 0);
+      }
+      ctrl.motorRPM = 0;
+      ctrl.motorTorqueX10 = 0;
+      ctrl.currentState = STATE_IDLE;
+      Serial.println("# [x] STOP");
+      continue;
+    }
 
     switch (rxState) {
       case RX_SYNC0:
@@ -734,7 +761,7 @@ void servoInit() {
   pinMode(MB_EN_GPIO, OUTPUT);
   digitalWrite(MB_EN_GPIO, LOW);
   Serial485.begin(115200);
-  Serial485.setTimeout(20);  // ~1ms frame at 115200, 20ms is plenty of margin
+  Serial485.setTimeout(100); // 100 ms during scan; reduced to 20 ms once connected
   servo.preTransmission(preTransmission);
   servo.postTransmission(postTransmission);
 }
@@ -751,40 +778,50 @@ bool servoScanStep() {
   return false;
 }
 
+static uint8_t servoWriteReg(uint16_t reg, uint16_t val, const char *name) {
+  uint8_t r = servo.writeSingleRegister(reg, val);
+  if (r != 0) Serial.printf("# CFG FAIL reg=%u (%s) val=%u code=0x%02X\n", reg, name, val, r);
+  else        Serial.printf("# CFG OK   reg=%u (%s) val=%u\n", reg, name, val);
+  return r;
+}
+
 bool servoConfigure(uint8_t id) {
   servo.begin(id, Serial485);
+  Serial.printf("# servoConfigure ID=%u\n", id);
 
   // Stop servo first — config registers are locked while running
-  servo.writeSingleRegister(MB_REG_SERVO_ENABLE, 0);  // Servo OFF
-  delay(10);
+  uint8_t rOff = servo.writeSingleRegister(MB_REG_SERVO_ENABLE, 0);
+  Serial.printf("# servo OFF: 0x%02X\n", rOff);
+  delay(50);
 
   // Stiffness level (C00_05)
-  servo.writeSingleRegister(MB_C00_05, ctrl.stiffness);
+  servoWriteReg(MB_C00_05, ctrl.stiffness, "stiffness");
 
   // Acceleration / deceleration rates (C03_22 / C03_24)
-  servo.writeSingleRegister(MB_C03_22, ctrl.accelRate);
-  servo.writeSingleRegister(MB_C03_24, ctrl.decelRate);
+  servoWriteReg(MB_C03_22, ctrl.accelRate, "accel");
+  servoWriteReg(MB_C03_24, ctrl.decelRate, "decel");
 
   // Braking resistor configuration (C00_10–C00_13)
-  servo.writeSingleRegister(MB_REG_BRAKE_RES_SEL, BRAKE_RES_SEL_VAL);
-  servo.writeSingleRegister(MB_REG_BRAKE_RES_POW, BRAKE_RES_POW_VAL);
-  servo.writeSingleRegister(MB_REG_BRAKE_RES_OHM, BRAKE_RES_OHM_VAL);
-  servo.writeSingleRegister(MB_REG_BRAKE_RES_DISS, BRAKE_RES_DISS_VAL);
+  servoWriteReg(MB_REG_BRAKE_RES_SEL,  BRAKE_RES_SEL_VAL,  "brk_sel");
+  servoWriteReg(MB_REG_BRAKE_RES_POW,  BRAKE_RES_POW_VAL,  "brk_pow");
+  servoWriteReg(MB_REG_BRAKE_RES_OHM,  BRAKE_RES_OHM_VAL,  "brk_ohm");
+  servoWriteReg(MB_REG_BRAKE_RES_DISS, BRAKE_RES_DISS_VAL, "brk_diss");
 
   if (ctrl.modeTorque) {
-    if (servo.writeSingleRegister(MB_REG_CONTROL_MODE,   2)                    != 0) return false;  // Torque mode
-    if (servo.writeSingleRegister(MB_REG_TORQUE_REF,     0)                    != 0) return false;  // Ref torque 0.0%
-    if (servo.writeSingleRegister(MB_C03_43,  ctrl.torqueLimIntPos)            != 0) return false;  // Internal torque limit+
-    if (servo.writeSingleRegister(MB_C03_44,  ctrl.torqueLimIntNeg)            != 0) return false;  // Internal torque limit-
-    if (servo.writeSingleRegister(MB_REG_TORQUE_LIM_POS, ctrl.speedLimTorqPos) != 0) return false;  // Speed limit in torque mode+
-    if (servo.writeSingleRegister(MB_REG_TORQUE_LIM_NEG, ctrl.speedLimTorqNeg) != 0) return false;  // Speed limit in torque mode-
+    if (servoWriteReg(MB_REG_CONTROL_MODE,   2,                    "ctrl_mode") != 0) return false;
+    if (servoWriteReg(MB_REG_TORQUE_REF,     0,                    "torq_ref")  != 0) return false;
+    if (servoWriteReg(MB_C03_43, ctrl.torqueLimIntPos,             "tlim+")     != 0) return false;
+    if (servoWriteReg(MB_C03_44, ctrl.torqueLimIntNeg,             "tlim-")     != 0) return false;
+    if (servoWriteReg(MB_REG_TORQUE_LIM_POS, ctrl.speedLimTorqPos, "slimT+")   != 0) return false;
+    if (servoWriteReg(MB_REG_TORQUE_LIM_NEG, ctrl.speedLimTorqNeg, "slimT-")   != 0) return false;
   } else {
-    if (servo.writeSingleRegister(MB_REG_CONTROL_MODE, 1) != 0) return false;  // Speed mode
-    if (servo.writeSingleRegister(MB_REG_SPEED_REF,    0) != 0) return false;  // Ref speed 0 RPM
+    if (servoWriteReg(MB_REG_CONTROL_MODE, 1, "ctrl_mode") != 0) return false;
+    if (servoWriteReg(MB_REG_SPEED_REF,    0, "spd_ref")   != 0) return false;
   }
 
   // Servo ON
-  if (servo.writeSingleRegister(MB_REG_SERVO_ENABLE, 1) != 0) return false;
+  if (servoWriteReg(MB_REG_SERVO_ENABLE, 1, "servo_on") != 0) return false;
+  Serial.println("# servoConfigure DONE");
   return true;
 }
 
@@ -813,6 +850,11 @@ void setup() {
   Serial.println("# ═══════════════════════════════════════");
   Serial.println("#  ZSC31014 + Servo — Raspberry Pi Pico 2");
   Serial.println("# ═══════════════════════════════════════");
+
+  // Activate load cell power (EN on GP1)
+  pinMode(1, OUTPUT);
+  digitalWrite(1, HIGH);
+  delay(50);
 
   // Init I2C1 bus on GP2 (SDA) / GP3 (SCL)
   I2C1Bus.begin();
@@ -851,47 +893,84 @@ void loop() {
   switch (ctrl.currentState) {
 
     case STATE_IDLE:
-      // Send heartbeat telemetry at 2Hz so Python knows we're alive
-      if (now - ctrl.lastTelemetryTime >= 500) {
-        telemetrySend(now, 0, 0, false, 0, 0, (uint8_t)ctrl.currentState, ctrl.modeTorque ? 1 : 0);
+      if (now - ctrl.lastTelemetryTime >= 200) {
+        uint16_t bridge; uint8_t lcSt;
+        if (ctrl.loadCellOK && loadCellRead(bridge, lcSt))
+          ctrl.lastBridge = bridge, ctrl.lastLCStatus = lcSt, ctrl.lastLCValid = (lcSt == LC_STATUS_VALID);
+        telemetrySend(now, ctrl.lastBridge, ctrl.lastLCStatus, ctrl.lastLCValid,
+                      0, 0, (uint8_t)ctrl.currentState, ctrl.modeTorque ? 1 : 0);
         ctrl.lastTelemetryTime = now;
       }
       break;
 
     case STATE_SCANNING:
+      if (now - ctrl.scanStartTime > 10000) {  // 10 s — full scan at 100 ms/ID × 247 IDs ≈ 25 s worst case
+        ctrl.errorCode = ERR_SERVO_SCAN_FAIL;
+        ctrl.currentState = STATE_ERROR;
+        Serial.println("# SCAN TIMEOUT — no servo found");
+        break;
+      }
       if (now - ctrl.lastActionTime >= 15) {
         if (servoScanStep()) {
           ctrl.currentState = STATE_CONFIGURING;
         }
         ctrl.lastActionTime = now;
       }
-      // Keep sending telemetry during scan
       if (now - ctrl.lastTelemetryTime >= 200) {
-        telemetrySend(now, 0, 0, false, 0, 0, (uint8_t)ctrl.currentState, ctrl.modeTorque ? 1 : 0);
+        uint16_t bridge; uint8_t lcSt;
+        if (ctrl.loadCellOK && loadCellRead(bridge, lcSt))
+          ctrl.lastBridge = bridge, ctrl.lastLCStatus = lcSt, ctrl.lastLCValid = (lcSt == LC_STATUS_VALID);
+        telemetrySend(now, ctrl.lastBridge, ctrl.lastLCStatus, ctrl.lastLCValid,
+                      0, 0, (uint8_t)ctrl.currentState, ctrl.modeTorque ? 1 : 0);
         ctrl.lastTelemetryTime = now;
       }
       break;
 
     case STATE_CONFIGURING:
       if (servoConfigure(ctrl.servoID)) {
+        ctrl.configureRetries = 0;
         ctrl.errorCode = ERR_NONE;
         ctrl.servoConnected = true;
         ctrl.servoFailCount = 0;
+
+        // Pre-populate MA filter with real reading so servoRef starts at 0, not -73000
+        {
+          uint16_t initBridge = 0; uint8_t initSt = 0;
+          if (ctrl.loadCellOK && loadCellRead(initBridge, initSt) && initSt == LC_STATUS_VALID) {
+            for (uint8_t i = 0; i < ctrl.MA_SIZE; i++) ctrl.maBuf[i] = initBridge;
+            ctrl.maSum    = (uint32_t)initBridge * ctrl.MA_SIZE;
+            ctrl.maIdx    = 0;
+            ctrl.lastBridgeFilt = initBridge;
+            ctrl.lastBridge     = initBridge;
+            ctrl.lastLCStatus   = initSt;
+            ctrl.lastLCValid    = true;
+          } else {
+            ctrl.lastBridge = 0; ctrl.lastLCStatus = 0; ctrl.lastLCValid = false;
+          }
+        }
+
         ctrl.lcPhase = LC_REQUEST;
-        ctrl.lastBridge = 0;
-        ctrl.lastLCStatus = 0;
-        ctrl.lastLCValid = false;
+        Serial485.setTimeout(20); // match original ESP32 timing for control loop
         ctrl.currentState = STATE_RUNNING;
       } else {
-        // Retry scan from next ID
-        ctrl.scanID = ctrl.servoID + 1;
-        ctrl.servoID = 0;
-        ctrl.currentState = STATE_SCANNING;
+        ctrl.configureRetries++;
+        if (ctrl.configureRetries >= 3) {
+          ctrl.errorCode = ERR_SERVO_CONFIG_FAIL;
+          ctrl.currentState = STATE_ERROR;
+          Serial.printf("# CONFIG FAILED after 3 retries for ID=%u\n", ctrl.servoID);
+        } else {
+          // Retry the SAME ID (not +1) — servo was found here
+          ctrl.scanID = ctrl.servoID;
+          ctrl.servoID = 0;
+          ctrl.scanStartTime = millis();
+          ctrl.currentState = STATE_SCANNING;
+          Serial.printf("# CONFIG retry %u/3 for ID=%u\n", ctrl.configureRetries, ctrl.scanID);
+        }
       }
       break;
 
     case STATE_RUNNING:
-      if (now - ctrl.lastActionTime >= 10) {
+      {
         // Load cell state machine: request once, fetch until valid or timeout
         if (ctrl.loadCellOK) {
           if (ctrl.lcPhase == LC_REQUEST) {
@@ -911,12 +990,11 @@ void loop() {
                 ctrl.lastBridgeFilt = (uint16_t)(ctrl.maSum / ctrl.MA_SIZE);
                 ctrl.lastLCStatus = status;
                 ctrl.lastLCValid = true;
-                ctrl.lcPhase = LC_REQUEST;  // ready for next measurement
+                ctrl.lcPhase = LC_REQUEST;
               } else if (now - ctrl.lcRequestTime > 50) {
                 ctrl.errorCode = ERR_LC_STALE_TIMEOUT;
                 goto error_stop;
               }
-              // else stale — retry fetch next cycle (no re-request)
             } else {
               ctrl.errorCode = ERR_LC_I2C_FAIL;
               goto error_stop;
@@ -924,49 +1002,49 @@ void loop() {
           }
         }
 
-        // Servo: read if connected, probe if disconnected
+        // Servo: write reference every cycle, monitor every 50 cycles
         if (ctrl.servoConnected) {
-          if (servoReadMonitoring()) {
+          if (ctrl.lastLCValid) {
+            ctrl.baseRead = (int16_t)ctrl.lastBridgeFilt - ctrl.zeroOffset;
+            ctrl.servoRef = (ctrl.baseRead < ctrl.deadband)
+                            ? ctrl.baseRead * ctrl.gain + ctrl.thsld : 0;
+          } else {
+            ctrl.servoRef = 0;
+          }
+
+          servo.begin(ctrl.servoID, Serial485);
+          uint8_t wResult = ctrl.modeTorque
+            ? servo.writeSingleRegister(MB_REG_TORQUE_REF, ctrl.servoRef)
+            : servo.writeSingleRegister(MB_REG_SPEED_REF,  ctrl.servoRef);
+
+          if (wResult == 0) {
             ctrl.servoFailCount = 0;
-
-            ctrl.baseRead = ctrl.lastBridgeFilt - ctrl.zeroOffset;
-            if (ctrl.baseRead < ctrl.deadband) {
-              ctrl.servoRef = ctrl.baseRead * ctrl.gain + ctrl.thsld;
-            } else {
-              ctrl.servoRef = 0;
-            }
-
-            if (ctrl.modeTorque) {
-              if (servo.writeSingleRegister(MB_REG_TORQUE_REF, ctrl.servoRef) != 0);
-            } else {
-              if (servo.writeSingleRegister(MB_REG_SPEED_REF, ctrl.servoRef) != 0);
-            }
-
+            static uint8_t monCnt = 0;
+            if (++monCnt >= 50) { monCnt = 0; servoReadMonitoring(); }
           } else {
             ctrl.servoFailCount++;
-            if (ctrl.servoFailCount >= 3) {
+            if (ctrl.servoFailCount >= 5) {
               ctrl.servoConnected = false;
               ctrl.motorRPM = 0;
               ctrl.motorTorqueX10 = 0;
               ctrl.lastServoProbeTime = now;
+              Serial485.setTimeout(100);
             }
           }
         } else if (now - ctrl.lastServoProbeTime >= 2000) {
-          // Probe once every 2s — single read to avoid blocking
           servo.begin(ctrl.servoID, Serial485);
           if (servo.readHoldingRegisters(MB_REG_MON_RPM, 1) == servo.ku8MBSuccess) {
-            // Servo is back — reconfigure to restore settings
             ctrl.currentState = STATE_CONFIGURING;
           }
           ctrl.lastServoProbeTime = now;
         }
 
-        telemetrySend(now, ctrl.lastBridge, ctrl.lastLCStatus, ctrl.lastLCValid,
-                      ctrl.motorRPM, ctrl.motorTorqueX10,
-                      (uint8_t)ctrl.currentState, ctrl.modeTorque ? 1 : 0);
-
-        ctrl.lastActionTime = now;
-        ctrl.lastTelemetryTime = now;
+        if (now - ctrl.lastTelemetryTime >= 200) {
+          telemetrySend(now, ctrl.lastBridge, ctrl.lastLCStatus, ctrl.lastLCValid,
+                        ctrl.motorRPM, ctrl.motorTorqueX10,
+                        (uint8_t)ctrl.currentState, ctrl.modeTorque ? 1 : 0);
+          ctrl.lastTelemetryTime = now;
+        }
         break;
 
       error_stop:
