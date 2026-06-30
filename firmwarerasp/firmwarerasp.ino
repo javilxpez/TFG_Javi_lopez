@@ -1,6 +1,7 @@
 // ═══════════════════════════════════════════════════════════
 //  ZSC31014 Load Cell + Servo Motor — Raspberry Pi Pico 2
 //  Binary telemetry + command protocol
+//  Dual-core: Core0 = LC/telemetry/commands, Core1 = Modbus
 // ═══════════════════════════════════════════════════════════
 
 #include <Wire.h>
@@ -406,8 +407,6 @@ struct ControlState {
   uint8_t  servoID           = 0;
   uint8_t  scanID            = 1;
   bool     servoConnected    = false;
-  uint8_t  servoFailCount    = 0;
-  unsigned long lastServoProbeTime = 0;
   unsigned long scanStartTime      = 0;
   uint8_t  configureRetries        = 0;
   int16_t  motorRPM          = 0;
@@ -430,8 +429,8 @@ struct ControlState {
   // Torque & speed limits
   int16_t  torqueLimIntPos   = 500;  // C03_43: internal positive torque limit (×10 %)
   int16_t  torqueLimIntNeg   = 500;  // C03_44: internal negative torque limit (×10 %)
-  int16_t  speedLimTorqPos   = 3000; // C03_47: positive speed limit in torque mode (RPM)
-  int16_t  speedLimTorqNeg   = 3000; // C03_48: negative speed limit in torque mode (RPM)
+  int16_t  speedLimTorqPos   = 1000; // C03_47: positive speed limit in torque mode (RPM)
+  int16_t  speedLimTorqNeg   = 1000; // C03_48: negative speed limit in torque mode (RPM)
 
   // Controller
   int16_t  zeroOffset        = 8210; // bridge value at zero load
@@ -451,6 +450,31 @@ struct ControlState {
 
 static ControlState ctrl;
 
+// ── Core1 Modbus worker (shared volatile state) ──
+// Core0 writes the "input" fields; Core1 writes the "output" fields.
+// Only one core touches Serial485/servo at a time:
+//   - Core1 active while mbw.active == true (STATE_RUNNING)
+//   - Core0 takes over after setting mbw.active = false and waiting for mbw.busy == false
+struct MBWorker {
+  volatile bool    active      = false; // Core0 → Core1: enable/disable
+  volatile bool    busy        = false; // Core1 → Core0: currently inside a Modbus call
+  volatile uint8_t slaveID     = 0;
+  volatile bool    modeTorque  = true;
+  volatile int16_t refValue    = 0;     // reference to write every cycle
+
+  volatile bool    connected   = false; // last write succeeded
+  volatile uint8_t failCount   = 0;     // consecutive write failures
+  volatile int16_t motorRPM    = 0;
+  volatile int16_t motorTorqueX10 = 0;
+} mbw;
+
+// Stop Core1 Modbus and wait until it finishes its current operation (max 100 ms)
+static void stopCore1() {
+  mbw.active = false;
+  unsigned long t = millis();
+  while (mbw.busy && millis() - t < 100) delayMicroseconds(100);
+}
+
 // ── Modbus ───────────────────────────────────────
 // SerialPIO: UART por PIO, funciona en cualquier GPIO (necesario para GP14 TX)
 static SerialPIO Serial485(MB_TX_GPIO, MB_RX_GPIO);
@@ -459,6 +483,51 @@ ModbusMaster servo;
 
 void preTransmission()  { digitalWrite(MB_EN_GPIO, HIGH); }
 void postTransmission() { delayMicroseconds(200); digitalWrite(MB_EN_GPIO, LOW); }
+
+// ── Core1: Modbus write loop ──────────────────────
+// Runs continuously while mbw.active, writing refValue and reading monitoring.
+// Never called from Core0. Serial485 and servo are exclusively Core1's during RUNNING.
+void setup1() {
+  // Core1 starts after Core0 has already initialized Serial485 in servoInit()
+}
+
+void loop1() {
+  if (!mbw.active || mbw.slaveID == 0) {
+    delay(1);
+    return;
+  }
+
+  mbw.busy = true;
+
+  servo.begin(mbw.slaveID, Serial485);
+  Serial485.setTimeout(20);
+
+  uint8_t r = mbw.modeTorque
+    ? servo.writeSingleRegister(MB_REG_TORQUE_REF, (uint16_t)mbw.refValue)
+    : servo.writeSingleRegister(MB_REG_SPEED_REF,  (uint16_t)mbw.refValue);
+
+  if (r == 0) {
+    mbw.failCount  = 0;
+    mbw.connected  = true;
+
+    static uint8_t monCnt = 0;
+    if (++monCnt >= 10) {
+      monCnt = 0;
+      if (servo.readHoldingRegisters(MB_REG_MON_RPM, 1) == 0)
+        mbw.motorRPM = (int16_t)servo.getResponseBuffer(0);
+      if (servo.readHoldingRegisters(MB_REG_MON_TORQUE, 1) == 0)
+        mbw.motorTorqueX10 = (int16_t)servo.getResponseBuffer(0);
+    }
+  } else {
+    if (++mbw.failCount >= 5) {
+      mbw.connected      = false;
+      mbw.motorRPM       = 0;
+      mbw.motorTorqueX10 = 0;
+    }
+  }
+
+  mbw.busy = false;
+}
 
 // ── CRC8 ─────────────────────────────────────────
 static uint8_t crc8(const uint8_t *data, uint8_t len) {
@@ -558,26 +627,32 @@ void processCommand(const uint8_t *payload, uint8_t len) {
       break;
 
     case CMD_STOP:
-      // Attempt servo OFF before going idle
+      // Stop Core1 first so we can safely use Serial485 from Core0
+      if (mbw.active) stopCore1();
       if (ctrl.servoID > 0) {
         servo.begin(ctrl.servoID, Serial485);
         servo.writeSingleRegister(MB_REG_SERVO_ENABLE, 0);  // Servo OFF
       }
+      ctrl.servoConnected = false;
       ctrl.motorRPM = 0;
       ctrl.motorTorqueX10 = 0;
       ctrl.currentState = STATE_IDLE;
       break;
 
     case CMD_SET_PARAM:
-      if (len >= 4 && ctrl.currentState == STATE_RUNNING && ctrl.servoID > 0) {
+      // Only limit writes make sense here; ref is driven by the control loop in Core1
+      if (len >= 4 && ctrl.servoID > 0) {
         uint8_t paramID = payload[1];
         int16_t value = (int16_t)(payload[2] | (payload[3] << 8));
-        servo.begin(ctrl.servoID, Serial485);
-        switch (paramID) {
-          case PARAM_TORQUE_REF:     servo.writeSingleRegister(MB_REG_TORQUE_REF, value);     break;
-          case PARAM_SPEED_REF:      servo.writeSingleRegister(MB_REG_SPEED_REF, value);      break;
-          case PARAM_TORQUE_LIM_POS: servo.writeSingleRegister(MB_REG_TORQUE_LIM_POS, value); break;
-          case PARAM_TORQUE_LIM_NEG: servo.writeSingleRegister(MB_REG_TORQUE_LIM_NEG, value); break;
+        if (paramID == PARAM_TORQUE_LIM_POS || paramID == PARAM_TORQUE_LIM_NEG) {
+          bool wasActive = mbw.active;
+          if (wasActive) stopCore1();
+          servo.begin(ctrl.servoID, Serial485);
+          Serial485.setTimeout(100);
+          if (paramID == PARAM_TORQUE_LIM_POS) servo.writeSingleRegister(MB_REG_TORQUE_LIM_POS, value);
+          else                                  servo.writeSingleRegister(MB_REG_TORQUE_LIM_NEG, value);
+          if (wasActive) { Serial485.setTimeout(20); mbw.active = true; }
+          else           { Serial485.setTimeout(100); }
         }
       }
       break;
@@ -600,10 +675,12 @@ void checkCommands() {
       continue;
     }
     if (b == 'x') {
+      if (mbw.active) stopCore1();
       if (ctrl.servoID > 0) {
         servo.begin(ctrl.servoID, Serial485);
         servo.writeSingleRegister(MB_REG_SERVO_ENABLE, 0);
       }
+      ctrl.servoConnected = false;
       ctrl.motorRPM = 0;
       ctrl.motorTorqueX10 = 0;
       ctrl.currentState = STATE_IDLE;
@@ -755,13 +832,13 @@ done:
 }
 
 // ═════════════════════════════════════════════════
-//  SERVO MOTOR
+//  SERVO MOTOR (Core0 only: scan + configure)
 // ═════════════════════════════════════════════════
 void servoInit() {
   pinMode(MB_EN_GPIO, OUTPUT);
   digitalWrite(MB_EN_GPIO, LOW);
   Serial485.begin(115200);
-  Serial485.setTimeout(100); // 100 ms during scan; reduced to 20 ms once connected
+  Serial485.setTimeout(100); // 100 ms during scan; Core1 sets 20 ms for RUNNING
   servo.preTransmission(preTransmission);
   servo.postTransmission(postTransmission);
 }
@@ -825,22 +902,8 @@ bool servoConfigure(uint8_t id) {
   return true;
 }
 
-bool servoReadMonitoring() {
-  servo.begin(ctrl.servoID, Serial485);
-
-  uint8_t r1 = servo.readHoldingRegisters(MB_REG_MON_RPM, 1);
-  if (r1 == servo.ku8MBSuccess)
-    ctrl.motorRPM = (int16_t)servo.getResponseBuffer(0);
-
-  uint8_t r2 = servo.readHoldingRegisters(MB_REG_MON_TORQUE, 1);
-  if (r2 == servo.ku8MBSuccess)
-    ctrl.motorTorqueX10 = (int16_t)servo.getResponseBuffer(0);
-
-  return (r1 == servo.ku8MBSuccess || r2 == servo.ku8MBSuccess);
-}
-
 // ═════════════════════════════════════════════════
-//  MAIN
+//  MAIN (Core0)
 // ═════════════════════════════════════════════════
 void setup() {
   Serial.begin(115200);
@@ -876,7 +939,7 @@ void setup() {
     return;
   }
 
-  // Init modbus hardware (don't scan yet — wait for command)
+  // Init Modbus hardware (Core0 owns Serial485 until STATE_RUNNING)
   servoInit();
   Serial.println("# Modbus: initialized");
   Serial.println("# Waiting for START command...");
@@ -931,7 +994,6 @@ void loop() {
         ctrl.configureRetries = 0;
         ctrl.errorCode = ERR_NONE;
         ctrl.servoConnected = true;
-        ctrl.servoFailCount = 0;
 
         // Pre-populate MA filter with real reading so servoRef starts at 0, not -73000
         {
@@ -949,8 +1011,17 @@ void loop() {
           }
         }
 
+        // Hand Serial485 off to Core1 and enter RUNNING
+        mbw.slaveID        = ctrl.servoID;
+        mbw.modeTorque     = ctrl.modeTorque;
+        mbw.refValue       = 0;
+        mbw.failCount      = 0;
+        mbw.connected      = true;
+        mbw.motorRPM       = 0;
+        mbw.motorTorqueX10 = 0;
+        mbw.active         = true;   // Core1 takes over Serial485 from here
+
         ctrl.lcPhase = LC_REQUEST;
-        Serial485.setTimeout(20); // match original ESP32 timing for control loop
         ctrl.currentState = STATE_RUNNING;
       } else {
         ctrl.configureRetries++;
@@ -971,7 +1042,7 @@ void loop() {
 
     case STATE_RUNNING:
       {
-        // Load cell state machine: request once, fetch until valid or timeout
+        // ── Load cell state machine (Core0 only, non-blocking) ──
         if (ctrl.loadCellOK) {
           if (ctrl.lcPhase == LC_REQUEST) {
             loadCellMeasurementRequest();
@@ -1002,43 +1073,38 @@ void loop() {
           }
         }
 
-        // Servo: write reference every cycle, monitor every 50 cycles
-        if (ctrl.servoConnected) {
-          if (ctrl.lastLCValid) {
-            ctrl.baseRead = (int16_t)ctrl.lastBridgeFilt - ctrl.zeroOffset;
-            ctrl.servoRef = (ctrl.baseRead < ctrl.deadband)
-                            ? ctrl.baseRead * ctrl.gain + ctrl.thsld : 0;
-          } else {
-            ctrl.servoRef = 0;
-          }
+        // ── Compute reference → Core1 writes it ──
+        if (ctrl.lastLCValid) {
+          ctrl.baseRead = (int16_t)ctrl.lastBridgeFilt - ctrl.zeroOffset;
+          ctrl.servoRef = (ctrl.baseRead < ctrl.deadband)
+                          ? ctrl.baseRead * ctrl.gain + ctrl.thsld : 0;
+        } else {
+          ctrl.servoRef = 0;
+        }
+        mbw.refValue   = ctrl.servoRef;
+        mbw.modeTorque = ctrl.modeTorque;
 
-          servo.begin(ctrl.servoID, Serial485);
-          uint8_t wResult = ctrl.modeTorque
-            ? servo.writeSingleRegister(MB_REG_TORQUE_REF, ctrl.servoRef)
-            : servo.writeSingleRegister(MB_REG_SPEED_REF,  ctrl.servoRef);
+        // ── Read monitoring results from Core1 ──
+        ctrl.motorRPM       = mbw.motorRPM;
+        ctrl.motorTorqueX10 = mbw.motorTorqueX10;
+        ctrl.servoConnected = mbw.connected;
 
-          if (wResult == 0) {
-            ctrl.servoFailCount = 0;
-            static uint8_t monCnt = 0;
-            if (++monCnt >= 50) { monCnt = 0; servoReadMonitoring(); }
-          } else {
-            ctrl.servoFailCount++;
-            if (ctrl.servoFailCount >= 5) {
-              ctrl.servoConnected = false;
-              ctrl.motorRPM = 0;
-              ctrl.motorTorqueX10 = 0;
-              ctrl.lastServoProbeTime = now;
-              Serial485.setTimeout(100);
-            }
-          }
-        } else if (now - ctrl.lastServoProbeTime >= 2000) {
-          servo.begin(ctrl.servoID, Serial485);
-          if (servo.readHoldingRegisters(MB_REG_MON_RPM, 1) == servo.ku8MBSuccess) {
-            ctrl.currentState = STATE_CONFIGURING;
-          }
-          ctrl.lastServoProbeTime = now;
+        // ── Detect servo disconnect → rescan ──
+        if (!mbw.connected && mbw.failCount >= 5) {
+          stopCore1();   // reclaim Serial485 before changing state
+          ctrl.servoConnected = false;
+          ctrl.motorRPM = 0;
+          ctrl.motorTorqueX10 = 0;
+          ctrl.scanID = ctrl.servoID;
+          ctrl.servoID = 0;
+          ctrl.scanStartTime = millis();
+          ctrl.configureRetries = 0;
+          Serial485.setTimeout(100);
+          ctrl.currentState = STATE_SCANNING;
+          break;
         }
 
+        // ── Telemetry every 200 ms (Core0 is never blocked, so this fires on time) ──
         if (now - ctrl.lastTelemetryTime >= 200) {
           telemetrySend(now, ctrl.lastBridge, ctrl.lastLCStatus, ctrl.lastLCValid,
                         ctrl.motorRPM, ctrl.motorTorqueX10,
@@ -1048,9 +1114,11 @@ void loop() {
         break;
 
       error_stop:
-        // Emergency stop: servo OFF
+        // Emergency stop: reclaim Serial485 from Core1, then send servo OFF
+        stopCore1();
         servo.begin(ctrl.servoID, Serial485);
         servo.writeSingleRegister(MB_REG_SERVO_ENABLE, 0);
+        ctrl.servoConnected = false;
         ctrl.motorRPM = 0;
         ctrl.motorTorqueX10 = 0;
         ctrl.servoRef = 0;
