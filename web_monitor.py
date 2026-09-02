@@ -11,6 +11,7 @@ Abrir:     http://localhost:8080
 import asyncio
 import glob
 import json
+import logging
 import os
 import struct
 import sys
@@ -24,6 +25,16 @@ import serial
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
+
+# ── Logging (console + file) ──────────────────────────────
+LOG_FILE = str(Path(__file__).parent / "web_monitor.log")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s.%(msecs)03d %(message)s",
+    datefmt="%H:%M:%S",
+    handlers=[logging.FileHandler(LOG_FILE), logging.StreamHandler(sys.stdout)],
+)
+log = logging.getLogger("monitor")
 
 BAUD = 115200
 SYNC = bytes([0xAA, 0x55])
@@ -46,6 +57,9 @@ STATE_NAMES = {0:"IDLE",1:"SCANNING",2:"CONFIGURING",3:"STOPPED",4:"MOVING_A",5:
 MODE_NAMES  = {0:"PARADO",1:"MOV_A",2:"MOV_B"}
 ERROR_NAMES = {0:"—",1:"Célula de carga no encontrada",2:"Fallo escaneo servo (RS485?)",
                3:"Fallo configuración servo",4:"Límite de fuerza"}
+MB_STATUS   = {0x00:"OK",0x01:"IllegalFn",0x02:"IllegalAddr",0x03:"IllegalVal",0x04:"SlaveFail",
+               0xE0:"BadSlaveID",0xE1:"BadFn",0xE2:"TIMEOUT",0xE3:"badCRC"}
+def mbst(s): return MB_STATUS.get(s, f"0x{s:02X}")
 
 # ── Estado compartido (serial thread → async broadcaster) ──
 msg_deque: deque = deque(maxlen=100)   # thread-safe single-producer single-consumer
@@ -128,6 +142,11 @@ def serial_thread(preferred: str | None):
                 data = decode_packet(payload)
                 if data is None:
                     continue
+
+                log.info("READ  st=%-11s rpm=%5d  trq=%6.1f  ref=%5d  id=%d  RPMrd=%-7s TRQrd=%-7s",
+                         STATE_NAMES.get(data["servo_state"], "?"), data["rpm"],
+                         data["current_x10"] / 10.0, data["ref_cmd"], data["servo_id"],
+                         mbst(data["rpm_status"]), mbst(data["trq_status"]))
 
                 now = time.monotonic()
                 rate_window.append(now)
@@ -218,10 +237,14 @@ async def ws_endpoint(ws: WebSocket):
         clients.discard(ws)
 
 def _handle_command(cmd: dict):
+    action = cmd.get("cmd", "")
+    extra = " ".join(f"{k}={v}" for k, v in cmd.items() if k != "cmd")
+    log.info("CMD   %-9s %s", action, extra)
+
     ser = ser_ref[0]
     if not ser:
+        log.warning("CMD   %-9s ignored — no serial port", action)
         return
-    action = cmd.get("cmd", "")
 
     try:
         if action == "init":
