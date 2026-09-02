@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Monitor Caracola — Pico 2</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg:     #0d1117;
+      --card:   #161b22;
+      --border: #30363d;
+      --text:   #c9d1d9;
+      --muted:  #8b949e;
+      --green:  #3fb950;
+      --yellow: #d29922;
+      --red:    #f85149;
+      --blue:   #58a6ff;
+      --cyan:   #79c0ff;
+      --purple: #bc8cff;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      min-height: 100vh;
+    }
+
+    /* ── Layout ── */
+    .wrap  { max-width: 1440px; margin: 0 auto; padding: 12px 16px; }
+    header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding-bottom: 10px; border-bottom: 1px solid var(--border); margin-bottom: 14px;
+    }
+    header h1 { font-size: 15px; color: var(--blue); display: flex; align-items: center; gap: 8px; }
+    .meta-bar  { color: var(--muted); font-size: 11px; }
+
+    .row  { display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+    .col  { flex: 1; min-width: 180px; }
+    .col2 { flex: 2; min-width: 260px; }
+    .col3 { flex: 3; min-width: 320px; }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px 14px;
+      height: 100%;
+    }
+    .card-title {
+      color: var(--muted); font-size: 10px;
+      text-transform: uppercase; letter-spacing: .08em;
+      margin-bottom: 8px;
+    }
+    .big-value { font-size: 26px; font-weight: bold; line-height: 1; }
+    .sub       { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+    .metric { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid var(--border); }
+    .metric:last-child { border-bottom: none; }
+    .metric-label { color: var(--muted); }
+    .metric-value { font-weight: bold; }
+
+    /* ── Color helpers ── */
+    .ok   { color: var(--green); }
+    .warn { color: var(--yellow); }
+    .err  { color: var(--red); }
+    .info { color: var(--cyan); }
+    .dim  { color: var(--muted); }
+    .hi   { color: var(--purple); }
+
+    /* ── Force highlight card ── */
+    .force-card {
+      background: var(--card);
+      border: 1px solid var(--green);
+      border-radius: 6px;
+      padding: 12px 14px;
+    }
+    .force-card .big-value { color: var(--green); }
+
+    /* ── Controls ── */
+    .controls {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 6px; padding: 10px 14px;
+      display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .btn-group { display: flex; gap: 6px; }
+    button {
+      padding: 7px 14px; border: 1px solid var(--border);
+      border-radius: 4px; background: #21262d; color: var(--text);
+      cursor: pointer; font-family: inherit; font-size: 12px;
+      transition: background .1s, border-color .1s;
+    }
+    button:hover { background: #30363d; }
+    button:active { background: #444; }
+    button.b-init   { border-color: var(--blue);   color: var(--blue); }
+    button.b-stop   { border-color: var(--red);    color: var(--red); }
+    button.b-a      { border-color: var(--cyan);   color: var(--cyan); }
+    button.b-b      { border-color: var(--cyan);   color: var(--cyan); }
+    button.b-reset  { border-color: var(--muted);  color: var(--muted); }
+    button.b-shut   { border-color: var(--yellow); color: var(--yellow); }
+
+    .params { display: flex; gap: 16px; margin-left: auto; align-items: center; flex-wrap: wrap; }
+    .param  { display: flex; align-items: center; gap: 5px; }
+    .param label { color: var(--muted); font-size: 11px; white-space: nowrap; }
+    input[type=number] {
+      width: 72px; padding: 5px 6px;
+      background: #0d1117; border: 1px solid var(--border);
+      color: var(--text); border-radius: 4px;
+      font-family: inherit; font-size: 12px;
+    }
+    input[type=number]:focus { outline: none; border-color: var(--blue); }
+    .btn-apply { padding: 5px 10px; font-size: 11px; }
+
+    /* ── Charts ── */
+    .chart-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 6px; padding: 12px 14px;
+    }
+    .chart-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 10px;
+    }
+    .chart-title-text { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+    .chart-badge { font-size: 12px; font-weight: bold; }
+    .chart-wrap  { position: relative; height: 230px; }
+
+    /* ── WS dot ── */
+    .dot {
+      width: 9px; height: 9px; border-radius: 50%;
+      display: inline-block; flex-shrink: 0;
+    }
+    .dot.ok  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .dot.err { background: var(--red); }
+    .dot.warn { background: var(--yellow); }
+
+    /* ── Endstops ── */
+    .limits { display: flex; gap: 18px; margin-top: 4px; }
+    .limit  { display: flex; align-items: center; gap: 7px; font-size: 14px; }
+    .limit .led {
+      width: 15px; height: 15px; border-radius: 50%;
+      background: #21262d; border: 1px solid var(--border); flex-shrink: 0;
+      transition: background .1s, box-shadow .1s;
+    }
+    .limit .lbl { color: var(--muted); font-weight: bold; }
+    .limit.on .led { background: var(--red); box-shadow: 0 0 9px var(--red); }
+    .limit.on .lbl { color: var(--red); }
+
+    /* ── Mini bar ── */
+    .bar-wrap { display: flex; align-items: center; gap: 6px; }
+    .bar-outer { flex: 1; height: 4px; background: #21262d; border-radius: 2px; overflow: hidden; }
+    .bar-inner { height: 100%; border-radius: 2px; transition: width .2s; }
+
+    @media (max-width: 800px) {
+      .col, .col2, .col3 { min-width: 100%; }
+      .params { margin-left: 0; }
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- Header -->
+  <header>
+    <h1>
+      <span class="dot err" id="ws-dot"></span>
+      Monitor Caracola — Pico 2
+    </h1>
+    <div class="meta-bar" id="meta-bar">Conectando al servidor...</div>
+  </header>
+
+  <!-- Status cards row -->
+  <div class="row">
+    <div class="col">
+      <div class="card">
+        <div class="card-title">Estado</div>
+        <div class="big-value dim" id="v-state">—</div>
+        <div class="sub err" id="v-error"></div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card">
+        <div class="card-title">Modo</div>
+        <div class="big-value dim" id="v-mode">—</div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card">
+        <div class="card-title">Servo</div>
+        <div class="big-value dim" id="v-servo">—</div>
+        <div class="sub" id="v-lc-cfg"></div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card">
+        <div class="card-title">Tiempo dispositivo</div>
+        <div class="big-value" id="v-time">—</div>
+        <div class="sub" id="v-rate">—</div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card">
+        <div class="card-title">Finales de carrera</div>
+        <div class="limits">
+          <div class="limit" id="limit-a"><span class="led"></span><span class="lbl">A</span></div>
+          <div class="limit" id="limit-b"><span class="led"></span><span class="lbl">B</span></div>
+        </div>
+      </div>
+    </div>
+    <!-- Fuerza destacada -->
+    <div class="col2">
+      <div class="force-card">
+        <div class="card-title">⚡ Fuerza sobre la carga</div>
+        <div class="big-value" id="v-force-big">—</div>
+        <div class="sub" id="v-force-sub">calibrar para ver en N</div>
+        <div style="margin-top:8px">
+          <div class="bar-wrap">
+            <div class="bar-outer" style="flex:1">
+              <div class="bar-inner" id="force-bar" style="width:0%;background:var(--green)"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Metrics row -->
+  <div class="row">
+    <div class="col2">
+      <div class="card">
+        <div class="card-title">Célula de Carga</div>
+        <div class="metric"><span class="metric-label">Bridge raw</span><span class="metric-value" id="v-bridge">—</span></div>
+        <div class="metric"><span class="metric-label">LC estado</span><span class="metric-value" id="v-lcstatus">—</span></div>
+        <div class="metric"><span class="metric-label">Fuerza relativa</span><span class="metric-value" id="v-baseread">—</span></div>
+        <div class="metric"><span class="metric-label">Fuerza (N)</span><span class="metric-value" id="v-force-n">—</span></div>
+      </div>
+    </div>
+    <div class="col2">
+      <div class="card">
+        <div class="card-title">Motor</div>
+        <div class="metric"><span class="metric-label">Velocidad</span><span class="metric-value" id="v-rpm">—</span></div>
+        <div class="metric"><span class="metric-label">Corriente (C3F_05)</span><span class="metric-value" id="v-current">—</span></div>
+        <div class="metric"><span class="metric-label">Velocidad cmd</span><span class="metric-value" id="v-speedcmd">—</span></div>
+        <div class="metric"><span class="metric-label">Posición (integr.)</span><span class="metric-value" id="v-pos">—</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <div class="btn-group">
+      <input type="number" id="p-addr" value="1" min="1" max="247" title="Dirección Modbus del drive"
+             style="width:52px;padding:5px 6px;background:#0d1117;border:1px solid var(--border);color:var(--text);border-radius:4px;font-family:inherit;font-size:12px">
+      <button class="b-init" onclick="sendInit()">⟳ Init</button>
+      <button class="b-a"    onclick="cmd('move_a')">◄ Mov A</button>
+      <button class="b-b"    onclick="cmd('move_b')">Mov B ►</button>
+      <button class="b-stop" onclick="cmd('stop')">■ Stop</button>
+      <button class="b-reset" onclick="cmd('reset_pos')">↺ Reset pos</button>
+      <button class="b-shut"  onclick="cmd('shutdown')">⏻ Shutdown</button>
+    </div>
+    <div class="params">
+      <div class="param">
+        <label>Vel. (RPM)</label>
+        <input type="number" id="p-speed" value="10" min="1" max="300">
+        <button class="btn-apply" onclick="applyParam(1,'p-speed')">✓</button>
+      </div>
+      <div class="param">
+        <label>Calib (cnt/N)</label>
+        <input type="number" id="p-calib" value="0" min="0">
+        <button class="btn-apply" onclick="applyCalib()">✓</button>
+      </div>
+      <div class="param">
+        <label>Offset cero</label>
+        <input type="number" id="p-zero" value="8210">
+        <button class="btn-apply" onclick="applyParam(3,'p-zero')">✓</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="row">
+    <div class="col3">
+      <div class="chart-card">
+        <div class="chart-header">
+          <span class="chart-title-text">Velocidad · Finales de carrera · Comandos</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span class="chart-badge info" id="diag-now">— RPM</span>
+            <button style="font-size:10px;padding:3px 8px" onclick="clearDiag()">Limpiar</button>
+          </div>
+        </div>
+        <div class="chart-wrap"><canvas id="chart-diag"></canvas></div>
+      </div>
+    </div>
+    <div class="col2">
+      <div class="chart-card">
+        <div class="chart-header">
+          <span class="chart-title-text">Fuerza vs Tiempo</span>
+          <span class="chart-badge" id="ft-now" style="color:var(--cyan)">—</span>
+        </div>
+        <div class="chart-wrap"><canvas id="chart-ft"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── Chart.js setup ──────────────────────────────────────
+const darkGrid = { color: '#21262d' };
+const tickStyle = { color: '#8b949e', font: { size: 10, family: 'Courier New' } };
+
+// Diagnostic timeline: commanded vs actual speed + limit switches + command markers.
+// x-axis = device time (t_ms), so speed / io / commands share the firmware clock.
+const DIAG_WINDOW = 20;            // seconds visible
+const cmdEvents = [];              // {x, label, color}
+const CMD_COLORS = {
+  init:'#58a6ff', move_a:'#79c0ff', move_b:'#79c0ff',
+  stop:'#f85149', shutdown:'#d29922', reset_pos:'#8b949e', set_param:'#bc8cff'
+};
+
+// Draws vertical dashed lines + labels where commands were sent.
+const cmdMarkerPlugin = {
+  id: 'cmdMarkers',
+  afterDatasetsDraw(chart) {
+    const x = chart.scales.x;
+    if (!x) return;
+    const { ctx, chartArea: { top, bottom } } = chart;
+    ctx.save();
+    ctx.font = '10px Courier New';
+    for (const ev of cmdEvents) {
+      if (ev.x < x.min || ev.x > x.max) continue;
+      const px = x.getPixelForValue(ev.x);
+      ctx.beginPath();
+      ctx.setLineDash([4, 3]);
+      ctx.strokeStyle = ev.color;
+      ctx.lineWidth = 1;
+      ctx.moveTo(px, top); ctx.lineTo(px, bottom); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.translate(px + 3, top + 3); ctx.rotate(Math.PI / 2);
+      ctx.fillStyle = ev.color; ctx.textAlign = 'left';
+      ctx.fillText(ev.label, 0, 0);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+    }
+    ctx.restore();
+  }
+};
+
+const chartDiag = new Chart(document.getElementById('chart-diag'), {
+  type: 'line',
+  data: { datasets: [
+    { label:'Vel. cmd',  data:[], borderColor:'#79c0ff', stepped:true, pointRadius:0, borderWidth:1.6, yAxisID:'y' },
+    { label:'Vel. real', data:[], borderColor:'#58a6ff', pointRadius:0, borderWidth:1.2, yAxisID:'y' },
+    { label:'Limit A',   data:[], borderColor:'#f85149', stepped:true, pointRadius:0, borderWidth:1.5, yAxisID:'y1' },
+    { label:'Limit B',   data:[], borderColor:'#d29922', stepped:true, pointRadius:0, borderWidth:1.5, yAxisID:'y1' },
+  ] },
+  options: {
+    animation: false, responsive: true, maintainAspectRatio: false, parsing: false,
+    plugins: { legend: { display: true, labels: { color:'#8b949e', font:{ size:10, family:'Courier New' }, boxWidth:12, padding:8 } } },
+    scales: {
+      x:  { type:'linear', grid: darkGrid, ticks: { ...tickStyle, callback: v => v.toFixed(1) },
+            title: { display:true, text:'Tiempo dispositivo (s)', color:'#8b949e', font:{ size:10 } } },
+      y:  { position:'left', grid: darkGrid, ticks: tickStyle,
+            title: { display:true, text:'RPM', color:'#8b949e', font:{ size:10 } } },
+      y1: { position:'right', min:-0.1, max:1.15, grid:{ drawOnChartArea:false },
+            ticks: { ...tickStyle, stepSize:1, callback: v => v>=1 ? 'ON' : (v<=0 ? 'OFF' : '') },
+            title: { display:true, text:'Limit', color:'#8b949e', font:{ size:10 } } },
+    }
+  },
+  plugins: [cmdMarkerPlugin]
+});
+
+function pushDiag(arr, x, y) {
+  arr.push({ x, y });
+  const xmin = x - DIAG_WINDOW - 2;
+  while (arr.length && arr[0].x < xmin) arr.shift();
+}
+
+function clearDiag() {
+  chartDiag.data.datasets.forEach(ds => ds.data = []);
+  cmdEvents.length = 0;
+  chartDiag.update('none');
+}
+
+const MAX_FT = 200;
+const chartFT = new Chart(document.getElementById('chart-ft'), {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [{
+      data: [],
+      borderColor: '#79c0ff',
+      borderWidth: 1.5,
+      pointRadius: 0,
+      fill: { target: 'origin', above: 'rgba(121,192,255,0.08)', below: 'rgba(248,81,73,0.08)' },
+    }]
+  },
+  options: {
+    animation: false,
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { grid: darkGrid, ticks: { ...tickStyle, maxTicksLimit: 6 } },
+      y: { grid: darkGrid, ticks: tickStyle },
+    }
+  }
+});
+
+// ── WebSocket ────────────────────────────────────────────
+let ws = null;
+let forceCalib = 0;
+let t0 = null;
+let lastTsec = null;   // latest device time (s), for command markers
+
+function connect() {
+  ws = new WebSocket(`ws://${location.host}/ws`);
+
+  ws.onopen = () => {
+    el('ws-dot').className = 'dot ok';
+    el('meta-bar').textContent = 'Conectado';
+  };
+  ws.onclose = () => {
+    el('ws-dot').className = 'dot warn';
+    el('meta-bar').textContent = 'Reconectando...';
+    setTimeout(connect, 2000);
+  };
+  ws.onerror = () => {
+    el('ws-dot').className = 'dot err';
+  };
+  ws.onmessage = e => updateUI(JSON.parse(e.data));
+}
+
+// ── UI update ────────────────────────────────────────────
+const STATE_CLS = {
+  IDLE:'dim', SCANNING:'warn', CONFIGURING:'warn',
+  STOPPED:'ok', MOVING_A:'info', MOVING_B:'info', ERROR:'err'
+};
+const MODE_CLS = { PARADO:'dim', MOV_A:'info', MOV_B:'info' };
+const LC_ST = { 0:'<span class="ok">VALID</span>', 1:'<span class="warn">STALE</span>', 2:'<span class="err">CMD</span>' };
+const MB_ST = {
+  0x00:'<span class="ok">OK</span>', 0x01:'IllegalFn', 0x02:'IllegalAddr', 0x03:'IllegalVal',
+  0x04:'SlaveFail', 0xE0:'BadSlaveID', 0xE1:'BadFn',
+  0xE2:'<span class="err">TIMEOUT</span>', 0xE3:'<span class="err">badCRC</span>'
+};
+function mbStatus(s){ return MB_ST[s] ?? ('0x'+(s||0).toString(16)); }
+
+function updateUI(d) {
+  const flags   = d.lc_flags || 0;
+  const lc_ok   = !!(flags & 0x01);
+  const srv_ok  = !!(flags & 0x02);
+  const lc_cfg  = !!(flags & 0x04);
+
+  // Status
+  const sn = d.state_name || '?';
+  el('v-state').className  = 'big-value ' + (STATE_CLS[sn] || '');
+  el('v-state').textContent = sn;
+  const mn = d.mode_name || '?';
+  el('v-mode').className   = 'big-value ' + (MODE_CLS[mn] || 'dim');
+  el('v-mode').textContent  = mn;
+  el('v-servo').className  = 'big-value ' + (srv_ok ? 'ok' : 'err');
+  const sid = d.servo_id || 0;
+  el('v-servo').textContent = (srv_ok ? 'Conectado' : 'Descon.') + (sid ? ` · ID ${sid}` : '');
+
+  // Endstops
+  el('limit-a').className = 'limit' + (d.limit_a ? ' on' : '');
+  el('limit-b').className = 'limit' + (d.limit_b ? ' on' : '');
+  el('v-lc-cfg').innerHTML = 'RPM rd: ' + mbStatus(d.rpm_status)
+    + ' · TRQ rd: ' + mbStatus(d.trq_status);
+  el('v-time').textContent  = (d.t_ms / 1000).toFixed(1) + ' s';
+  el('v-rate').textContent  = `${d.rate || 0} Hz  |  ${d.count || 0} paquetes`;
+  el('meta-bar').textContent = `Puerto: ${d.port||'?'}  |  ${d.rate||0} Hz  |  ${d.count||0} paquetes`;
+
+  // Load cell
+  const br = d.base_read || 0;
+  el('v-bridge').textContent     = `${d.bridge || 0} cnt`;
+  el('v-lcstatus').innerHTML     = LC_ST[d.lc_status] || '?';
+  el('v-baseread').textContent   = `${br > 0 ? '+' : ''}${br} cnt`;
+
+  const fc = forceCalib;
+  const hasCalib = fc > 0;
+  const forceN = hasCalib ? br / fc : null;
+  const forceDisplay = hasCalib ? forceN : br;
+  const forceUnit    = hasCalib ? 'N' : 'cnt';
+  const forceStr = hasCalib ? `${forceN.toFixed(2)} N` : `${br} cnt`;
+
+  el('v-force-n').innerHTML = hasCalib
+    ? `<span class="ok">${forceN.toFixed(2)} N</span>`
+    : `<span class="dim">calibrar primero</span>`;
+
+  // Force highlight card
+  el('v-force-big').textContent = hasCalib
+    ? `${forceN > 0 ? '+' : ''}${forceN.toFixed(2)} N`
+    : `${br > 0 ? '+' : ''}${br}`;
+  el('v-force-sub').textContent = hasCalib
+    ? `fuerza sobre la carga`
+    : `cnt — calibrar para ver en N`;
+
+  const pct = Math.min(100, Math.abs(forceDisplay) / (hasCalib ? 50 : 2000) * 100);
+  const barColor = pct > 80 ? 'var(--red)' : pct > 50 ? 'var(--yellow)' : 'var(--green)';
+  const bar = el('force-bar');
+  bar.style.width = pct + '%';
+  bar.style.background = barColor;
+
+  el('ft-now').textContent = forceStr;
+
+  // Motor
+  const rpm = d.rpm || 0;
+  el('v-rpm').innerHTML = `<span class="${rpm!==0?'info':'dim'}">${rpm>0?'+':''}${rpm} RPM</span>`;
+  const cur = (d.current_x10 || 0) / 10.0;
+  el('v-current').innerHTML = `<span class="${cur!==0?'ok':'dim'}">${cur.toFixed(1)} A</span>`;
+  el('v-speedcmd').textContent = `${d.ref_cmd || 0} RPM`;
+  const pos = d.pos_rev || 0;
+  el('v-pos').innerHTML = `<span class="hi">${pos > 0 ? '+' : ''}${pos.toFixed(4)} rev</span>`;
+
+  // Fuerza vs Tiempo
+  const now = performance.now() / 1000;
+  if (t0 === null) t0 = now;
+  chartFT.data.labels.push((now - t0).toFixed(1));
+  chartFT.data.datasets[0].data.push(forceDisplay);
+  if (chartFT.data.labels.length > MAX_FT) {
+    chartFT.data.labels.shift();
+    chartFT.data.datasets[0].data.shift();
+  }
+  chartFT.update('none');
+
+  // Diagnostic timeline: cmd speed vs actual speed vs limits (device clock)
+  const tsec = (d.t_ms || 0) / 1000;
+  lastTsec = tsec;
+  pushDiag(chartDiag.data.datasets[0].data, tsec, d.ref_cmd || 0);
+  pushDiag(chartDiag.data.datasets[1].data, tsec, rpm);
+  pushDiag(chartDiag.data.datasets[2].data, tsec, d.limit_a ? 1 : 0);
+  pushDiag(chartDiag.data.datasets[3].data, tsec, d.limit_b ? 1 : 0);
+  const xmin = tsec - DIAG_WINDOW;
+  while (cmdEvents.length && cmdEvents[0].x < xmin) cmdEvents.shift();
+  chartDiag.options.scales.x.min = xmin;
+  chartDiag.options.scales.x.max = tsec;
+  chartDiag.update('none');
+  el('diag-now').textContent = `cmd ${d.ref_cmd || 0} / real ${rpm} RPM`;
+}
+
+// ── Commands ─────────────────────────────────────────────
+function sendInit() {
+  const a = parseInt(el('p-addr').value);
+  cmd('init', (a > 0 && a <= 247) ? { addr: a } : {});
+}
+
+function cmd(action, extra) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ cmd: action, ...extra }));
+  if (lastTsec !== null)
+    cmdEvents.push({ x: lastTsec, label: action, color: CMD_COLORS[action] || '#8b949e' });
+  if (action === 'init' || action === 'reset_pos') {
+    clearDiag();
+    t0 = null;
+  }
+}
+
+function applyParam(pid, inputId) {
+  const v = parseInt(el(inputId).value);
+  if (!isNaN(v)) cmd('set_param', { param: pid, value: v });
+}
+
+function applyCalib() {
+  const v = parseInt(el('p-calib').value);
+  if (!isNaN(v)) {
+    forceCalib = v;
+    cmd('set_param', { param: 7, value: v });
+  }
+}
+
+function el(id) { return document.getElementById(id); }
+
+connect();
+</script>
+</body>
+</html>

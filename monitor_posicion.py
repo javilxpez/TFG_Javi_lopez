@@ -20,10 +20,11 @@ import sys, os, struct, time, signal, glob, threading, serial
 BAUD = 115200
 SYNC = bytes([0xAA, 0x55])
 
-# Packet: 19 bytes payload
-PACKET_FMT    = "<BIHBBhhBBhh"
+# Packet: 25 bytes payload
+PACKET_FMT    = "<BIHBBhhBBhhHBBBB"
 PACKET_FIELDS = ("packet_id","t_ms","bridge","lc_status","lc_flags",
-                 "rpm","torque_x10","servo_state","mode","ref_cmd","base_read")
+                 "rpm","current_x10","servo_state","mode","ref_cmd","base_read","io","error","servo_id",
+                 "rpm_status","trq_status")
 PACKET_SIZE   = struct.calcsize(PACKET_FMT)
 
 MOVE_SPEED = 10  # RPM default
@@ -123,9 +124,9 @@ def render(data: dict, meta: dict):
     lc_status   = data.get("lc_status", 0)
     lc_flags    = data.get("lc_flags", 0)
     t_ms        = data.get("t_ms", 0)
-    rpm         = data.get("rpm", 0)
-    torque_x10  = data.get("torque_x10", 0)
-    state       = data.get("servo_state", 0)
+    rpm          = data.get("rpm", 0)
+    current_x10  = data.get("current_x10", 0)
+    state        = data.get("servo_state", 0)
     mode        = data.get("mode", 0)
     ref_cmd     = data.get("ref_cmd", 0)
     base_read   = data.get("base_read", 0)
@@ -162,8 +163,9 @@ def render(data: dict, meta: dict):
         force_n = base_read / fc
         lines.append(f"  Fuerza (N)   │  {force_n:>7.2f} N  {bar(force_n, lo=-50, hi=50)}")
     lines.append("─"*58)
+    current_a = current_x10 / 10.0
     lines.append(f"  RPM          │  {rpm:>6d}")
-    lines.append(f"  Torque       │  {torque_x10/10.0:>6.1f}%")
+    lines.append(f"  Corriente    │  {current_a:>6.1f} A  {bar(abs(current_a), lo=0.0, hi=5.0)}  {'<--' if current_x10 < 0 else '-->'}")
     lines.append(f"  Cmd velocidad│  {ref_cmd:>6d} RPM")
     lines.append(f"  Posición     │  {pos_rev:>8.4f} rev")
     lines.append("─"*58)
