@@ -1,0 +1,7 @@
+# Server log
+web_monitor.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/

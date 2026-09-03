@@ -178,62 +178,88 @@ static uint8_t crc8(const uint8_t *data, uint8_t len) {
   return crc;
 }
 
-// ── Telemetría (22 bytes) ─────────────────────────
+// ── Telemetría por LOTES (header + N muestras) ────
+// Frame: [SYNC0][SYNC1][LEN][payload][CRC8]   (LEN = header 14 + N*12 ≤ 254)
+// ── Header (14 B) — datos comunes, una vez por lote ──
 //  0     packet_id
-//  1-4   t_ms
-//  5-6   bridge
+//  1-4   base_t_ms   (referencia de tiempo del lote)
+//  5-6   bridge      (LC crudo)
 //  7     lc_status
-//  8     flags (b0=lc_valid, b1=servo_conn, b2=lc_cfg)
-//  9-10  rpm (int16)
-//  11-12 torque_x10 (int16)
-//  13    state
-//  14    mode
-//  15-16 speed_cmd (int16)
-//  17-18 base_read (int16)
-//  19-20 io (b0=limit_A, b1=limit_B)
-//  21    error (0=none,1=LC,2=scan_fail,3=cfg_fail,4=force_limit)
-//  22    servo_id (Modbus address in use)
-//  23    rpm_status (ModbusMaster code: 0=ok,0xE2=timeout,0xE3=badCRC,...)
-//  24    trq_status
-static uint8_t txBuf[64];
+//  8     flags       (b0=lc_valid, b1=servo_conn, b2=lc_cfg)
+//  9     error
+//  10    servo_id
+//  11    rpm_status
+//  12    trq_status
+//  13    n_samples
+// ── Muestra (12 B) × n_samples — una por iteración de loop ──
+//  +0-1  dt_ms       (ms desde base_t — el "loop time")
+//  +2-3  rpm         (int16)
+//  +4-5  current_x10 (int16)
+//  +6-7  ref_cmd     (int16)
+//  +8-9  base_read   (int16)
+//  +10   io          (b0=limit_A, b1=limit_B)
+//  +11   state
+#define MAX_SAMPLES 8      // LOOP_MS=50 → ~4-5 por ventana de 200 ms; margen a 8
+struct Sample {
+  uint16_t dt_ms;
+  int16_t  rpm, current, ref, base;
+  uint8_t  io, state;
+};
+static Sample   sampleBuf[MAX_SAMPLES];
+static uint8_t  sampleCount = 0;
+static uint32_t frameBaseT  = 0;
+static uint8_t  txBuf[14 + MAX_SAMPLES*12];
 
-void telemetrySend(uint32_t t) {
-  const uint8_t payloadLen = 25;
-  uint8_t *p = txBuf;
+// Cache one loop iteration into the batch (no I/O)
+void recordSample(uint32_t now){
+  if(sampleCount>=MAX_SAMPLES) return;
+  if(sampleCount==0) frameBaseT = now;
+  Sample &s = sampleBuf[sampleCount++];
+  s.dt_ms   = (uint16_t)(now - frameBaseT);
+  s.rpm     = ctrl.motorRPM;
+  s.current = ctrl.motorTorqueX10;
+  s.ref     = ctrl.currentSpeedCmd;
+  s.base    = ctrl.baseRead;
+  s.io      = (digitalRead(PIN_LIMIT_A)==HIGH ? 0x01 : 0x00)
+            | (digitalRead(PIN_LIMIT_B)==HIGH ? 0x02 : 0x00);
+  s.state   = (uint8_t)ctrl.currentState;
+}
 
-  uint16_t io = (digitalRead(PIN_LIMIT_A)==HIGH ? 0x01 : 0x00)
-              | (digitalRead(PIN_LIMIT_B)==HIGH ? 0x02 : 0x00);
-
-  uint8_t modeFlag = (ctrl.currentState==STATE_MOVING_A) ? MODE_MOVING_A
-                   : (ctrl.currentState==STATE_MOVING_B) ? MODE_MOVING_B : MODE_STOPPED;
-
+// Send the whole batch as one frame, then reset
+void telemetryFlush(){
+  if(sampleCount==0) return;
   uint8_t flags = (ctrl.lastLCValid     ? 0x01 : 0x00)
                 | (ctrl.servoConnected  ? 0x02 : 0x00)
                 | (ctrl.lcConfigApplied ? 0x04 : 0x00);
-
+  uint8_t *p = txBuf;
   *p++ = PACKET_ID;
-  *p++ = (t>> 0)&0xFF; *p++ = (t>> 8)&0xFF;
-  *p++ = (t>>16)&0xFF; *p++ = (t>>24)&0xFF;
+  *p++ = (frameBaseT>> 0)&0xFF; *p++ = (frameBaseT>> 8)&0xFF;
+  *p++ = (frameBaseT>>16)&0xFF; *p++ = (frameBaseT>>24)&0xFF;
   *p++ = (ctrl.lastBridge>>0)&0xFF; *p++ = (ctrl.lastBridge>>8)&0xFF;
   *p++ = ctrl.lastLCStatus;
   *p++ = flags;
-  *p++ = (ctrl.motorRPM>>0)&0xFF;      *p++ = (ctrl.motorRPM>>8)&0xFF;
-  *p++ = (ctrl.motorTorqueX10>>0)&0xFF; *p++ = (ctrl.motorTorqueX10>>8)&0xFF;
-  *p++ = (uint8_t)ctrl.currentState;
-  *p++ = modeFlag;
-  *p++ = (ctrl.currentSpeedCmd>>0)&0xFF; *p++ = (ctrl.currentSpeedCmd>>8)&0xFF;
-  *p++ = (ctrl.baseRead>>0)&0xFF;        *p++ = (ctrl.baseRead>>8)&0xFF;
-  *p++ = (io>>0)&0xFF;                    *p++ = (io>>8)&0xFF;
   *p++ = ctrl.errorCode;
   *p++ = sv.id;
   *p++ = sv.rpmStatus;
   *p++ = sv.trqStatus;
-
-  uint8_t frame[3 + payloadLen + 1];
+  *p++ = sampleCount;
+  for(uint8_t i=0;i<sampleCount;i++){
+    Sample &s = sampleBuf[i];
+    *p++ = (s.dt_ms  >>0)&0xFF; *p++ = (s.dt_ms  >>8)&0xFF;
+    *p++ = (s.rpm    >>0)&0xFF; *p++ = (s.rpm    >>8)&0xFF;
+    *p++ = (s.current>>0)&0xFF; *p++ = (s.current>>8)&0xFF;
+    *p++ = (s.ref    >>0)&0xFF; *p++ = (s.ref    >>8)&0xFF;
+    *p++ = (s.base   >>0)&0xFF; *p++ = (s.base   >>8)&0xFF;
+    *p++ = s.io;
+    *p++ = s.state;
+  }
+  uint8_t payloadLen = (uint8_t)(p - txBuf);   // 14 + n*12, ≤ 110 for MAX_SAMPLES=8
+  uint8_t frame[3 + sizeof(txBuf) + 1];
   frame[0]=SYNC_0; frame[1]=SYNC_1; frame[2]=payloadLen;
   memcpy(&frame[3], txBuf, payloadLen);
   frame[3+payloadLen] = crc8(txBuf, payloadLen);
-  Serial.write(frame, sizeof(frame));
+  Serial.write(frame, 3 + payloadLen + 1);
+  sampleCount = 0;
 }
 
 // ── Comandos ─────────────────────────────────────
@@ -559,10 +585,11 @@ void loop(){
   // ══ ACT — one call, servo state machine + all writes ══
   servoAction();
 
-  // ══ TX — telemetry over USB (CDC) ════════════════
+  // ══ record this loop, flush the whole batch every 200 ms (or if full) ══
+  recordSample(now);
   uint32_t period=(ctrl.currentState==STATE_ERROR)?1000:TELEMETRY_MS;
-  if(now-ctrl.lastTelemetryTime>=period){
-    telemetrySend(now);
+  if(sampleCount>=MAX_SAMPLES || now-ctrl.lastTelemetryTime>=period){
+    telemetryFlush();
     ctrl.lastTelemetryTime=now;
   }
 

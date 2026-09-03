@@ -20,12 +20,11 @@ import sys, os, struct, time, signal, glob, threading, serial
 BAUD = 115200
 SYNC = bytes([0xAA, 0x55])
 
-# Packet: 25 bytes payload
-PACKET_FMT    = "<BIHBBhhBBhhHBBBB"
-PACKET_FIELDS = ("packet_id","t_ms","bridge","lc_status","lc_flags",
-                 "rpm","current_x10","servo_state","mode","ref_cmd","base_read","io","error","servo_id",
-                 "rpm_status","trq_status")
-PACKET_SIZE   = struct.calcsize(PACKET_FMT)
+# Batched frame: header (14 B) + N × sample (12 B)
+HEADER_FMT  = "<BIHBBBBBBB"   # id, base_t, bridge, lc_status, flags, error, servo_id, rpm_st, trq_st, n
+HEADER_SIZE = struct.calcsize(HEADER_FMT)
+SAMPLE_FMT  = "<HhhhhBB"      # dt_ms, rpm, current_x10, ref_cmd, base_read, io, state
+SAMPLE_SIZE = struct.calcsize(SAMPLE_FMT)
 
 MOVE_SPEED = 10  # RPM default
 
@@ -104,7 +103,7 @@ def read_packet(ser) -> bytes | None:
     lb = ser.read(1)
     if not lb: return None
     length = lb[0]
-    if not length or length > 60: return None
+    if not length or length > 254: return None
     raw = ser.read(length + 1)
     if len(raw) < length + 1: return None
     payload = raw[:length]
@@ -113,10 +112,19 @@ def read_packet(ser) -> bytes | None:
 
 
 def decode_packet(payload: bytes) -> dict | None:
-    if len(payload) < PACKET_SIZE: return None
-    if payload[0] != 0x02: return None
-    vals = struct.unpack(PACKET_FMT, payload[:PACKET_SIZE])
-    return dict(zip(PACKET_FIELDS, vals))
+    # Batched frame → return the LAST sample as a flat dict (terminal shows current state)
+    if len(payload) < HEADER_SIZE or payload[0] != 0x02: return None
+    (_pid, base_t, bridge, lc_status, lc_flags, error, servo_id,
+     rpm_status, trq_status, n) = struct.unpack(HEADER_FMT, payload[:HEADER_SIZE])
+    if n == 0: return None
+    off = HEADER_SIZE + (n - 1) * SAMPLE_SIZE
+    if off + SAMPLE_SIZE > len(payload): return None
+    dt, rpm, cur, ref, base, io, state = struct.unpack(SAMPLE_FMT, payload[off:off + SAMPLE_SIZE])
+    return {"packet_id": _pid, "t_ms": (base_t + dt) & 0xFFFFFFFF, "bridge": bridge,
+            "lc_status": lc_status, "lc_flags": lc_flags, "rpm": rpm, "current_x10": cur,
+            "servo_state": state, "mode": 1 if state == 4 else 2 if state == 5 else 0,
+            "ref_cmd": ref, "base_read": base, "io": io, "error": error,
+            "servo_id": servo_id, "rpm_status": rpm_status, "trq_status": trq_status}
 
 
 def render(data: dict, meta: dict):
