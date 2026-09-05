@@ -28,11 +28,11 @@ static TwoWire I2C1Bus(i2c1, 2, 3);
 // ── Pins ─────────────────────────────────────────
 #define LC_SDA_PIN   2
 #define LC_SCL_PIN   3
-// 100 kHz. Se probó a 400 kHz y las lecturas se rompieron: no lo subas sin medirlo.
-// El bus lo comparten el ZSC31014 y la NAU7802, con los pull-ups y la capacidad de dos
-// Click en paralelo, y el ZSC además tiene requisitos propios de flancos (SDA no puede
-// bajar entre el START y el primer flanco de SCL). A 100 kHz todo eso cumple holgado.
-#define LC_I2C_FREQ     100000
+// 400 kHz para la lectura normal: los dos chips del bus lo admiten y a esta aplicación
+// le viene mejor. (Hubo un momento en que se culpó a esta velocidad de romper las
+// lecturas; no era eso: lo que las rompía era cómo se leía el ZSC31014, no a qué
+// velocidad. Queda escrito para que nadie vuelva a bajarla buscando un fantasma.)
+#define LC_I2C_FREQ     400000
 // El modo comando se queda a 100 kHz a propósito: es la velocidad con la que se ha
 // conseguido entrar en la ventana de 1.5 ms, y no se toca lo que ya funciona. Además
 // ahí la velocidad no aprieta — sólo tiene que caber el Start_CM, y a 100 kHz son
@@ -275,6 +275,7 @@ struct ControlState {
   uint8_t  lcProgResult    = LCPROG_NONE;   // resultado de la última programación
   uint8_t  lcProgGain      = LC_PREAMP_GAIN;   // lo que hay grabado ahora mismo
   uint8_t  lcProgOffset    = LC_A2D_OFFSET;
+  uint16_t lcCfg1          = 0;             // ZMDI_Config1: tasa, sleep mode, reloj
   uint16_t lcCfgBefore     = 0;             // palabra 0x0F antes y después, para la GUI
   uint16_t lcCfgAfter      = 0;
   unsigned long lcLastGood = 0;   // última muestra válida, para invalidar por timeout
@@ -454,7 +455,7 @@ void telemetryFlush(){
 // también cuando se rechaza. El byte `req` devuelve el opcode contestado para que la
 // interfaz sepa a qué pregunta corresponde y no se quede esperando.
 void telemetryFlushLc(uint8_t req, uint8_t result){
-  uint8_t payload[11];
+  uint8_t payload[13];
   payload[0] = PACKET_ID_LC;
   payload[1] = req;
   payload[2] = result;
@@ -466,6 +467,7 @@ void telemetryFlushLc(uint8_t req, uint8_t result){
   payload[10] = (lcDiagEnCut ? 0x01 : 0x00)      // el pin de reset sí corta la tensión
               | (lcDiagWrAck ? 0x02 : 0x00)      // hubo ACK a algún Start_CM
               | ((lcDiagAttempt & 0x0F) << 4);   // intento del barrido que entró
+  payload[11] = (ctrl.lcCfg1>>0)&0xFF; payload[12] = (ctrl.lcCfg1>>8)&0xFF;
   uint8_t frame[3 + sizeof(payload) + 1];
   frame[0]=SYNC_0; frame[1]=SYNC_1; frame[2]=(uint8_t)sizeof(payload);
   memcpy(&frame[3], payload, sizeof(payload));
@@ -506,8 +508,8 @@ void telemetryFlushHome(){
 #define LC_REQ_TIMEOUT_MS 1000   // margen para que LC1 suelte el bus antes de rendirse
 
 static uint8_t       lcReqPending  = 0;                 // opcode pendiente, 0 = ninguno
-static uint8_t       lcReqGain     = LC_PREAMP_GAIN;
-static uint8_t       lcReqOffset   = LC_A2D_OFFSET;
+static uint16_t      lcReqBCfg     = 0;   // B_Config (0x0F) que pide la GUI
+static uint16_t      lcReqCfg1     = 0;   // ZMDI_Config1 (0x01) que pide la GUI
 static unsigned long lcReqDeadline = 0;
 static unsigned long lcHoldUntil   = 0;   // corte en curso: instante en que se suelta
 
@@ -575,8 +577,11 @@ void processCommand(const uint8_t *payload, uint8_t len) {
       if (sv.phase == SV_RUNNING) sv.speedCmd =  ctrl.moveSpeed;
       break;
 
-    case CMD_LC_PROGRAM:                            // [op, ganancia 0..7, offset 0..15]
-      if (len >= 3) { lcReqGain = payload[1] & 0x07; lcReqOffset = payload[2] & 0x0F; }
+    case CMD_LC_PROGRAM:                            // [op, B_Config LE, ZMDI_Config1 LE]
+      if (len >= 5) {
+        lcReqBCfg = (uint16_t)payload[1] | ((uint16_t)payload[2] << 8);
+        lcReqCfg1 = (uint16_t)payload[3] | ((uint16_t)payload[4] << 8);
+      } else break;                                 // trama corta: no se graba a ciegas
       lcReqPending  = CMD_LC_PROGRAM;               // lo hace lcRequestService(), no aquí
       lcReqDeadline = millis() + LC_REQ_TIMEOUT_MS;
       break;
@@ -761,16 +766,23 @@ void loadCellUpdate(){
   }
 }
 
-// La palabra 0x0F que queremos, a partir de la que hay. Se tocan SÓLO los dos campos
-// que el operario elige —ganancia [6:4] y cero del A/D [3:0], que juntos son los bits
-// [6:0]— y todo lo demás se conserva tal cual venía.
-//
-// Antes esta función reconstruía la palabra entera desde constantes fijas, y con la
-// configuración real de esta placa (0x1A68) eso habría cambiado tres campos más sin
-// pedirlo: polaridad 0→1 (invirtiendo el signo de la fuerza), integración larga 0→1 y
-// nulling 1→0. Esas constantes describían el montaje de otra persona, no éste.
-static uint16_t lcDesiredCfg(uint16_t cur, uint8_t gain, uint8_t adOffset){
-  return (cur & 0xFF80) | ((uint16_t)(gain & 7) << 4) | (adOffset & 0x0F);
+// Las dos palabras que se van a grabar, a partir de las que hay. Lo que la GUI no
+// gobierna se conserva, y hay bits que directamente no se dejan tocar.
+static uint16_t lcDesiredBCfg(uint16_t cur, uint16_t want){
+  return (cur & 0xE000)          // [15:13] reservado: se respeta lo que trae el chip
+       | (want & 0x1FFF);        // [12:0]  ganancia, cero, polaridad, mux, B-sink, nulling
+}
+
+// ZMDI_Config1 es más delicada:
+//   · [4] elige I2C o SPI. Si se pusiera a 1 el chip dejaría de hablar por I2C y no
+//     habría forma de volver atrás — se fuerza a 0 SIEMPRE, pase lo que pase la GUI.
+//   · [2:0] es un campo reservado que vale 0b001; se fija a mano.
+//   · [15:9] son las polaridades de compensación de temperatura, calibradas en fábrica
+//     y difíciles de recrear: se conservan tal cual.
+static uint16_t lcDesiredCfg1(uint16_t cur, uint16_t want){
+  return (cur  & 0xFE00)         // [15:9] polaridades SOT/temperatura: no se tocan
+       | (want & 0x00E8)         // [7:6] tasa, [5] sleep, [3] reloj
+       | 0x0001;                 // [4] I2C forzado + [2:0] reservado = 0b001
 }
 
 static const uint16_t OFFSET_B_LUT[]={
@@ -950,6 +962,10 @@ static uint8_t loadCellQuery(uint16_t &cfg){
   uint8_t res = LCPROG_NO_WINDOW;
   if(zscEnterCommandMode()){
     if(zscCmd(0x0F,0)){ delayMicroseconds(100); if(zscResp(cfg)) res = LCPROG_READ_ONLY; }
+    // ZMDI_Config1 (palabra 0x01): ahí viven la tasa de conversión, el bit de Sleep Mode
+    // y la velocidad de reloj. Es lo que decide cada cuánto hay dato nuevo, y hasta ahora
+    // no se había leído nunca — el ritmo del chip se estaba dando por supuesto.
+    if(zscCmd(0x01,0)){ delayMicroseconds(100); zscResp(ctrl.lcCfg1); }
   } else res = zscWhyNoWindow();
   zscCmd(0x80,0); delay(15);                              // Start_NOM -> modo normal
   return res;
@@ -965,7 +981,7 @@ static uint8_t loadCellQuery(uint16_t &cfg){
 // De ahí el bucle: la primera vuelta escribe y sale con Start_NOM, la segunda arranca
 // desde un POR limpio y comprueba que lo que se lee es ya lo pedido. Si coincide a la
 // primera no se escribe nada: la EEPROM tiene los ciclos de escritura contados.
-static uint8_t loadCellProgram(uint8_t gain, uint8_t adOffset,
+static uint8_t loadCellProgram(uint16_t wantB, uint16_t want1,
                                uint16_t &before, uint16_t &after){
   uint8_t res     = LCPROG_NO_WINDOW;
   bool    wrote   = false;
@@ -973,31 +989,36 @@ static uint8_t loadCellProgram(uint8_t gain, uint8_t adOffset,
   before = 0; after = 0;
   for(int attempt=0; attempt<2; attempt++){
     if(!zscEnterCommandMode()){ res = zscWhyNoWindow(); break; }
-    uint16_t cur=0;
+
+    uint16_t curB=0, cur1=0;
     if(!zscCmd(0x0F,0)){ res=LCPROG_FAILED; break; } delayMicroseconds(100);
-    if(!zscResp(cur)) { res=LCPROG_FAILED; break; }
-    if(attempt==0) before = cur;
-    after = cur;
-    uint16_t des = lcDesiredCfg(cur, gain, adOffset);
-    if(cur==des){ res = wrote ? LCPROG_OK : LCPROG_UNCHANGED; break; }
-    if(attempt==1){ res = LCPROG_FAILED; break; }         // se escribió y no cuajó
+    if(!zscResp(curB)) { res=LCPROG_FAILED; break; }
+    if(!zscCmd(0x01,0)){ res=LCPROG_FAILED; break; } delayMicroseconds(100);
+    if(!zscResp(cur1)) { res=LCPROG_FAILED; break; }
+    if(attempt==0) before = curB;
+    after = curB; ctrl.lcCfg1 = cur1;
+
+    uint16_t desB = lcDesiredBCfg(curB, wantB);
+    uint16_t des1 = lcDesiredCfg1(cur1, want1);
+    if(curB==desB && cur1==des1){ res = wrote ? LCPROG_OK : LCPROG_UNCHANGED; break; }
+    if(attempt==1){ res = LCPROG_FAILED; break; }   // se escribió y no cuajó
 
     // A partir de aquí la EEPROM queda tocada: pase lo que pase hay que salir con
     // Start_NOM y darle tiempo, o la firma se queda a medias.
     touched = true;
-    if(!zscCmd(0x4F,des)){ res=LCPROG_FAILED; break; }    // B_Config (0x0F)
-    delay(LC_EEPROM_WRITE_MS);
-
-    // Aquí ANTES se escribía también Offset_B (0x43) con una tabla heredada. Offset_B
-    // es el coeficiente de calibración del puente, no el cero del A/D: ese vive en los
-    // bits [3:0] de B_Config y ya se ha escrito arriba. Eran dos ajustes distintos
-    // confundidos en uno, y escribirlo pisaba una calibración que nadie ha pedido tocar.
-
-    zscCmd(0x80,0);                                       // Start_NOM: regenera la firma
-    delay(LC_EEPROM_SETTLE_MS);                           // ...y que termine ANTES de cortar
+    if(curB != desB){
+      if(!zscCmd(0x4F,desB)){ res=LCPROG_FAILED; break; }   // B_Config (0x0F)
+      delay(LC_EEPROM_WRITE_MS);
+    }
+    if(cur1 != des1){
+      if(!zscCmd(0x41,des1)){ res=LCPROG_FAILED; break; }   // ZMDI_Config1 (0x01)
+      delay(LC_EEPROM_WRITE_MS);
+    }
+    zscCmd(0x80,0);                                 // Start_NOM: regenera la firma
+    delay(LC_EEPROM_SETTLE_MS);                     // ...y que termine ANTES de cortar
     wrote = true;
   }
-  zscCmd(0x80,0);                                         // Start_NOM -> modo normal
+  zscCmd(0x80,0);                                   // Start_NOM -> modo normal
   delay(touched ? LC_EEPROM_SETTLE_MS : 15);
   return res;
 }
@@ -1338,10 +1359,10 @@ static void lcRequestService(){
 
   uint8_t res;
   if(req==CMD_LC_PROGRAM){
-    res = loadCellProgram(lcReqGain, lcReqOffset, ctrl.lcCfgBefore, ctrl.lcCfgAfter);
+    res = loadCellProgram(lcReqBCfg, lcReqCfg1, ctrl.lcCfgBefore, ctrl.lcCfgAfter);
     if(res==LCPROG_OK || res==LCPROG_UNCHANGED){
-      ctrl.lcProgGain   = lcReqGain;           // lo que ha quedado grabado de verdad
-      ctrl.lcProgOffset = lcReqOffset;
+      ctrl.lcProgGain   = (ctrl.lcCfgAfter >> 4) & 0x07;   // lo que ha quedado de verdad
+      ctrl.lcProgOffset =  ctrl.lcCfgAfter       & 0x0F;
     }
   } else {
     uint16_t cfg = 0;

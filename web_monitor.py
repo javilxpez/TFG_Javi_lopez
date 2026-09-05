@@ -65,7 +65,7 @@ HOME_SIZE = struct.calcsize(HOME_FMT)
 # Programación de la célula: modelo pregunta-respuesta. Cada CMD_LC_PROGRAM /
 # CMD_LC_QUERY devuelve exactamente un frame de estos, también cuando se rechaza.
 PACKET_ID_LC = 0x04
-LC_FMT  = "<BBBBBHHBB" # id, req, resultado, ganancia, offset, cfg_antes, cfg_después, ack, flags
+LC_FMT  = "<BBBBBHHBBH" # id, req, res, ganancia, offset, cfg_antes, cfg_después, ack, flags, cfg1
 LC_SIZE = struct.calcsize(LC_FMT)
 LC_RESULT_NAMES = {
     0: "sin programar",
@@ -137,7 +137,7 @@ def decode_lc(payload: bytes) -> dict | None:
     if len(payload) < LC_SIZE or payload[0] != PACKET_ID_LC:
         return None
     (_pid, req, result, gain, offset,
-     cfg_before, cfg_after, ack, flags) = struct.unpack(LC_FMT, payload[:LC_SIZE])
+     cfg_before, cfg_after, ack, flags, cfg1) = struct.unpack(LC_FMT, payload[:LC_SIZE])
     return {"lc_req": req, "lc_result": result,
             "lc_result_name": LC_RESULT_NAMES.get(result, f"?{result}"),
             "lc_ok": result in LC_RESULT_OK,
@@ -149,7 +149,8 @@ def decode_lc(payload: bytes) -> dict | None:
             "lc_en_cuts": bool(flags & 0x01),
             # Retardo del barrido con el que se logró entrar en modo comando, en µs:
             # es el dato que dice cuánto tarda de verdad en arrancar esta Click.
-            "lc_entry_us": ((flags >> 4) & 0x0F) * 150}
+            "lc_entry_us": ((flags >> 4) & 0x0F) * 150,
+            "lc_cfg1": cfg1}
 
 
 def decode_packet(payload: bytes) -> list | None:
@@ -408,11 +409,11 @@ def _handle_command(cmd: dict):
             park = 1 if int(cmd.get("park", 0)) else 0
             ser.write(build_packet(bytes([CMD_LC_HOLD, park])))
         elif action == "lc_program":
-            # El firmware es quien decide si se puede: aquí sólo se acotan los rangos
-            # que caben en los bits [6:4] y [3:0] de la palabra de configuración.
-            gain   = max(0, min(7,  int(cmd.get("gain", 7))))
-            offset = max(0, min(15, int(cmd.get("offset", 8))))
-            ser.write(build_packet(bytes([CMD_LC_PROGRAM, gain, offset])))
+            # Las dos palabras enteras. El firmware sanea lo intocable (I2C/SPI, bits
+            # reservados, polaridades de temperatura) antes de escribir nada.
+            bcfg = int(cmd.get("bcfg", 0)) & 0xFFFF
+            cfg1 = int(cmd.get("cfg1", 0)) & 0xFFFF
+            ser.write(build_packet(bytes([CMD_LC_PROGRAM]) + struct.pack("<HH", bcfg, cfg1)))
         elif action == "reset_pos":
             with shared_lock:
                 shared["pos_rev"] = 0.0
