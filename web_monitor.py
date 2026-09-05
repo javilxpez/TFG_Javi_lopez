@@ -39,14 +39,19 @@ log = logging.getLogger("monitor")
 BAUD = 115200
 SYNC = bytes([0xAA, 0x55])
 
-# Batched frame: header (14 B) + N × sample (12 B)
+# Batched frame: header (14 B) + N × sample (18 B)
 HEADER_FMT  = "<BIHBBBBBBB"   # id, base_t, bridge, lc_status, flags, error, servo_id, rpm_st, trq_st, n
 HEADER_SIZE = struct.calcsize(HEADER_FMT)   # 14
-SAMPLE_FMT  = "<HhhhhBBH"     # dt_ms, rpm, current_x10, ref_cmd, base_read, io, state, work_us
-SAMPLE_SIZE = struct.calcsize(SAMPLE_FMT)   # 14
+# lc2 = célula 2 (NAU7802) en crudo, 24 bit con signo extendido a int32
+SAMPLE_FMT  = "<HhhhhBBHi"    # dt_ms, rpm, current_x10, ref_cmd, base_read, io, state, work_us, lc2
+SAMPLE_SIZE = struct.calcsize(SAMPLE_FMT)   # 18
+
+# lc_flags: b0 = LC1 válida, b1 = servo conectado, b2 = config LC1 aplicada,
+#           b3 = LC2 válida, b4 = LC2 inicializada
 
 CMD_INIT = 0x01; CMD_STOP = 0x02; CMD_SET_PARAM = 0x03
 CMD_MOVE_A = 0x04; CMD_MOVE_B = 0x05; CMD_SHUTDOWN = 0x06; CMD_HOME = 0x08
+CMD_LC_PROGRAM = 0x09; CMD_LC_QUERY = 0x0A; CMD_LC_HOLD = 0x0B
 
 PARAM_SPEED = 0x01; PARAM_FORCE_LIMIT = 0x02; PARAM_ZERO_OFFSET = 0x03
 PARAM_ACCEL = 0x04; PARAM_DECEL = 0x05; PARAM_STIFFNESS = 0x06; PARAM_FORCE_CALIB = 0x07
@@ -57,7 +62,28 @@ PACKET_ID_HOME = 0x03
 HOME_FMT  = "<BiiBB"   # id, pos_mrev, range_mrev, phase, flags
 HOME_SIZE = struct.calcsize(HOME_FMT)
 
-STATE_NAMES = {0:"IDLE",1:"SCANNING",2:"CONFIGURING",3:"STOPPED",4:"MOVING_A",5:"MOVING_B",6:"ERROR",7:"HOMING"}
+# Programación de la célula: modelo pregunta-respuesta. Cada CMD_LC_PROGRAM /
+# CMD_LC_QUERY devuelve exactamente un frame de estos, también cuando se rechaza.
+PACKET_ID_LC = 0x04
+LC_FMT  = "<BBBBBHHBB" # id, req, resultado, ganancia, offset, cfg_antes, cfg_después, ack, flags
+LC_SIZE = struct.calcsize(LC_FMT)
+LC_RESULT_NAMES = {
+    0: "sin programar",
+    1: "grabado y verificado",
+    2: "ya estaba así (no se ha escrito)",
+    3: "rechazado: el sistema no está parado",
+    4: "rechazado: bus ocupado",
+    5: "el chip se reinicia pero no da el 0x5A a tiempo",
+    6: "fallo: la relectura no coincide",
+    7: "lectura de la configuración actual",
+    8: "sigue alimentada con el reset abajo y el bus parqueado: hay otro camino",
+    9: "la célula no contesta: sin tensión o sin bus",
+    10: "reset mantenido para medir — mide ahora el rail de la Click",
+}
+LC_RESULT_OK = (1, 2, 7, 10)
+
+STATE_NAMES = {0:"IDLE",1:"SCANNING",2:"CONFIGURING",3:"STOPPED",4:"MOVING_A",5:"MOVING_B",6:"ERROR",
+               7:"HOMING",8:"PROGRAMANDO"}
 MODE_NAMES  = {0:"PARADO",1:"MOV_A",2:"MOV_B"}
 HOME_PHASE_NAMES = {0:"—",1:"BUSCANDO A",2:"BUSCANDO B",3:"YENDO A HOME",4:"COMPLETADO",5:"FALLO"}
 ERROR_NAMES = {0:"—",1:"Célula de carga no encontrada",2:"Fallo escaneo servo (RS485?)",
@@ -80,6 +106,8 @@ shared = {
     "home_range_rev": 0.0,
     "home_phase": 0,
     "home_range_valid": False,
+    "lc_gain": None,       # lo que el firmware dice que hay grabado en la célula
+    "lc_offset": None,
 }
 shared_lock = threading.Lock()
 ser_ref: list = [None]   # contenedor mutable para la referencia al puerto serie
@@ -104,6 +132,26 @@ def decode_home(payload: bytes) -> dict | None:
     return {"home_pos_rev": pos_mrev / 1000.0, "home_range_rev": range_mrev / 1000.0,
             "home_phase": phase, "home_range_valid": bool(flags & 0x01)}
 
+def decode_lc(payload: bytes) -> dict | None:
+    """Respuesta a CMD_LC_PROGRAM / CMD_LC_QUERY (PACKET_ID_LC)."""
+    if len(payload) < LC_SIZE or payload[0] != PACKET_ID_LC:
+        return None
+    (_pid, req, result, gain, offset,
+     cfg_before, cfg_after, ack, flags) = struct.unpack(LC_FMT, payload[:LC_SIZE])
+    return {"lc_req": req, "lc_result": result,
+            "lc_result_name": LC_RESULT_NAMES.get(result, f"?{result}"),
+            "lc_ok": result in LC_RESULT_OK,
+            "lc_gain": gain, "lc_offset": offset,
+            "lc_cfg_before": cfg_before, "lc_cfg_after": cfg_after,
+            "lc_ack": ack,
+            # Si el pin de reset no corta, la EEPROM se graba igual pero el valor nuevo
+            # no se carga hasta que el chip pase por un apagado de verdad.
+            "lc_en_cuts": bool(flags & 0x01),
+            # Retardo del barrido con el que se logró entrar en modo comando, en µs:
+            # es el dato que dice cuánto tarda de verdad en arrancar esta Click.
+            "lc_entry_us": ((flags >> 4) & 0x0F) * 150}
+
+
 def decode_packet(payload: bytes) -> list | None:
     """Batched frame → list of per-sample dicts (each looks like the old single packet)."""
     if len(payload) < HEADER_SIZE or payload[0] != 0x02:
@@ -115,7 +163,8 @@ def decode_packet(payload: bytes) -> list | None:
     for _ in range(n):
         if off + SAMPLE_SIZE > len(payload):
             break
-        dt, rpm, cur, ref, base, io, state, work_us = struct.unpack(SAMPLE_FMT, payload[off:off + SAMPLE_SIZE])
+        (dt, rpm, cur, ref, base, io, state,
+         work_us, lc2) = struct.unpack(SAMPLE_FMT, payload[off:off + SAMPLE_SIZE])
         off += SAMPLE_SIZE
         out.append({
             "t_ms": (base_t + dt) & 0xFFFFFFFF, "work_us": work_us,
@@ -123,6 +172,7 @@ def decode_packet(payload: bytes) -> list | None:
             "io": io, "servo_state": state,
             "mode": 1 if state == 4 else 2 if state == 5 else 0,
             "bridge": bridge, "lc_status": lc_status, "lc_flags": lc_flags,
+            "lc2": lc2, "lc2_valid": bool(lc_flags & 0x08), "lc2_ok": bool(lc_flags & 0x10),
             "error": error, "servo_id": servo_id,
             "rpm_status": rpm_status, "trq_status": trq_status,
         })
@@ -174,6 +224,18 @@ def serial_thread(preferred: str | None):
                 if payload is None or payload == b"CRC_ERR":
                     continue
 
+                if payload and payload[0] == PACKET_ID_LC:     # respuesta de programación
+                    lc = decode_lc(payload)
+                    if lc:
+                        with shared_lock:
+                            shared["lc_gain"]   = lc["lc_gain"]
+                            shared["lc_offset"] = lc["lc_offset"]
+                        msg = dict(lc)
+                        msg["type"] = "lc_config"
+                        msg["port"] = port
+                        msg_deque.append(msg)
+                    continue
+
                 if payload and payload[0] == PACKET_ID_HOME:   # v2: estado de homing
                     hp = decode_home(payload)
                     if hp:
@@ -204,6 +266,14 @@ def serial_thread(preferred: str | None):
 
                 for data in samples:                       # one loop iteration per sample
                     t_ms = data["t_ms"]
+                    # El Pico reinicia su millis() a 0 cada vez que se reflashea o se
+                    # resetea. Sin esta comprobación, t_ms da un salto hacia atrás, la
+                    # resta de abajo sale negativa, la ventana no se poda NUNCA y crece
+                    # sin límite: "3813 Hz" no era el loop, era el número de muestras
+                    # acumuladas desde el último reflasheo.
+                    if rate_window and not (0 <= t_ms - rate_window[-1] < 5000):
+                        rate_window.clear()                # reloj del equipo reiniciado
+                        shared["last_t"] = None            # y la integración, rebasada
                     rate_window.append(t_ms)               # rate on DEVICE time → true loop Hz
                     while rate_window and t_ms - rate_window[0] > 1000:
                         rate_window.pop(0)
@@ -295,6 +365,14 @@ async def ws_endpoint(ws: WebSocket):
     finally:
         clients.discard(ws)
 
+def _ack(action: str, ok: bool, detail: str):
+    """Todo comando contesta. Sin esto, un comando que no llega a salir por el puerto
+    —o que no lo reconoce nadie— se pierde en silencio y desde la interfaz es
+    indistinguible de uno que sí ha funcionado."""
+    msg_deque.append({"type": "cmd_ack", "cmd": action, "ok": bool(ok), "detail": detail})
+    log.info("ACK   %-9s %-4s %s", action, "OK" if ok else "FALLO", detail)
+
+
 def _handle_command(cmd: dict):
     action = cmd.get("cmd", "")
     extra = " ".join(f"{k}={v}" for k, v in cmd.items() if k != "cmd")
@@ -302,7 +380,7 @@ def _handle_command(cmd: dict):
 
     ser = ser_ref[0]
     if not ser:
-        log.warning("CMD   %-9s ignored — no serial port", action)
+        _ack(action, False, "sin puerto serie: el Pico no está conectado")
         return
 
     try:
@@ -323,6 +401,18 @@ def _handle_command(cmd: dict):
             ser.write(build_packet(bytes([CMD_SHUTDOWN])))
         elif action == "home":
             ser.write(build_packet(bytes([CMD_HOME])))
+        elif action == "lc_query":
+            ser.write(build_packet(bytes([CMD_LC_QUERY])))
+        elif action == "lc_hold":
+            # park: 0 = líneas en alta impedancia, 1 = forzadas a masa
+            park = 1 if int(cmd.get("park", 0)) else 0
+            ser.write(build_packet(bytes([CMD_LC_HOLD, park])))
+        elif action == "lc_program":
+            # El firmware es quien decide si se puede: aquí sólo se acotan los rangos
+            # que caben en los bits [6:4] y [3:0] de la palabra de configuración.
+            gain   = max(0, min(7,  int(cmd.get("gain", 7))))
+            offset = max(0, min(15, int(cmd.get("offset", 8))))
+            ser.write(build_packet(bytes([CMD_LC_PROGRAM, gain, offset])))
         elif action == "reset_pos":
             with shared_lock:
                 shared["pos_rev"] = 0.0
@@ -334,12 +424,23 @@ def _handle_command(cmd: dict):
                 with shared_lock:
                     shared["force_calib"] = val
             ser.write(build_packet(bytes([CMD_SET_PARAM, pid]) + struct.pack("<h", val)))
+        else:
+            # Sin este caso, un nombre mal escrito en la interfaz no hacía nada y no
+            # se notaba: el botón parecía roto sin decir por qué.
+            _ack(action, False, f"acción desconocida: {action!r}")
+            return
     except (serial.SerialException, OSError) as e:
         # Puerto caído (p.ej. reflasheo/replug): soltar el handle; el hilo serie reconecta.
         print(f"# Serial write error: {e}  (marcando desconectado)")
         ser_ref[0] = None
         try: ser.close()
         except Exception: pass
+        _ack(action, False, f"error de puerto: {e}")
+        return
+    except Exception as e:
+        _ack(action, False, f"{type(e).__name__}: {e}")
+        return
+    _ack(action, True, "enviado")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8080)

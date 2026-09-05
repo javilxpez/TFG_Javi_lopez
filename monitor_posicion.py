@@ -24,7 +24,7 @@ SYNC = bytes([0xAA, 0x55])
 # Batched frame: header (14 B) + N × sample (12 B)
 HEADER_FMT  = "<BIHBBBBBBB"   # id, base_t, bridge, lc_status, flags, error, servo_id, rpm_st, trq_st, n
 HEADER_SIZE = struct.calcsize(HEADER_FMT)
-SAMPLE_FMT  = "<HhhhhBBH"     # dt_ms, rpm, current_x10, ref_cmd, base_read, io, state, work_us
+SAMPLE_FMT  = "<HhhhhBBHi"    # dt_ms, rpm, current_x10, ref_cmd, base_read, io, state, work_us, lc2
 SAMPLE_SIZE = struct.calcsize(SAMPLE_FMT)
 
 MOVE_SPEED = 10  # RPM default
@@ -141,11 +141,13 @@ def decode_packet(payload: bytes) -> dict | None:
     if n == 0: return None
     off = HEADER_SIZE + (n - 1) * SAMPLE_SIZE
     if off + SAMPLE_SIZE > len(payload): return None
-    dt, rpm, cur, ref, base, io, state, work_us = struct.unpack(SAMPLE_FMT, payload[off:off + SAMPLE_SIZE])
+    (dt, rpm, cur, ref, base, io, state,
+     work_us, lc2) = struct.unpack(SAMPLE_FMT, payload[off:off + SAMPLE_SIZE])
     return {"packet_id": _pid, "t_ms": (base_t + dt) & 0xFFFFFFFF, "work_us": work_us, "bridge": bridge,
             "lc_status": lc_status, "lc_flags": lc_flags, "rpm": rpm, "current_x10": cur,
             "servo_state": state, "mode": 1 if state == 4 else 2 if state == 5 else 0,
             "ref_cmd": ref, "base_read": base, "io": io, "error": error,
+            "lc2": lc2, "lc2_valid": bool(lc_flags & 0x08), "lc2_ok": bool(lc_flags & 0x10),
             "servo_id": servo_id, "rpm_status": rpm_status, "trq_status": trq_status}
 
 
@@ -192,6 +194,10 @@ def render(data: dict, meta: dict):
     lines.append(f"  LC Estado    │  {lc_status_s}  válido: {'Sí' if lc_valid else 'No'}")
     lines.append(f"  LC Config    │  {'OK' if lc_cfg else '---'}")
     lines.append(f"  Fuerza rel.  │  {base_read:>7d} cnt  {bar(base_read, lo=-2000, hi=2000)}")
+    if data.get("lc2_ok"):
+        lc2 = data.get("lc2", 0)
+        est = "" if data.get("lc2_valid") else "  (sin dato)"
+        lines.append(f"  Celula 2     │  {lc2:>9d} cnt{est}")
     if fc and fc != 0:
         force_n = base_read / fc
         lines.append(f"  Fuerza (N)   │  {force_n:>7.2f} N  {bar(force_n, lo=-50, hi=50)}")

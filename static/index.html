@@ -104,9 +104,48 @@
     button.b-reset  { border-color: var(--muted);  color: var(--muted); }
     button.b-shut   { border-color: var(--yellow); color: var(--yellow); }
 
-    .params { display: flex; gap: 16px; margin-left: auto; align-items: center; flex-wrap: wrap; }
-    .param  { display: flex; align-items: center; gap: 5px; }
-    .param label { color: var(--muted); font-size: 11px; white-space: nowrap; }
+    /* ── Pestañas: servo y célula, cada una con lo suyo ── */
+    [hidden] { display: none !important; }
+    .tabs { display: flex; gap: 4px; }
+    .tab {
+      padding: 7px 18px; border: 1px solid var(--border); border-bottom: none;
+      border-radius: 6px 6px 0 0; background: #161b22; color: var(--muted);
+      font-size: 12px; position: relative; top: 1px;
+    }
+    .tab:hover { background: #1c222b; color: var(--text); }
+    .tab.active { background: var(--card); color: var(--text); }
+
+    .panel {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 0 6px 6px 6px; padding: 14px;
+      margin-bottom: 12px;
+    }
+    .group + .group { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+    .group-title {
+      font-size: 10px; text-transform: uppercase; letter-spacing: .09em;
+      color: var(--muted); margin-bottom: 9px;
+    }
+    /* Etiqueta encima del campo: en una sola fila los nombres largos se pisaban */
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px 16px; }
+    .param  { display: flex; flex-direction: column; gap: 4px; }
+    .param label { color: var(--muted); font-size: 11px; }
+    .param .field { display: flex; align-items: center; gap: 5px; }
+    .param input[type=number] { width: 100%; }
+    /* Un solo botón por pestaña: nada de un ✓ por campo */
+    .group-actions { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+    .hint { font-size: 11px; color: var(--muted); }
+
+    /* Lectura del chip: una zona, no cuatro líneas sueltas apiladas */
+    .readout { margin-top: 10px; display: flex; flex-direction: column; gap: 7px; }
+    .readout .line { font-size: 11px; line-height: 1.45; }
+    .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+    .chip {
+      background: #0d1117; border: 1px solid var(--border); border-radius: 4px;
+      padding: 2px 7px; font-size: 10px; color: var(--muted); white-space: nowrap;
+    }
+    .chip b { color: var(--text); font-weight: 400; }
+    .chip.bad { border-color: var(--red); color: var(--red); }
+    .chip.bad b { color: var(--red); }
     input[type=number] {
       width: 72px; padding: 5px 6px;
       background: #0d1117; border: 1px solid var(--border);
@@ -157,7 +196,7 @@
 
     @media (max-width: 800px) {
       .col, .col2, .col3 { min-width: 100%; }
-      .params { margin-left: 0; }
+      .grid { grid-template-columns: 1fr 1fr; }
     }
   </style>
 </head>
@@ -234,11 +273,14 @@
   <div class="row">
     <div class="col2">
       <div class="card">
-        <div class="card-title">Célula de Carga</div>
-        <div class="metric"><span class="metric-label">Bridge raw</span><span class="metric-value" id="v-bridge">—</span></div>
-        <div class="metric"><span class="metric-label">LC estado</span><span class="metric-value" id="v-lcstatus">—</span></div>
-        <div class="metric"><span class="metric-label">Fuerza relativa</span><span class="metric-value" id="v-baseread">—</span></div>
-        <div class="metric"><span class="metric-label">Fuerza (N)</span><span class="metric-value" id="v-force-n">—</span></div>
+        <div class="card-title">Células de Carga</div>
+        <div class="metric"><span class="metric-label">LC1 bridge raw</span><span class="metric-value" id="v-bridge">—</span></div>
+        <div class="metric"><span class="metric-label">LC1 estado</span><span class="metric-value" id="v-lcstatus">—</span></div>
+        <div class="metric"><span class="metric-label">LC1 fuerza relativa</span><span class="metric-value" id="v-baseread">—</span></div>
+        <div class="metric"><span class="metric-label">LC1 fuerza (N)</span><span class="metric-value" id="v-force-n">—</span></div>
+        <div class="metric"><span class="metric-label">LC2 crudo</span><span class="metric-value" id="v-lc2-raw">—</span></div>
+        <div class="metric"><span class="metric-label">LC2 tarada</span><span class="metric-value" id="v-lc2-net">—</span></div>
+        <div class="metric"><span class="metric-label">LC2 fuerza (N)</span><span class="metric-value" id="v-lc2-n">—</span></div>
       </div>
     </div>
     <div class="col2">
@@ -252,44 +294,128 @@
     </div>
   </div>
 
-  <!-- Controls -->
-  <div class="controls">
-    <div class="btn-group">
-      <input type="number" id="p-addr" value="1" min="1" max="247" title="Dirección Modbus del drive"
-             style="width:52px;padding:5px 6px;background:#0d1117;border:1px solid var(--border);color:var(--text);border-radius:4px;font-family:inherit;font-size:12px">
-      <button class="b-init" onclick="sendInit()">⟳ Init</button>
-      <button class="b-a"    onclick="cmd('move_a')">◄ Mov A</button>
-      <button class="b-b"    onclick="cmd('move_b')">Mov B ►</button>
-      <button class="b-home" onclick="cmd('home')">⌂ Home</button>
-      <button class="b-stop" onclick="cmd('stop')">■ Stop</button>
-      <button class="b-reset" onclick="cmd('reset_pos')">↺ Reset pos</button>
-      <button class="b-shut"  onclick="cmd('shutdown')">⏻ Shutdown</button>
+  <!-- Controls: servo y célula separados, cada uno con un solo botón de aplicar -->
+  <div class="tabs">
+    <button class="tab active" data-tab="servo" onclick="showTab('servo')">Servo</button>
+    <button class="tab"        data-tab="lc1"   onclick="showTab('lc1')">Célula 1 · ZSC31014</button>
+    <button class="tab"        data-tab="lc2"   onclick="showTab('lc2')">Célula 2 · NAU7802</button>
+    <span id="v-cmd-ack" class="hint" style="font-size:11px;align-self:center;margin-left:10px"></span>
+  </div>
+
+  <!-- ── Servo ── -->
+  <div class="panel" data-panel="servo">
+    <div class="group">
+      <div class="group-title">Control del eje</div>
+      <div class="btn-group">
+        <input type="number" id="p-addr" value="1" min="1" max="247" title="Dirección Modbus del drive"
+               style="width:52px;padding:5px 6px;background:#0d1117;border:1px solid var(--border);color:var(--text);border-radius:4px;font-family:inherit;font-size:12px">
+        <button class="b-init"  onclick="sendInit()">⟳ Init</button>
+        <button class="b-a"     onclick="cmd('move_a')">◄ Mov A</button>
+        <button class="b-b"     onclick="cmd('move_b')">Mov B ►</button>
+        <button class="b-home"  onclick="cmd('home')">⌂ Home</button>
+        <button class="b-stop"  onclick="cmd('stop')">■ Stop</button>
+        <button class="b-reset" onclick="cmd('reset_pos')">↺ Reset pos</button>
+        <button class="b-shut"  onclick="cmd('shutdown')">⏻ Shutdown</button>
+      </div>
     </div>
-    <div class="params">
-      <div class="param">
-        <label>Vel. (RPM)</label>
-        <input type="number" id="p-speed" value="10" min="1" max="300">
-        <button class="btn-apply" onclick="applyParam(1,'p-speed')">✓</button>
+
+    <div class="group">
+      <div class="group-title">Movimiento y homing</div>
+      <div class="grid">
+        <div class="param">
+          <label>Velocidad (RPM)</label>
+          <input type="number" id="p-speed" value="10" min="1" max="300">
+        </div>
+        <div class="param">
+          <label>Home offset (rev)</label>
+          <input type="number" id="p-home-offset" value="0" step="0.01"
+                 title="Posición del home desde el final A, en revoluciones">
+        </div>
+        <div class="param">
+          <label>Velocidad de homing (RPM)</label>
+          <input type="number" id="p-home-speed" value="8" min="1" max="100">
+        </div>
       </div>
-      <div class="param">
-        <label>Calib (cnt/N)</label>
-        <input type="number" id="p-calib" value="0" min="0">
-        <button class="btn-apply" onclick="applyCalib()">✓</button>
+      <div class="group-actions">
+        <button class="b-init" onclick="applyServo()">✓ Aplicar parámetros</button>
+        <span id="v-apply-servo" class="hint">—</span>
       </div>
-      <div class="param">
-        <label>Offset cero</label>
-        <input type="number" id="p-zero" value="8210">
-        <button class="btn-apply" onclick="applyParam(3,'p-zero')">✓</button>
+    </div>
+  </div>
+
+  <!-- ── Célula 1: ZSC31014. Calibración en el firmware + EEPROM programable ── -->
+  <div class="panel" data-panel="lc1" hidden>
+    <div class="group">
+      <div class="group-title">Calibración — vive en el firmware del Pico</div>
+      <div class="grid">
+        <div class="param">
+          <label>Calibración (cuentas/N)</label>
+          <input type="number" id="p-calib" value="0" min="0">
+        </div>
+        <div class="param">
+          <label>Offset de cero</label>
+          <input type="number" id="p-zero" value="8210">
+        </div>
       </div>
-      <div class="param">
-        <label>Home offset (rev)</label>
-        <input type="number" id="p-home-offset" value="0" step="0.01" title="Posición del home desde el final A, en revoluciones">
-        <button class="btn-apply" onclick="applyHomeOffset()">✓</button>
+      <div class="group-actions">
+        <button class="b-init" onclick="applyLc1()">✓ Aplicar parámetros</button>
+        <span id="v-apply-lc1" class="hint">—</span>
       </div>
-      <div class="param">
-        <label>Vel. homing (RPM)</label>
-        <input type="number" id="p-home-speed" value="8" min="1" max="100">
-        <button class="btn-apply" onclick="applyParam(9,'p-home-speed')">✓</button>
+    </div>
+
+    <div class="group">
+      <div class="group-title">Programación de la EEPROM — para el sistema entero mientras dura</div>
+      <div class="grid">
+        <div class="param">
+          <label>Ganancia del preamplificador (0-7)</label>
+          <input type="number" id="p-lc-gain" value="7" min="0" max="7"
+                 title="Ganancia del preamplificador del ZSC31014. Se graba en su EEPROM.">
+        </div>
+        <div class="param">
+          <label>Cero del A/D (0-15)</label>
+          <input type="number" id="p-lc-offset" value="8" min="0" max="15"
+                 title="8 = centrado (reposo ~8192). Bajarlo o subirlo deja todo el recorrido de 14 bits para un solo sentido de la fuerza.">
+        </div>
+      </div>
+      <div class="group-actions">
+        <button class="b-shut" onclick="programLc()"
+                title="Graba ganancia y cero en la EEPROM. Para el eje mientras dura.">⚙ Programar</button>
+        <button class="btn-apply" onclick="cmd('lc_query')"
+                title="Lee lo que hay grabado ahora mismo, sin escribir nada.">⟲ Leer</button>
+        <button class="btn-apply" onclick="cmd('lc_hold', { park: 1 })"
+                title="Diagnóstico: corta la alimentación de la célula 8 s con SDA, SCL e INT a masa, para medir su rail con el polímetro.">⏱ Reset 8 s</button>
+        <span id="v-lc-ready" class="hint">—</span>
+      </div>
+      <div class="readout">
+        <div class="line dim" id="v-lc-prog">sin lectura todavía</div>
+        <div class="chips"   id="v-lc-chips" hidden></div>
+        <div class="line err" id="v-lc-warn" hidden></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Célula 2: NAU7802. Sin EEPROM que tocar; su calibración no sale del navegador ── -->
+  <div class="panel" data-panel="lc2" hidden>
+    <div class="group">
+      <div class="group-title">Calibración — sólo en el navegador, no viaja al Pico</div>
+      <div class="grid">
+        <div class="param">
+          <label>Calibración (cuentas/N)</label>
+          <input type="number" id="p-lc2-calib" value="0" step="any"
+                 title="Cuentas del NAU7802 por newton.">
+        </div>
+        <div class="param">
+          <label>Tara</label>
+          <div class="field">
+            <input type="number" id="p-lc2-zero" value="0" title="Cero de la célula 2.">
+            <button class="btn-apply" onclick="tareLc2()"
+                    title="Fija la tara con la lectura actual">⌀</button>
+          </div>
+        </div>
+      </div>
+      <div class="group-actions">
+        <button class="b-init" onclick="applyLc2()">✓ Aplicar parámetros</button>
+        <span id="v-apply-lc2" class="hint">—</span>
       </div>
     </div>
   </div>
@@ -407,22 +533,36 @@ const chartFT = new Chart(document.getElementById('chart-ft'), {
   data: {
     labels: [],
     datasets: [{
+      label: 'LC1',
       data: [],
       borderColor: '#79c0ff',
       borderWidth: 1.5,
       pointRadius: 0,
       tension: 0.25,
+      yAxisID: 'y',
       fill: { target: 'origin', above: 'rgba(121,192,255,0.08)', below: 'rgba(248,81,73,0.08)' },
+    }, {
+      label: 'LC2',
+      data: [],
+      borderColor: '#d2a8ff',
+      borderWidth: 1.5,
+      pointRadius: 0,
+      tension: 0.25,
+      yAxisID: 'y1',
+      fill: false,
     }]
   },
   options: {
     animation: false,
     responsive: true,
     maintainAspectRatio: false,
-    plugins: { legend: { display: false } },
+    plugins: { legend: { display: true, labels: { color: '#8b949e', boxWidth: 12, font: { size: 10 } } } },
     scales: {
-      x: { grid: darkGrid, ticks: { ...tickStyle, maxTicksLimit: 6 } },
-      y: { grid: darkGrid, ticks: tickStyle },
+      x:  { grid: darkGrid, ticks: { ...tickStyle, maxTicksLimit: 6 } },
+      y:  { grid: darkGrid, ticks: tickStyle, position: 'left' },
+      // LC2 en su propio eje: sin calibrar las dos células están en escalas
+      // muy distintas (miles frente a cientos de miles de cuentas)
+      y1: { grid: { display: false }, ticks: tickStyle, position: 'right' },
     }
   }
 });
@@ -430,6 +570,9 @@ const chartFT = new Chart(document.getElementById('chart-ft'), {
 // ── WebSocket ────────────────────────────────────────────
 let ws = null;
 let forceCalib = 0;
+let lc2Calib   = 0;    // cuentas por newton de la célula 2 (sólo navegador)
+let lc2Zero    = 0;    // tara de la célula 2
+let lc2Last    = 0;    // última lectura cruda, para el botón de tara
 let t0 = null;
 let lastTsec = null;   // latest device time (s), for command markers
 
@@ -451,6 +594,8 @@ function connect() {
   ws.onmessage = e => {
     const d = JSON.parse(e.data);
     if (d.type === 'home') { updateHome(d); return; }   // v2: frame de homing
+    if (d.type === 'lc_config') { updateLcConfig(d); return; }  // respuesta de programación
+    if (d.type === 'cmd_ack')   { updateCmdAck(d);   return; }  // acuse de cada comando
     updateUI(d);
   };
 }
@@ -481,7 +626,8 @@ function updateHome(d) {
 // ── UI update ────────────────────────────────────────────
 const STATE_CLS = {
   IDLE:'dim', SCANNING:'warn', CONFIGURING:'warn',
-  STOPPED:'ok', MOVING_A:'info', MOVING_B:'info', ERROR:'err', HOMING:'hi'
+  STOPPED:'ok', MOVING_A:'info', MOVING_B:'info', ERROR:'err', HOMING:'hi',
+  PROGRAMANDO:'warn'
 };
 const MODE_CLS = { PARADO:'dim', MOV_A:'info', MOV_B:'info' };
 const LC_ST = { 0:'<span class="ok">VALID</span>', 1:'<span class="warn">STALE</span>', 2:'<span class="err">CMD</span>' };
@@ -502,6 +648,13 @@ function updateUI(d) {
   const sn = d.state_name || '?';
   el('v-state').className  = 'big-value ' + (STATE_CLS[sn] || '');
   el('v-state').textContent = sn;
+  // El firmware sólo acepta programar la EEPROM parado: se avisa antes de pulsar
+  const ready = (sn === 'IDLE' || sn === 'STOPPED');
+  const lr = el('v-lc-ready');
+  if (lr) {
+    lr.className = ready ? 'ok' : 'err';
+    lr.textContent = ready ? `${sn} · listo` : `${sn} · para el eje primero`;
+  }
   const mn = d.mode_name || '?';
   el('v-mode').className   = 'big-value ' + (MODE_CLS[mn] || 'dim');
   el('v-mode').textContent  = mn;
@@ -550,7 +703,32 @@ function updateUI(d) {
   bar.style.width = pct + '%';
   bar.style.background = barColor;
 
-  el('ft-now').textContent = forceStr;
+  // Célula 2 (NAU7802) — llega en crudo, la tara y la calibración van aquí
+  const lc2ok    = !!(flags & 0x10);
+  const lc2valid = !!(flags & 0x08);
+  const lc2raw   = d.lc2 || 0;
+  lc2Last = lc2raw;
+  const lc2net = lc2raw - lc2Zero;
+  const lc2N   = lc2Calib ? lc2net / lc2Calib : null;
+
+  if (!lc2ok) {
+    el('v-lc2-raw').innerHTML = '<span class="dim">no detectada</span>';
+    el('v-lc2-net').textContent = '—';
+    el('v-lc2-n').textContent   = '—';
+  } else if (!lc2valid) {
+    el('v-lc2-raw').innerHTML = '<span class="err">sin dato</span>';
+    el('v-lc2-net').textContent = '—';
+    el('v-lc2-n').textContent   = '—';
+  } else {
+    el('v-lc2-raw').textContent = `${lc2raw} cnt`;
+    el('v-lc2-net').textContent = `${lc2net > 0 ? '+' : ''}${lc2net} cnt`;
+    el('v-lc2-n').innerHTML = lc2N !== null
+      ? `<span class="ok">${lc2N.toFixed(2)} N</span>`
+      : '<span class="dim">calibrar primero</span>';
+  }
+
+  el('ft-now').textContent = forceStr
+    + (lc2ok && lc2valid ? `  |  LC2 ${lc2N !== null ? lc2N.toFixed(2) + ' N' : lc2net + ' cnt'}` : '');
 
   // Motor
   const rpm = d.rpm || 0;
@@ -570,9 +748,11 @@ function updateUI(d) {
   if (t0 === null) t0 = now;
   chartFT.data.labels.push((now - t0).toFixed(1));
   chartFT.data.datasets[0].data.push(forceDisplay);
+  chartFT.data.datasets[1].data.push(lc2ok && lc2valid ? (lc2N !== null ? lc2N : lc2net) : null);
   if (chartFT.data.labels.length > MAX_FT) {
     chartFT.data.labels.shift();
     chartFT.data.datasets[0].data.shift();
+    chartFT.data.datasets[1].data.shift();
   }
   chartFT.update('none');
 
@@ -589,6 +769,111 @@ function updateUI(d) {
   chartDiag.options.scales.x.max = tsec;
   chartDiag.update('none');
   el('diag-now').textContent = `cmd ${d.ref_cmd || 0} / real ${rpm} RPM`;
+}
+
+// ── Acuse de recibo de TODO comando ──────────────────────
+// Un comando que no sale por el puerto, o que nadie reconoce, tiene el mismo aspecto
+// que uno que ha funcionado: ninguno. Por eso cada uno contesta, y si es de la célula
+// el acuse se enseña además en su propio panel, que es donde se está mirando.
+function updateCmdAck(d) {
+  const txt = `${d.cmd}: ${d.detail}`;
+  const g = el('v-cmd-ack');
+  if (g) {
+    g.className = d.ok ? 'ok' : 'err';
+    g.textContent = txt;
+    setTimeout(() => { if (g.textContent === txt) { g.className = 'hint'; g.textContent = ''; } }, 6000);
+  }
+  if (d.cmd.startsWith('lc_')) {
+    const v = el('v-lc-prog');
+    if (v) {
+      v.className = 'line ' + (d.ok ? 'dim' : 'err');
+      v.textContent = d.ok ? 'esperando respuesta de la célula…' : txt;
+    }
+  }
+}
+
+// ── Célula: pregunta-respuesta ───────────────────────────
+// El botón sólo pide; quien decide si se puede es el firmware, que contesta siempre
+// —también para rechazar— y con lo que ha quedado grabado de verdad.
+function programLc() {
+  const g = parseInt(el('p-lc-gain').value);
+  const o = parseInt(el('p-lc-offset').value);
+  if (isNaN(g) || isNaN(o)) return;
+  const v = el('v-lc-prog');
+  v.className = 'line dim';
+  v.textContent = 'programando…';
+  cmd('lc_program', { gain: g, offset: o });
+}
+
+// ── Decodificación de B_Config (palabra 0x0F) ────────────────────────────
+// El campo de ganancia son 3 bits, pero las dos implementaciones de referencia no
+// coinciden en su codificación: MikroE la da monótona (0..7 → x1.5,3,6,12,24,48,96,192)
+// y mbed la da entrelazada. Se enseñan las dos hasta que el datasheet zanje cuál es,
+// porque de esto depende que un barrido de ganancia signifique algo.
+const GAIN_MIKROE = [1.5, 3, 6, 12, 24, 48, 96, 192];
+const GAIN_MBED   = [1.5, 6, 24, 96, 3, 12, 48, 192];
+
+// El campo de multiplexor son los bits [11:10] y SÓLO admite 0b10 (puente completo) o
+// 0b11 (medio puente). Si ahí sale 0b00 o 0b01, la palabra está desalineada: es la
+// comprobación que dice si los desplazamientos son correctos, sin necesidad de creerse
+// ninguna de las dos referencias.
+function decodeBConfig(cfg) {
+  const mux = (cfg >> 10) & 0x03;
+  return {
+    offset:   cfg & 0x0F,
+    gain:     (cfg >> 4) & 0x07,
+    polarity: (cfg >> 7) & 1,
+    longInt:  (cfg >> 8) & 1,
+    bSink:    (cfg >> 9) & 1,
+    mux,
+    muxName:  mux === 2 ? 'puente completo' : mux === 3 ? 'medio puente' : `INVÁLIDO (0b${mux.toString(2).padStart(2,'0')})`,
+    aligned:  mux === 2 || mux === 3,
+    nulling:  (cfg >> 12) & 1,
+    top:      (cfg >> 13) & 0x07
+  };
+}
+
+function renderBConfig(cfg) {
+  const c = el('v-lc-chips');
+  if (!c) return;
+  if (cfg === null) { c.hidden = true; return; }
+  const b = decodeBConfig(cfg);
+  const chip = (k, v, bad, t) => `<span class="chip${bad ? ' bad' : ''}"${t ? ` title="${t}"` : ''}>${k} <b>${v}</b></span>`;
+  c.hidden = false;
+  c.innerHTML =
+      chip('cfg', '0x' + cfg.toString(16).toUpperCase().padStart(4, '0'))
+    + chip('ganancia', `${b.gain} · x${GAIN_MIKROE[b.gain]}`, false,
+           `Índice ${b.gain}. Según el driver de MikroE es x${GAIN_MIKROE[b.gain]}; según el de mbed, `
+           + `x${GAIN_MBED[b.gain]}. Las dos referencias discrepan y lo zanja el datasheet.`)
+    + chip('cero A/D', b.offset)
+    + chip('mux', b.muxName, !b.aligned)
+    + chip('polaridad', b.polarity)
+    + chip('integr. larga', b.longInt)
+    + chip('B-sink', b.bSink)
+    + chip('nulling', b.nulling);
+}
+
+function updateLcConfig(d) {
+  const v = el('v-lc-prog');
+  const ack = (d.lc_ack === undefined) ? 0xFF : d.lc_ack;
+  v.className = 'line ' + (d.lc_ok ? 'ok' : 'err');
+  v.textContent = d.lc_result_name
+    + (d.lc_ok && d.lc_entry_us !== undefined ? ` · ventana a ${d.lc_entry_us} µs` : '')
+    + (d.lc_ok ? '' : ` · resp 0x${ack.toString(16).toUpperCase().padStart(2, '0')}`);
+
+  renderBConfig(d.lc_ok ? (d.lc_cfg_after || 0) : null);
+
+  // El aviso sólo aparece cuando hay algo que avisar; el resto del tiempo, nada.
+  const w = el('v-lc-warn');
+  if (w) {
+    const noReset = (d.lc_en_cuts === false);
+    w.hidden = !noReset;
+    if (noReset) w.textContent = 'Sigue alimentada con el reset abajo: queda un camino de'
+                               + ' realimentación sin cerrar (INT/SS, o EN no corta el rail).';
+  }
+
+  el('p-lc-gain').value   = d.lc_gain;
+  el('p-lc-offset').value = d.lc_offset;
 }
 
 // ── Commands ─────────────────────────────────────────────
@@ -610,23 +895,66 @@ function cmd(action, extra) {
 
 function applyParam(pid, inputId) {
   const v = parseInt(el(inputId).value);
-  if (!isNaN(v)) cmd('set_param', { param: pid, value: v });
+  if (isNaN(v)) return false;
+  cmd('set_param', { param: pid, value: v });
+  return true;
 }
 
-function applyCalib() {
-  const v = parseInt(el('p-calib').value);
-  if (!isNaN(v)) {
-    forceCalib = v;
-    cmd('set_param', { param: 7, value: v });
-  }
+// ── Pestañas ─────────────────────────────────────────────
+// Servo y célula no se mezclan: cada pestaña manda lo suyo con UN botón, en vez de
+// un ✓ por campo. Se recuerda cuál estaba abierta para no perderla al recargar.
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.panel').forEach(p => { p.hidden = (p.dataset.panel !== name); });
+  try { localStorage.setItem('tfg-tab', name); } catch (e) {}
+}
+
+try {
+  const saved = localStorage.getItem('tfg-tab');
+  if (saved) showTab(saved);
+} catch (e) {}
+
+// Un solo envío por pestaña: se manda todo el bloque y se dice qué ha salido.
+function flashApply(id, n) {
+  const v = el(id);
+  if (!v) return;
+  v.className = n ? 'ok' : 'err';
+  v.textContent = n ? `${n} parámetro${n > 1 ? 's' : ''} enviado${n > 1 ? 's' : ''}`
+                    : 'nada que enviar: revisa los campos';
+  setTimeout(() => { v.className = 'hint'; v.textContent = '—'; }, 3000);
+}
+
+function applyServo() {
+  let n = 0;
+  if (applyParam(1, 'p-speed')) n++;
+  const rev = parseFloat(el('p-home-offset').value);
+  if (!isNaN(rev)) { cmd('set_param', { param: 8, value: Math.round(rev * 100) }); n++; }
+  if (applyParam(9, 'p-home-speed')) n++;
+  flashApply('v-apply-servo', n);
+}
+
+function applyLc1() {
+  let n = 0;
+  const c = parseInt(el('p-calib').value);
+  if (!isNaN(c)) { forceCalib = c; cmd('set_param', { param: 7, value: c }); n++; }
+  if (applyParam(3, 'p-zero')) n++;
+  flashApply('v-apply-lc1', n);
+}
+
+// La NAU7802 no tiene nada que grabar: su calibración se queda en esta página.
+function applyLc2() {
+  const v = parseFloat(el('p-lc2-calib').value);
+  if (!isNaN(v)) lc2Calib = v;
+  flashApply('v-apply-lc2', isNaN(v) ? 0 : 1);
+}
+
+// Célula 2: tara y calibración viven en el navegador — el firmware la manda cruda
+function tareLc2() {
+  lc2Zero = lc2Last;
+  el('p-lc2-zero').value = lc2Zero;
 }
 
 // v2: offset del home en rev → centi-rev (PARAM_HOME_OFFSET = 8)
-function applyHomeOffset() {
-  const rev = parseFloat(el('p-home-offset').value);
-  if (!isNaN(rev)) cmd('set_param', { param: 8, value: Math.round(rev * 100) });
-}
-
 function el(id) { return document.getElementById(id); }
 
 connect();
