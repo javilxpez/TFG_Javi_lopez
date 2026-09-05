@@ -191,27 +191,29 @@ static uint8_t crc8(const uint8_t *data, uint8_t len) {
 //  11    rpm_status
 //  12    trq_status
 //  13    n_samples
-// ── Muestra (12 B) × n_samples — una por iteración de loop ──
-//  +0-1  dt_ms       (ms desde base_t — el "loop time")
+// ── Muestra (14 B) × n_samples — una por iteración de loop ──
+//  +0-1  dt_ms       (ms desde base_t — timestamp exacto del loop: millis())
 //  +2-3  rpm         (int16)
 //  +4-5  current_x10 (int16)
 //  +6-7  ref_cmd     (int16)
 //  +8-9  base_read   (int16)
 //  +10   io          (b0=limit_A, b1=limit_B)
 //  +11   state
+//  +12-13 work_us    (duración de trabajo del loop en µs, sin el pacing — rendimiento)
 #define MAX_SAMPLES 8      // LOOP_MS=50 → ~4-5 por ventana de 200 ms; margen a 8
 struct Sample {
   uint16_t dt_ms;
   int16_t  rpm, current, ref, base;
   uint8_t  io, state;
+  uint16_t work_us;
 };
 static Sample   sampleBuf[MAX_SAMPLES];
 static uint8_t  sampleCount = 0;
 static uint32_t frameBaseT  = 0;
-static uint8_t  txBuf[14 + MAX_SAMPLES*12];
+static uint8_t  txBuf[14 + MAX_SAMPLES*14];
 
-// Cache one loop iteration into the batch (no I/O)
-void recordSample(uint32_t now){
+// Cache one loop iteration into the batch (no I/O). work = loop work time (µs, pre-pacing)
+void recordSample(uint32_t now, uint16_t work){
   if(sampleCount>=MAX_SAMPLES) return;
   if(sampleCount==0) frameBaseT = now;
   Sample &s = sampleBuf[sampleCount++];
@@ -223,6 +225,7 @@ void recordSample(uint32_t now){
   s.io      = (digitalRead(PIN_LIMIT_A)==HIGH ? 0x01 : 0x00)
             | (digitalRead(PIN_LIMIT_B)==HIGH ? 0x02 : 0x00);
   s.state   = (uint8_t)ctrl.currentState;
+  s.work_us = work;
 }
 
 // Send the whole batch as one frame, then reset
@@ -252,8 +255,9 @@ void telemetryFlush(){
     *p++ = (s.base   >>0)&0xFF; *p++ = (s.base   >>8)&0xFF;
     *p++ = s.io;
     *p++ = s.state;
+    *p++ = (s.work_us>>0)&0xFF; *p++ = (s.work_us>>8)&0xFF;
   }
-  uint8_t payloadLen = (uint8_t)(p - txBuf);   // 14 + n*12, ≤ 110 for MAX_SAMPLES=8
+  uint8_t payloadLen = (uint8_t)(p - txBuf);   // 14 + n*14, ≤ 126 for MAX_SAMPLES=8
   uint8_t frame[3 + sizeof(txBuf) + 1];
   frame[0]=SYNC_0; frame[1]=SYNC_1; frame[2]=payloadLen;
   memcpy(&frame[3], txBuf, payloadLen);
@@ -454,7 +458,9 @@ void servoInit(){
 }
 
 static uint8_t servoWriteReg(uint16_t reg,uint16_t val){
-  return servo.writeSingleRegister(reg,val);
+  uint8_t r = servo.writeSingleRegister(reg,val);
+  delayMicroseconds(700);   // RTU inter-frame silence before the next config write
+  return r;
 }
 
 bool servoConfigure(uint8_t id){
@@ -538,23 +544,25 @@ void servoAction(){
 
 // ── Setup / Loop (Core0) ──────────────────────────
 void setup(){
+  // ── Load cell FIRST — the ZSC31014 command-mode (gain) window is only a few ms
+  //    after power-up, so enter it before anything that delays boot (esp. the Serial wait).
+  pinMode(1,OUTPUT); digitalWrite(1,HIGH); delay(50);   // LC power/enable
+  I2C1Bus.begin(); I2C1Bus.setClock(LC_I2C_FREQ);
+  ctrl.lcConfigApplied = loadCellConfigureEEPROM();      // Start_CM + write gain
+  ctrl.loadCellOK      = loadCellInit();
+
+  // ── Everything else ──
   Serial.begin(115200);
   { unsigned long t0=millis(); while(!Serial&&millis()-t0<3000) delay(10); }
-
   pinMode(PIN_LIMIT_A, INPUT_PULLUP);
   pinMode(PIN_LIMIT_B, INPUT_PULLUP);
-  pinMode(1,OUTPUT); digitalWrite(1,HIGH); delay(50);
-  I2C1Bus.begin(); I2C1Bus.setClock(LC_I2C_FREQ);
-
-  ctrl.lcConfigApplied = loadCellConfigureEEPROM();
-  ctrl.loadCellOK = loadCellInit();
-
-  servoInit();                 // always bring up RS485 — servo runs even if the LC is absent
+  servoInit();                 // RS485 — servo runs even if the LC is absent
   Serial.flush(); delay(50);
 }
 
 void loop(){
   unsigned long now=millis();
+  uint32_t      t0us=micros();   // loop-work start (for per-sample performance)
 
   // ══ READ — independent subsystem reads ═══════════
   servoReadState();      // servo  (RS485)
@@ -585,8 +593,9 @@ void loop(){
   // ══ ACT — one call, servo state machine + all writes ══
   servoAction();
 
-  // ══ record this loop, flush the whole batch every 200 ms (or if full) ══
-  recordSample(now);
+  // ══ record this loop (with its work time), flush the whole batch every 200 ms (or if full) ══
+  uint32_t workUs = micros() - t0us;
+  recordSample(now, workUs > 65535 ? 65535 : (uint16_t)workUs);
   uint32_t period=(ctrl.currentState==STATE_ERROR)?1000:TELEMETRY_MS;
   if(sampleCount>=MAX_SAMPLES || now-ctrl.lastTelemetryTime>=period){
     telemetryFlush();

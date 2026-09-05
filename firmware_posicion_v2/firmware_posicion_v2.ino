@@ -1,7 +1,15 @@
 // ═══════════════════════════════════════════════════════════
-//  ZSC31014 Load Cell + Servo Motor — Raspberry Pi Pico 2
+//  ZSC31014 Load Cell + Servo Motor — Raspberry Pi Pico 2  (v2)
 //  Modo velocidad A→B — sin lazo cerrado de célula de carga
 //  Dual-core: Core0 = LC/telemetría/comandos, Core1 = Modbus
+//
+//  ── NOVEDAD v2: HOMING con detección de ambos finales de carrera ──
+//  Secuencia: busca A (datum, pos=0) → busca B (mide recorrido A→B)
+//             → va a un offset configurable desde A → fija HOME=0.
+//  La posición se integra a partir de RPM DENTRO del firmware (rev).
+//  Comando: CMD_HOME (0x08) o tecla 'h'. Aborta con STOP.
+//  Offset: PARAM_HOME_OFFSET (centi-rev). Velocidad: PARAM_HOMING_SPEED (RPM).
+//  Estado/recorrido se reportan en un frame propio (PACKET_ID_HOME=0x03).
 // ═══════════════════════════════════════════════════════════
 
 #include <Wire.h>
@@ -26,7 +34,8 @@ static TwoWire I2C1Bus(i2c1, 2, 3);
 // ── Protocolo binario ─────────────────────────────
 #define SYNC_0     0xAA
 #define SYNC_1     0x55
-#define PACKET_ID  0x02
+#define PACKET_ID       0x02   // telemetría por lotes
+#define PACKET_ID_HOME  0x03   // estado de homing (posición/recorrido)
 
 // Comandos Python → Pico
 #define CMD_INIT      0x01
@@ -35,15 +44,19 @@ static TwoWire I2C1Bus(i2c1, 2, 3);
 #define CMD_MOVE_A    0x04
 #define CMD_MOVE_B    0x05
 #define CMD_SHUTDOWN  0x06
+#define CMD_SCAN      0x07
+#define CMD_HOME      0x08   // v2: lanza la rutina de homing
 
 // IDs de parámetro
-#define PARAM_SPEED       0x01
-#define PARAM_FORCE_LIMIT 0x02
-#define PARAM_ZERO_OFFSET 0x03
-#define PARAM_ACCEL       0x04
-#define PARAM_DECEL       0x05
-#define PARAM_STIFFNESS   0x06
-#define PARAM_FORCE_CALIB 0x07
+#define PARAM_SPEED        0x01
+#define PARAM_FORCE_LIMIT  0x02
+#define PARAM_ZERO_OFFSET  0x03
+#define PARAM_ACCEL        0x04
+#define PARAM_DECEL        0x05
+#define PARAM_STIFFNESS    0x06
+#define PARAM_FORCE_CALIB  0x07
+#define PARAM_HOME_OFFSET  0x08   // v2: offset del home desde A, en centi-rev (0.01 rev)
+#define PARAM_HOMING_SPEED 0x09   // v2: velocidad de búsqueda del homing (RPM)
 
 // ── Registros Modbus ──────────────────────────────
 #define MB_REG_CONTROL_MODE  0
@@ -52,10 +65,12 @@ static TwoWire I2C1Bus(i2c1, 2, 3);
 #define MB_REG_MON_RPM       16385
 #define MB_REG_MON_TORQUE    16387
 #define MB_C00_05            5
-#define MB_C03_22            802   // accel directo
-#define MB_C03_23            803   // accel inverso
-#define MB_C03_24            804   // decel directo
-#define MB_C03_25            805   // decel inverso
+#define MB_C03_22            802
+#define MB_C03_24            804
+
+#define SERVO_ID     1     // Modbus address of the drive (known — no scan)
+#define TELEMETRY_MS 200   // telemetry send period, ms (USB CDC has plenty of headroom)
+#define LOOP_MS      50    // minimum loop period, ms — caps loop (and thus read/bus) rate
 
 #define PIN_LIMIT_A  16   // DI1 — final de carrera lado A
 #define PIN_LIMIT_B  17   // DI2 — final de carrera lado B
@@ -68,6 +83,11 @@ static TwoWire I2C1Bus(i2c1, 2, 3);
 #define BRAKE_RES_POW_VAL      1000
 #define BRAKE_RES_OHM_VAL      235
 #define BRAKE_RES_DISS_VAL     30
+
+// ── Homing (v2) ───────────────────────────────────
+#define HOMING_TIMEOUT_MS  30000   // seguridad: aborta un tramo que tarda demasiado
+#define HOMING_TOL_REV     0.02f   // tolerancia para dar por alcanzado el home
+#define HOMING_REPORT_MS   1500    // tras DONE/FAIL, sigue reportando este tiempo
 
 // ── Errores ───────────────────────────────────────
 #define ERR_NONE              0x00
@@ -84,13 +104,24 @@ enum State {
   STATE_STOPPED     = 3,
   STATE_MOVING_A    = 4,
   STATE_MOVING_B    = 5,
-  STATE_ERROR       = 6
+  STATE_ERROR       = 6,
+  STATE_HOMING      = 7    // v2: rutina de homing en curso
 };
 #define MODE_STOPPED  0
 #define MODE_MOVING_A 1
 #define MODE_MOVING_B 2
 
 enum LCPhase { LC_REQUEST, LC_WAIT };
+
+// ── Fases del homing (v2) ─────────────────────────
+enum HomingPhase {
+  HOME_IDLE  = 0,   // sin homing
+  HOME_SEEK_A,      // buscando final A (datum → pos=0)
+  HOME_SEEK_B,      // buscando final B (mide recorrido A→B)
+  HOME_GOTO,        // yendo al offset deseado desde A
+  HOME_DONE,        // completado (home fijado)
+  HOME_FAIL         // abortado (timeout / servo no listo)
+};
 
 // ── Control State ─────────────────────────────────
 struct ControlState {
@@ -111,8 +142,8 @@ struct ControlState {
   int16_t  moveSpeed       = 10;
   int16_t  currentSpeedCmd = 0;
   int16_t  stiffness       = 10;
-  int16_t  accelRate       = 200;
-  int16_t  decelRate       = 200;
+  int16_t  accelRate       = 5;
+  int16_t  decelRate       = 5;
 
   bool     loadCellOK      = false;
   bool     lcConfigApplied = false;
@@ -132,64 +163,48 @@ struct ControlState {
   uint8_t  maIdx           = 0;
   uint32_t maSum           = 0;
   uint16_t lastBridgeFilt  = 0;
+
+  // ── Posición + Homing (v2) ──
+  float    posRev          = 0.0f;   // posición integrada de RPM (rev), signo + = hacia B
+  unsigned long lastPosTime = 0;     // t de la última integración (0 = sin base aún)
+  HomingPhase homePhase    = HOME_IDLE;
+  float    rangeRev        = 0.0f;   // recorrido A→B medido (rev)
+  float    homeOffsetRev   = 0.0f;   // offset deseado del home desde A (rev)
+  int16_t  homingSpeed     = 8;      // velocidad de búsqueda del homing (RPM, lenta)
+  bool     homeRangeValid  = false;  // true tras medir A→B con éxito
+  unsigned long homePhaseStart  = 0; // t de inicio del tramo actual (timeout)
+  unsigned long homeReportUntil = 0; // seguir reportando tras DONE/FAIL hasta este t
 };
 
 static ControlState ctrl;
 
-// ── Core1 Modbus Worker ───────────────────────────
-struct MBWorker {
-  volatile bool    active    = false;
-  volatile bool    busy      = false;
-  volatile uint8_t slaveID   = 0;
-  volatile int16_t speedCmd  = 0;
-  volatile bool    connected = false;
-  volatile uint8_t failCount = 0;
-  volatile int16_t motorRPM  = 0;
-  volatile int16_t motorTorqueX10 = 0;
-} mbw;
+// ── Servo bus context (single owner — touched only by servoReadState/servoAction) ──
+enum ServoPhase { SV_IDLE, SV_CONFIGURING, SV_RUNNING, SV_FAULT };
 
-static void stopCore1() {
-  mbw.active = false;
-  unsigned long t = millis();
-  while (mbw.busy && millis() - t < 100) delayMicroseconds(100);
-}
+struct Servo {
+  ServoPhase    phase       = SV_IDLE;
+  uint8_t       id          = SERVO_ID;   // Modbus address in use (set at Init)
+  bool          connected   = false;
+  uint8_t       failCount   = 0;
+  uint8_t       cfgRetries  = 0;
+  bool          reqShutdown = false;
+  int16_t       speedCmd    = 0;   // target speed ref (0 = stopped, still enabled)
+  int16_t       rpm         = 0;
+  int16_t       torqueX10   = 0;
+  uint8_t       rpmStatus   = 0;   // ModbusMaster return code of last RPM read (diag)
+  uint8_t       trqStatus   = 0;   // ModbusMaster return code of last torque read (diag)
+} sv;
 
-// ── Modbus ────────────────────────────────────────
+// ── Modbus (Serial485 is touched ONLY inside servoReadState / servoAction) ──
 static SerialPIO Serial485(MB_TX_GPIO, MB_RX_GPIO);
 ModbusMaster servo;
 
 void preTransmission()  { digitalWrite(MB_EN_GPIO, HIGH); }
-void postTransmission() { delayMicroseconds(200); digitalWrite(MB_EN_GPIO, LOW); }
+void postTransmission() { delayMicroseconds(200); digitalWrite(MB_EN_GPIO, LOW); }  // no flush() — it breaks SerialPIO RX turnaround
 
+// Core1 unused — single owner design, everything runs on Core0.
 void setup1() {}
-
-void loop1() {
-  if (!mbw.active || mbw.slaveID == 0) { delay(1); return; }
-  mbw.busy = true;
-  servo.begin(mbw.slaveID, Serial485);
-  Serial485.setTimeout(50);  // 50ms: margen para respuesta lenta del servo sin ciclos largos
-
-  uint8_t r = servo.writeSingleRegister(MB_REG_SPEED_REF, (uint16_t)mbw.speedCmd);
-  if (r == 0) {
-    mbw.failCount = 0;
-    mbw.connected = true;
-    static uint8_t monCnt = 0;
-    if (++monCnt >= 30) {
-      monCnt = 0;
-      if (servo.readHoldingRegisters(MB_REG_MON_RPM, 1) == 0)
-        mbw.motorRPM = (int16_t)servo.getResponseBuffer(0);
-      if (servo.readHoldingRegisters(MB_REG_MON_TORQUE, 1) == 0)
-        mbw.motorTorqueX10 = (int16_t)servo.getResponseBuffer(0);
-    }
-  } else {
-    if (++mbw.failCount >= 5) {
-      mbw.connected      = false;
-      mbw.motorRPM       = 0;
-      mbw.motorTorqueX10 = 0;
-    }
-  }
-  mbw.busy = false;
-}
+void loop1()  { delay(1000); }
 
 // ── CRC8 ─────────────────────────────────────────
 static uint8_t crc8(const uint8_t *data, uint8_t len) {
@@ -202,124 +217,190 @@ static uint8_t crc8(const uint8_t *data, uint8_t len) {
   return crc;
 }
 
-// ── Telemetría (19 bytes) ─────────────────────────
+// ── Telemetría por LOTES (header + N muestras) ────
+// Frame: [SYNC0][SYNC1][LEN][payload][CRC8]   (LEN = header 14 + N*12 ≤ 254)
+// ── Header (14 B) — datos comunes, una vez por lote ──
 //  0     packet_id
-//  1-4   t_ms
-//  5-6   bridge
+//  1-4   base_t_ms   (referencia de tiempo del lote)
+//  5-6   bridge      (LC crudo)
 //  7     lc_status
-//  8     flags (b0=lc_valid, b1=servo_conn, b2=lc_cfg)
-//  9-10  rpm (int16)
-//  11-12 torque_x10 (int16)
-//  13    state
-//  14    mode
-//  15-16 speed_cmd (int16)
-//  17-18 base_read (int16)
-static uint8_t txBuf[64];
+//  8     flags       (b0=lc_valid, b1=servo_conn, b2=lc_cfg)
+//  9     error
+//  10    servo_id
+//  11    rpm_status
+//  12    trq_status
+//  13    n_samples
+// ── Muestra (14 B) × n_samples — una por iteración de loop ──
+//  +0-1  dt_ms       (ms desde base_t — timestamp exacto del loop: millis())
+//  +2-3  rpm         (int16)
+//  +4-5  current_x10 (int16)
+//  +6-7  ref_cmd     (int16)
+//  +8-9  base_read   (int16)
+//  +10   io          (b0=limit_A, b1=limit_B)
+//  +11   state
+//  +12-13 work_us    (duración de trabajo del loop en µs, sin el pacing — rendimiento)
+#define MAX_SAMPLES 8      // LOOP_MS=50 → ~4-5 por ventana de 200 ms; margen a 8
+struct Sample {
+  uint16_t dt_ms;
+  int16_t  rpm, current, ref, base;
+  uint8_t  io, state;
+  uint16_t work_us;
+};
+static Sample   sampleBuf[MAX_SAMPLES];
+static uint8_t  sampleCount = 0;
+static uint32_t frameBaseT  = 0;
+static uint8_t  txBuf[14 + MAX_SAMPLES*14];
 
-void telemetrySend(uint32_t t, uint8_t modeFlag) {
-  const uint8_t payloadLen = 19;
+// Cache one loop iteration into the batch (no I/O). work = loop work time (µs, pre-pacing)
+void recordSample(uint32_t now, uint16_t work){
+  if(sampleCount>=MAX_SAMPLES) return;
+  if(sampleCount==0) frameBaseT = now;
+  Sample &s = sampleBuf[sampleCount++];
+  s.dt_ms   = (uint16_t)(now - frameBaseT);
+  s.rpm     = ctrl.motorRPM;
+  s.current = ctrl.motorTorqueX10;
+  s.ref     = ctrl.currentSpeedCmd;
+  s.base    = ctrl.baseRead;
+  s.io      = (digitalRead(PIN_LIMIT_A)==HIGH ? 0x01 : 0x00)
+            | (digitalRead(PIN_LIMIT_B)==HIGH ? 0x02 : 0x00);
+  s.state   = (uint8_t)ctrl.currentState;
+  s.work_us = work;
+}
+
+// Send the whole batch as one frame, then reset
+void telemetryFlush(){
+  if(sampleCount==0) return;
+  uint8_t flags = (ctrl.lastLCValid     ? 0x01 : 0x00)
+                | (ctrl.servoConnected  ? 0x02 : 0x00)
+                | (ctrl.lcConfigApplied ? 0x04 : 0x00);
   uint8_t *p = txBuf;
-
-  uint8_t flags;
-  if (ctrl.currentState == STATE_ERROR)
-    flags = ctrl.errorCode;
-  else
-    flags = (ctrl.lastLCValid     ? 0x01 : 0x00)
-          | (ctrl.servoConnected  ? 0x02 : 0x00)
-          | (ctrl.lcConfigApplied ? 0x04 : 0x00);
-
   *p++ = PACKET_ID;
-  *p++ = (t>> 0)&0xFF; *p++ = (t>> 8)&0xFF;
-  *p++ = (t>>16)&0xFF; *p++ = (t>>24)&0xFF;
+  *p++ = (frameBaseT>> 0)&0xFF; *p++ = (frameBaseT>> 8)&0xFF;
+  *p++ = (frameBaseT>>16)&0xFF; *p++ = (frameBaseT>>24)&0xFF;
   *p++ = (ctrl.lastBridge>>0)&0xFF; *p++ = (ctrl.lastBridge>>8)&0xFF;
   *p++ = ctrl.lastLCStatus;
   *p++ = flags;
-  *p++ = (ctrl.motorRPM>>0)&0xFF;      *p++ = (ctrl.motorRPM>>8)&0xFF;
-  *p++ = (ctrl.motorTorqueX10>>0)&0xFF; *p++ = (ctrl.motorTorqueX10>>8)&0xFF;
-  *p++ = (uint8_t)ctrl.currentState;
-  *p++ = modeFlag;
-  *p++ = (ctrl.currentSpeedCmd>>0)&0xFF; *p++ = (ctrl.currentSpeedCmd>>8)&0xFF;
-  *p++ = (ctrl.baseRead>>0)&0xFF;        *p++ = (ctrl.baseRead>>8)&0xFF;
-
-  uint8_t frame[3 + payloadLen + 1];
+  *p++ = ctrl.errorCode;
+  *p++ = sv.id;
+  *p++ = sv.rpmStatus;
+  *p++ = sv.trqStatus;
+  *p++ = sampleCount;
+  for(uint8_t i=0;i<sampleCount;i++){
+    Sample &s = sampleBuf[i];
+    *p++ = (s.dt_ms  >>0)&0xFF; *p++ = (s.dt_ms  >>8)&0xFF;
+    *p++ = (s.rpm    >>0)&0xFF; *p++ = (s.rpm    >>8)&0xFF;
+    *p++ = (s.current>>0)&0xFF; *p++ = (s.current>>8)&0xFF;
+    *p++ = (s.ref    >>0)&0xFF; *p++ = (s.ref    >>8)&0xFF;
+    *p++ = (s.base   >>0)&0xFF; *p++ = (s.base   >>8)&0xFF;
+    *p++ = s.io;
+    *p++ = s.state;
+    *p++ = (s.work_us>>0)&0xFF; *p++ = (s.work_us>>8)&0xFF;
+  }
+  uint8_t payloadLen = (uint8_t)(p - txBuf);   // 14 + n*14, ≤ 126 for MAX_SAMPLES=8
+  uint8_t frame[3 + sizeof(txBuf) + 1];
   frame[0]=SYNC_0; frame[1]=SYNC_1; frame[2]=payloadLen;
   memcpy(&frame[3], txBuf, payloadLen);
   frame[3+payloadLen] = crc8(txBuf, payloadLen);
-  Serial.write(frame, sizeof(frame));
+  Serial.write(frame, 3 + payloadLen + 1);
+  sampleCount = 0;
 }
 
-// ── Movimiento ────────────────────────────────────
-static void startMovement(int16_t speed) {
-  ctrl.currentSpeedCmd = speed;
-  mbw.speedCmd  = speed;
-  mbw.slaveID   = ctrl.servoID;
-  mbw.failCount = 0;
-  mbw.connected = true;
-  if (!mbw.active) mbw.active = true;
-}
-
-static void stopMovement() {
-  ctrl.currentSpeedCmd = 0;
-  mbw.speedCmd = 0;
+// ── Homing status frame (v2) — PACKET_ID_HOME ─────
+// Frame: [SYNC0][SYNC1][LEN=11][payload][CRC8]
+// payload (11 B):
+//  0     packet_id  (0x03)
+//  1-4   pos_mrev   (int32 LE)  posición actual × 1000 (mili-rev)
+//  5-8   range_mrev (int32 LE)  recorrido A→B × 1000 (mili-rev)
+//  9     home_phase (HomingPhase)
+//  10    flags      (b0 = range_valid)
+void telemetryFlushHome(){
+  int32_t pm = (int32_t)(ctrl.posRev   * 1000.0f);
+  int32_t rm = (int32_t)(ctrl.rangeRev * 1000.0f);
+  uint8_t payload[11];
+  payload[0] = PACKET_ID_HOME;
+  payload[1] = (pm>> 0)&0xFF; payload[2] = (pm>> 8)&0xFF;
+  payload[3] = (pm>>16)&0xFF; payload[4] = (pm>>24)&0xFF;
+  payload[5] = (rm>> 0)&0xFF; payload[6] = (rm>> 8)&0xFF;
+  payload[7] = (rm>>16)&0xFF; payload[8] = (rm>>24)&0xFF;
+  payload[9]  = (uint8_t)ctrl.homePhase;
+  payload[10] = ctrl.homeRangeValid ? 0x01 : 0x00;
+  uint8_t frame[3 + sizeof(payload) + 1];
+  frame[0]=SYNC_0; frame[1]=SYNC_1; frame[2]=(uint8_t)sizeof(payload);
+  memcpy(&frame[3], payload, sizeof(payload));
+  frame[3+sizeof(payload)] = crc8(payload, sizeof(payload));
+  Serial.write(frame, 3 + sizeof(payload) + 1);
 }
 
 // ── Comandos ─────────────────────────────────────
+// processCommand only updates state (sv/ctrl) — never touches the bus.
 static uint8_t rxBuf[64];
 static uint8_t rxPos = 0;
 static enum { RX_SYNC0, RX_SYNC1, RX_LEN, RX_PAYLOAD } rxState = RX_SYNC0;
 static uint8_t rxLen = 0;
+
+// Arranca la rutina de homing (requiere servo activo). Resetea posición y recorrido.
+static void startHoming(){
+  if(sv.phase != SV_RUNNING) return;      // el servo debe estar habilitado
+  ctrl.posRev         = 0.0f;
+  ctrl.lastPosTime    = 0;                 // rebase la integración
+  ctrl.rangeRev       = 0.0f;
+  ctrl.homeRangeValid = false;
+  ctrl.homePhase      = HOME_SEEK_A;
+  ctrl.homePhaseStart = millis();
+  ctrl.homeReportUntil = 0;
+  sv.speedCmd         = 0;
+}
+
+// Aborta el homing (sin tocar el bus). Deja el servo parado (habilitado).
+static void abortHoming(){
+  if(ctrl.homePhase==HOME_SEEK_A || ctrl.homePhase==HOME_SEEK_B || ctrl.homePhase==HOME_GOTO){
+    ctrl.homePhase = HOME_IDLE;
+    sv.speedCmd    = 0;
+  }
+}
 
 void processCommand(const uint8_t *payload, uint8_t len) {
   if (len < 1) return;
   switch (payload[0]) {
 
     case CMD_INIT:
-      if (ctrl.currentState == STATE_ERROR) break;
-      if (mbw.active) { stopCore1(); ctrl.currentSpeedCmd = 0; }
-      ctrl.scanID = 1; ctrl.servoID = 0;
-      ctrl.scanStartTime = millis(); ctrl.configureRetries = 0;
-      ctrl.currentState = STATE_SCANNING;
-      Serial.println("# CMD_INIT");
+      if (len >= 2 && payload[1] > 0 && payload[1] <= 247) sv.id = payload[1];  // address from Init
+      sv.cfgRetries = 0; sv.speedCmd = 0;
+      ctrl.errorCode = ERR_NONE;
+      ctrl.posRev = 0.0f; ctrl.lastPosTime = 0;   // v2: reset de posición al inicializar
+      ctrl.homePhase = HOME_IDLE;
+      sv.phase = SV_CONFIGURING;                   // known address → connect directly, no scan
       break;
 
     case CMD_STOP:
-      if (ctrl.currentState == STATE_MOVING_A || ctrl.currentState == STATE_MOVING_B) {
-        stopMovement();
-        ctrl.currentState = STATE_STOPPED;
-        Serial.println("# CMD_STOP");
-      } else if (ctrl.currentState == STATE_SCANNING || ctrl.currentState == STATE_CONFIGURING) {
-        if (mbw.active) stopCore1();
-        ctrl.currentState = STATE_IDLE;
-      }
+      abortHoming();                               // v2: STOP también aborta el homing
+      if (sv.phase == SV_RUNNING)          sv.speedCmd = 0;
+      else if (sv.phase == SV_CONFIGURING) sv.phase = SV_IDLE;
       break;
 
+    case CMD_SCAN: {                                // manual, blocking bus scan
+      uint8_t found = scanServo();
+      if (found) sv.id = found;
+      break;
+    }
+
     case CMD_MOVE_A:
-      if (ctrl.currentState == STATE_STOPPED || ctrl.currentState == STATE_MOVING_B) {
-        startMovement(-ctrl.moveSpeed);
-        ctrl.currentState = STATE_MOVING_A;
-        Serial.printf("# CMD_MOVE_A: %d RPM\n", -ctrl.moveSpeed);
-      }
+      if (ctrl.homePhase!=HOME_IDLE) break;         // v2: ignora movimiento manual durante homing
+      if (sv.phase == SV_RUNNING) sv.speedCmd = -ctrl.moveSpeed;
       break;
 
     case CMD_MOVE_B:
-      if (ctrl.currentState == STATE_STOPPED || ctrl.currentState == STATE_MOVING_A) {
-        startMovement(ctrl.moveSpeed);
-        ctrl.currentState = STATE_MOVING_B;
-        Serial.printf("# CMD_MOVE_B: +%d RPM\n", ctrl.moveSpeed);
-      }
+      if (ctrl.homePhase!=HOME_IDLE) break;         // v2: ignora movimiento manual durante homing
+      if (sv.phase == SV_RUNNING) sv.speedCmd =  ctrl.moveSpeed;
+      break;
+
+    case CMD_HOME:                                  // v2: lanza el homing
+      startHoming();
       break;
 
     case CMD_SHUTDOWN:
-      if (mbw.active) stopCore1();
-      ctrl.currentSpeedCmd = 0;
-      if (ctrl.servoID > 0) {
-        servo.begin(ctrl.servoID, Serial485);
-        servo.writeSingleRegister(MB_REG_SERVO_ENABLE, 0);
-      }
-      ctrl.servoConnected = false;
-      ctrl.motorRPM = 0; ctrl.motorTorqueX10 = 0;
-      ctrl.currentState = STATE_IDLE;
-      Serial.println("# CMD_SHUTDOWN");
+      abortHoming();
+      sv.reqShutdown = true;                        // servoAction() disables + goes idle
       break;
 
     case CMD_SET_PARAM:
@@ -329,34 +410,17 @@ void processCommand(const uint8_t *payload, uint8_t len) {
         switch (pid) {
           case PARAM_SPEED:
             ctrl.moveSpeed = (value > 0) ? value : -value;
-            if (ctrl.currentState == STATE_MOVING_A) { mbw.speedCmd = -ctrl.moveSpeed; ctrl.currentSpeedCmd = -ctrl.moveSpeed; }
-            if (ctrl.currentState == STATE_MOVING_B) { mbw.speedCmd =  ctrl.moveSpeed; ctrl.currentSpeedCmd =  ctrl.moveSpeed; }
-            Serial.printf("# PARAM_SPEED=%d RPM\n", ctrl.moveSpeed);
+            if (sv.phase == SV_RUNNING && sv.speedCmd < 0) sv.speedCmd = -ctrl.moveSpeed;
+            if (sv.phase == SV_RUNNING && sv.speedCmd > 0) sv.speedCmd =  ctrl.moveSpeed;
             break;
-          case PARAM_FORCE_LIMIT:
-            ctrl.forceLimit = (uint16_t)value;
-            Serial.printf("# PARAM_FORCE_LIMIT=%u\n", ctrl.forceLimit);
-            break;
-          case PARAM_ZERO_OFFSET:
-            ctrl.zeroOffset = value;
-            Serial.printf("# PARAM_ZERO_OFFSET=%d\n", value);
-            break;
-          case PARAM_ACCEL:
-            ctrl.accelRate = value;
-            Serial.printf("# PARAM_ACCEL=%d\n", value);
-            break;
-          case PARAM_DECEL:
-            ctrl.decelRate = value;
-            Serial.printf("# PARAM_DECEL=%d\n", value);
-            break;
-          case PARAM_STIFFNESS:
-            ctrl.stiffness = value;
-            Serial.printf("# PARAM_STIFFNESS=%d\n", value);
-            break;
-          case PARAM_FORCE_CALIB:
-            ctrl.forceCalib = value;
-            Serial.printf("# PARAM_FORCE_CALIB=%d cnt/N\n", value);
-            break;
+          case PARAM_FORCE_LIMIT:  ctrl.forceLimit = (uint16_t)value; break;
+          case PARAM_ZERO_OFFSET:  ctrl.zeroOffset  = value; break;
+          case PARAM_ACCEL:        ctrl.accelRate   = value; break;
+          case PARAM_DECEL:        ctrl.decelRate   = value; break;
+          case PARAM_STIFFNESS:    ctrl.stiffness   = value; break;
+          case PARAM_FORCE_CALIB:  ctrl.forceCalib  = value; break;
+          case PARAM_HOME_OFFSET:  ctrl.homeOffsetRev = (float)value / 100.0f; break;  // centi-rev → rev
+          case PARAM_HOMING_SPEED: ctrl.homingSpeed = (value > 0) ? value : -value; break;
         }
       }
       break;
@@ -370,6 +434,7 @@ void checkCommands() {
     if (b == 'a') { uint8_t p[]={CMD_MOVE_A};   processCommand(p,1); continue; }
     if (b == 'b') { uint8_t p[]={CMD_MOVE_B};   processCommand(p,1); continue; }
     if (b == 'x') { uint8_t p[]={CMD_STOP};     processCommand(p,1); continue; }
+    if (b == 'h') { uint8_t p[]={CMD_HOME};     processCommand(p,1); continue; }   // v2
     if (b == 'q') { uint8_t p[]={CMD_SHUTDOWN}; processCommand(p,1); continue; }
 
     switch (rxState) {
@@ -421,6 +486,28 @@ bool loadCellRead(uint16_t &br, uint8_t &st) {
   return false;
 }
 
+// LC read — non-blocking two-phase (I2C only; fully independent of the servo/RS485)
+void loadCellUpdate(){
+  if(!ctrl.loadCellOK) return;
+  unsigned long now=millis();
+  if(ctrl.lcPhase==LC_REQUEST){
+    loadCellMeasurementRequest();
+    ctrl.lcRequestTime=now; ctrl.lcPhase=LC_WAIT;
+  } else if(now-ctrl.lcRequestTime>=2){
+    uint16_t br; uint8_t st;
+    if(loadCellFetch(br,st)&&st==LC_STATUS_VALID){
+      ctrl.lastBridge=br;
+      ctrl.maSum-=ctrl.maBuf[ctrl.maIdx];
+      ctrl.maBuf[ctrl.maIdx]=br; ctrl.maSum+=br;
+      ctrl.maIdx=(ctrl.maIdx+1)%ctrl.MA_SIZE;
+      ctrl.lastBridgeFilt=(uint16_t)(ctrl.maSum/ctrl.MA_SIZE);
+      ctrl.baseRead=(int16_t)ctrl.lastBridgeFilt-ctrl.zeroOffset;
+      ctrl.lastLCStatus=st; ctrl.lastLCValid=true;
+      ctrl.lcPhase=LC_REQUEST;
+    }
+  }
+}
+
 #define LC_PREAMP_GAIN   0b111
 #define LC_A2D_OFFSET    0x08
 #define LC_GAIN_POLARITY 1
@@ -461,7 +548,7 @@ done:
   zscCmd(0x80,0); delay(15); return ok;
 }
 
-// ── Servo (Core0) ─────────────────────────────────
+// ── Servo (single owner: Core0) ───────────────────
 void servoInit(){
   pinMode(MB_EN_GPIO,OUTPUT); digitalWrite(MB_EN_GPIO,LOW);
   Serial485.begin(115200); Serial485.setTimeout(100);
@@ -469,219 +556,243 @@ void servoInit(){
   servo.postTransmission(postTransmission);
 }
 
-bool servoScanStep(){
-  servo.begin(ctrl.scanID,Serial485);
-  if(servo.readHoldingRegisters(MB_REG_CONTROL_MODE,1)==servo.ku8MBSuccess){
-    ctrl.servoID=ctrl.scanID; return true;
-  }
-  if(++ctrl.scanID>247) ctrl.scanID=1; return false;
-}
-
-static uint8_t servoWriteReg(uint16_t reg,uint16_t val,const char *name){
-  uint8_t r=servo.writeSingleRegister(reg,val);
-  if(r) Serial.printf("# FAIL %s err=0x%02X\n",name,r);
-  else  Serial.printf("# OK   %s=%u\n",name,val);
+static uint8_t servoWriteReg(uint16_t reg,uint16_t val){
+  uint8_t r = servo.writeSingleRegister(reg,val);
+  delayMicroseconds(700);   // RTU inter-frame silence before the next config write
   return r;
 }
 
 bool servoConfigure(uint8_t id){
-  servo.begin(id,Serial485);
-  Serial.printf("# servoConfigure ID=%u\n",id);
+  servo.begin(id,Serial485); Serial485.setTimeout(50);
   servo.writeSingleRegister(MB_REG_SERVO_ENABLE,0); delay(50);
 
-  if(servoWriteReg(MB_REG_CONTROL_MODE, 1,                  "ctrl_mode")!=0) return false;
-  if(servoWriteReg(MB_REG_SPEED_REF,    0,                  "speed_ref")!=0) return false;
-  servoWriteReg(MB_C00_05,  ctrl.stiffness,                  "stiffness");
-  servoWriteReg(MB_C03_22,  ctrl.accelRate,                  "accel");
-  servoWriteReg(MB_C03_24,  ctrl.decelRate,                  "decel");
-  servoWriteReg(MB_REG_BRAKE_RES_SEL,  BRAKE_RES_SEL_VAL,   "brk_sel");
-  servoWriteReg(MB_REG_BRAKE_RES_POW,  BRAKE_RES_POW_VAL,   "brk_pow");
-  servoWriteReg(MB_REG_BRAKE_RES_OHM,  BRAKE_RES_OHM_VAL,   "brk_ohm");
-  servoWriteReg(MB_REG_BRAKE_RES_DISS, BRAKE_RES_DISS_VAL,  "brk_diss");
-  if(servoWriteReg(MB_REG_SERVO_ENABLE, 1,                  "servo_on" )!=0) return false;
+  if(servoWriteReg(MB_REG_CONTROL_MODE, 1)!=0) return false;
+  if(servoWriteReg(MB_REG_SPEED_REF,    0)!=0) return false;
+  servoWriteReg(MB_C00_05,  ctrl.stiffness);
+  servoWriteReg(MB_C03_22,  ctrl.accelRate);
+  servoWriteReg(MB_C03_24,  ctrl.decelRate);
+  servoWriteReg(MB_REG_BRAKE_RES_SEL,  BRAKE_RES_SEL_VAL);
+  servoWriteReg(MB_REG_BRAKE_RES_POW,  BRAKE_RES_POW_VAL);
+  servoWriteReg(MB_REG_BRAKE_RES_OHM,  BRAKE_RES_OHM_VAL);
+  servoWriteReg(MB_REG_BRAKE_RES_DISS, BRAKE_RES_DISS_VAL);
+  if(servoWriteReg(MB_REG_SERVO_ENABLE, 1)!=0) return false;
 
-  Serial.printf("# servoConfigure OK (stiffness=%d)\n", ctrl.stiffness);
   return true;
+}
+
+// Standalone bus scan (blocking, NOT part of the control loop). Returns id or 0.
+// Slow: ModbusMaster's response timeout (~1 s) applies per empty address.
+uint8_t scanServo(){
+  for(uint8_t id=1; id<=247; id++){
+    servo.begin(id,Serial485);
+    if(servo.readHoldingRegisters(MB_REG_CONTROL_MODE,1)==servo.ku8MBSuccess) return id;
+  }
+  return 0;
+}
+
+// ═══ The ONLY two functions that touch the RS485 bus in the loop ═══
+
+// READ — pull RPM/torque every loop (loop rate is capped by LOOP_MS)
+void servoReadState(){
+  if(sv.phase!=SV_RUNNING || !sv.connected) return;   // don't read a dead bus
+  servo.begin(sv.id,Serial485);
+  sv.rpmStatus=servo.readHoldingRegisters(MB_REG_MON_RPM,1);
+  if(sv.rpmStatus==servo.ku8MBSuccess) sv.rpm=(int16_t)servo.getResponseBuffer(0);
+  delayMicroseconds(700);   // Modbus RTU inter-frame silence (>3.5 char @115200) before next frame
+  sv.trqStatus=servo.readHoldingRegisters(MB_REG_MON_TORQUE,1);
+  if(sv.trqStatus==servo.ku8MBSuccess) sv.torqueX10=(int16_t)servo.getResponseBuffer(0);
+}
+
+// ACT — servo state machine + all writes (one call, end of loop). Known address, no scan.
+void servoAction(){
+  if(sv.reqShutdown){
+    sv.reqShutdown=false;
+    if(sv.id){ servo.begin(sv.id,Serial485);
+               servo.writeSingleRegister(MB_REG_SERVO_ENABLE,0); }
+    sv.connected=false; sv.rpm=0; sv.torqueX10=0; sv.speedCmd=0;
+    sv.phase=SV_IDLE;
+    return;
+  }
+
+  switch(sv.phase){
+    case SV_IDLE:
+    case SV_FAULT:
+      break;
+
+    case SV_CONFIGURING:                     // connect directly to sv.id (set at Init)
+      if(servoConfigure(sv.id)){
+        sv.connected=true; sv.failCount=0; sv.cfgRetries=0;
+        sv.rpm=0; sv.torqueX10=0; sv.speedCmd=0;
+        ctrl.errorCode=ERR_NONE; sv.phase=SV_RUNNING;
+      } else if(++sv.cfgRetries>=3){
+        ctrl.errorCode=ERR_SERVO_CONFIG_FAIL; sv.phase=SV_FAULT;
+      }
+      break;
+
+    case SV_RUNNING:                         // one write/loop; retries same id, never scans
+      servo.begin(sv.id,Serial485);
+      if(servo.writeSingleRegister(MB_REG_SPEED_REF,(uint16_t)sv.speedCmd)==servo.ku8MBSuccess){
+        sv.failCount=0; sv.connected=true;
+      } else {
+        sv.connected=false; sv.rpm=0; sv.torqueX10=0;
+        if(sv.failCount<255) sv.failCount++;
+      }
+      break;
+  }
+}
+
+// ── Posición (v2) — integra RPM → rev, sin tocar buses ──
+// Signo: + hacia B (mismo signo que la referencia de velocidad).
+void positionUpdate(){
+  unsigned long now = millis();
+  if(ctrl.lastPosTime == 0){ ctrl.lastPosTime = now; return; }  // primera muestra: fija base
+  unsigned long dt = now - ctrl.lastPosTime;
+  ctrl.lastPosTime = now;
+  // rev = rpm(rev/min) · dt(ms) / 60000
+  ctrl.posRev += (float)sv.rpm * (float)dt / 60000.0f;
+}
+
+// ── Homing (v2) — máquina de estados, sólo fija sv.speedCmd ──
+// Busca A (datum→0) → busca B (mide recorrido) → va al offset → fija HOME=0.
+void homingUpdate(){
+  if(ctrl.homePhase==HOME_IDLE || ctrl.homePhase==HOME_DONE || ctrl.homePhase==HOME_FAIL) return;
+
+  unsigned long now = millis();
+
+  // el homing exige servo habilitado; si no, aborta
+  if(sv.phase != SV_RUNNING){
+    ctrl.homePhase = HOME_FAIL; sv.speedCmd = 0;
+    ctrl.homeReportUntil = now + HOMING_REPORT_MS; return;
+  }
+  // timeout de seguridad por tramo
+  if(now - ctrl.homePhaseStart > HOMING_TIMEOUT_MS){
+    ctrl.homePhase = HOME_FAIL; sv.speedCmd = 0;
+    ctrl.homeReportUntil = now + HOMING_REPORT_MS; return;
+  }
+
+  bool limA = (digitalRead(PIN_LIMIT_A)==HIGH);
+  bool limB = (digitalRead(PIN_LIMIT_B)==HIGH);
+
+  switch(ctrl.homePhase){
+    case HOME_SEEK_A:
+      if(limA){                          // datum A encontrado
+        sv.speedCmd = 0;
+        ctrl.posRev = 0.0f;              // A = cero de referencia
+        ctrl.homePhase = HOME_SEEK_B;
+        ctrl.homePhaseStart = now;
+      } else {
+        sv.speedCmd = -ctrl.homingSpeed; // avanza hacia A
+      }
+      break;
+
+    case HOME_SEEK_B:
+      if(limB){                          // final B encontrado
+        sv.speedCmd = 0;
+        ctrl.rangeRev = ctrl.posRev;     // recorrido disponible A→B
+        ctrl.homeRangeValid = true;
+        ctrl.homePhase = HOME_GOTO;
+        ctrl.homePhaseStart = now;
+      } else {
+        sv.speedCmd = +ctrl.homingSpeed; // avanza hacia B
+      }
+      break;
+
+    case HOME_GOTO: {                     // ir al offset deseado desde A
+      float target = ctrl.homeOffsetRev;
+      if(target < 0.0f)          target = 0.0f;
+      if(target > ctrl.rangeRev) target = ctrl.rangeRev;   // acotado al recorrido medido
+      float err = target - ctrl.posRev;
+      bool arrived = (err <= HOMING_TOL_REV && err >= -HOMING_TOL_REV)
+                  || (err > 0 && limB)                     // tope físico en el sentido de marcha
+                  || (err < 0 && limA);
+      if(arrived){
+        sv.speedCmd = 0;
+        ctrl.posRev = 0.0f;              // este punto queda como HOME (0)
+        ctrl.homePhase = HOME_DONE;
+        ctrl.homeReportUntil = now + HOMING_REPORT_MS;
+      } else {
+        sv.speedCmd = (err > 0) ? +ctrl.homingSpeed : -ctrl.homingSpeed;
+      }
+      break;
+    }
+
+    default: break;
+  }
 }
 
 // ── Setup / Loop (Core0) ──────────────────────────
 void setup(){
+  // ── Load cell FIRST — the ZSC31014 command-mode (gain) window is only a few ms
+  //    after power-up, so enter it before anything that delays boot (esp. the Serial wait).
+  pinMode(1,OUTPUT); digitalWrite(1,HIGH); delay(50);   // LC power/enable
+  I2C1Bus.begin(); I2C1Bus.setClock(LC_I2C_FREQ);
+  ctrl.lcConfigApplied = loadCellConfigureEEPROM();      // Start_CM + write gain
+  ctrl.loadCellOK      = loadCellInit();
+
+  // ── Everything else ──
   Serial.begin(115200);
   { unsigned long t0=millis(); while(!Serial&&millis()-t0<3000) delay(10); }
-  Serial.println("# Firmware Posicion A→B — Pico 2");
-  Serial.println("# i=init  b=mover_B  a=mover_A  x=stop  q=shutdown");
-
   pinMode(PIN_LIMIT_A, INPUT_PULLUP);
   pinMode(PIN_LIMIT_B, INPUT_PULLUP);
-  pinMode(1,OUTPUT); digitalWrite(1,HIGH); delay(50);
-  I2C1Bus.begin(); I2C1Bus.setClock(LC_I2C_FREQ);
-
-  ctrl.lcConfigApplied = loadCellConfigureEEPROM();
-  ctrl.loadCellOK = loadCellInit();
-  Serial.printf("# LC: %s\n", ctrl.loadCellOK?"OK":"NOT FOUND");
-
-  if(!ctrl.loadCellOK){
-    ctrl.errorCode=ERR_LC_NOT_FOUND;
-    ctrl.currentState=STATE_ERROR;
-    Serial.flush(); delay(50); return;
-  }
-  servoInit();
+  servoInit();                 // RS485 — servo runs even if the LC is absent
   Serial.flush(); delay(50);
 }
 
 void loop(){
-  // Finales de carrera — solo activo si el pin lee LOW en reposo (switch NC conectado a GND)
-  // Sin switch conectado el pin lee HIGH por pull-up → false trigger. Solo habilitar con hardware.
-  static bool limitReady = false;
-  if(!limitReady){
-    // Espera a que ambos pines lean LOW al menos una vez (switch NC conectado a GND)
-    if(digitalRead(PIN_LIMIT_A)==LOW && digitalRead(PIN_LIMIT_B)==LOW) limitReady=true;
-  }
-  if(limitReady){
-    if(digitalRead(PIN_LIMIT_A)==HIGH && ctrl.currentState==STATE_MOVING_A){
-      stopMovement(); ctrl.currentState=STATE_STOPPED;
-      Serial.println("# LIMIT_A");
-    }
-    if(digitalRead(PIN_LIMIT_B)==HIGH && ctrl.currentState==STATE_MOVING_B){
-      stopMovement(); ctrl.currentState=STATE_STOPPED;
-      Serial.println("# LIMIT_B");
-    }
-  }
-
   unsigned long now=millis();
-  checkCommands();
+  uint32_t      t0us=micros();   // loop-work start (for per-sample performance)
 
-  uint8_t modeFlag=MODE_STOPPED;
-  if(ctrl.currentState==STATE_MOVING_A) modeFlag=MODE_MOVING_A;
-  if(ctrl.currentState==STATE_MOVING_B) modeFlag=MODE_MOVING_B;
+  // ══ READ — independent subsystem reads ═══════════
+  servoReadState();      // servo  (RS485)
+  loadCellUpdate();      // load cell (I2C) — fully independent
+  positionUpdate();      // v2: integra RPM → posición (pura, sin buses)
 
-  switch(ctrl.currentState){
+  // ══ LOGIC — no bus access, pure state ════════════
+  checkCommands();                         // parse USB commands → sv/ctrl
+  homingUpdate();                          // v2: máquina de homing → fija sv.speedCmd
 
-    case STATE_IDLE:
-      if(now-ctrl.lastTelemetryTime>=200){
-        uint16_t br; uint8_t st;
-        if(ctrl.loadCellOK&&loadCellRead(br,st)){
-          ctrl.lastBridge=br; ctrl.lastLCStatus=st;
-          ctrl.lastLCValid=(st==LC_STATUS_VALID);
-          ctrl.baseRead=(int16_t)br-ctrl.zeroOffset;
-        }
-        telemetrySend(now,MODE_STOPPED);
-        ctrl.lastTelemetryTime=now;
-      }
-      break;
-
-    case STATE_SCANNING:
-      if(now-ctrl.scanStartTime>10000){
-        ctrl.errorCode=ERR_SERVO_SCAN_FAIL;
-        ctrl.currentState=STATE_ERROR;
-        break;
-      }
-      if(now-ctrl.lastActionTime>=15){
-        if(servoScanStep()) ctrl.currentState=STATE_CONFIGURING;
-        ctrl.lastActionTime=now;
-      }
-      if(now-ctrl.lastTelemetryTime>=200){
-        uint16_t br; uint8_t st;
-        if(ctrl.loadCellOK&&loadCellRead(br,st)){
-          ctrl.lastBridge=br; ctrl.lastLCStatus=st;
-          ctrl.lastLCValid=(st==LC_STATUS_VALID);
-          ctrl.baseRead=(int16_t)br-ctrl.zeroOffset;
-        }
-        telemetrySend(now,MODE_STOPPED);
-        ctrl.lastTelemetryTime=now;
-      }
-      break;
-
-    case STATE_CONFIGURING:
-      if(servoConfigure(ctrl.servoID)){
-        ctrl.configureRetries=0;
-        ctrl.errorCode=ERR_NONE;
-        ctrl.servoConnected=true;
-        ctrl.currentSpeedCmd=0;
-        mbw.slaveID=ctrl.servoID;
-        mbw.speedCmd=0;
-        mbw.failCount=0;
-        mbw.connected=true;
-        mbw.motorRPM=0;
-        mbw.motorTorqueX10=0;
-        mbw.active=true;
-        ctrl.lcPhase=LC_REQUEST;
-        ctrl.currentState=STATE_STOPPED;
-      } else {
-        if(++ctrl.configureRetries>=3){
-          ctrl.errorCode=ERR_SERVO_CONFIG_FAIL;
-          ctrl.currentState=STATE_ERROR;
-        } else {
-          ctrl.scanID=ctrl.servoID; ctrl.servoID=0;
-          ctrl.scanStartTime=millis();
-          ctrl.currentState=STATE_SCANNING;
-        }
-      }
-      break;
-
-    case STATE_STOPPED:
-    case STATE_MOVING_A:
-    case STATE_MOVING_B:
-      {
-        if(ctrl.loadCellOK){
-          if(ctrl.lcPhase==LC_REQUEST){
-            loadCellMeasurementRequest();
-            ctrl.lcRequestTime=now;
-            ctrl.lcPhase=LC_WAIT;
-          } else if(now-ctrl.lcRequestTime>=2){
-            uint16_t br; uint8_t st;
-            if(loadCellFetch(br,st)&&st==LC_STATUS_VALID){
-              ctrl.lastBridge=br;
-              ctrl.maSum-=ctrl.maBuf[ctrl.maIdx];
-              ctrl.maBuf[ctrl.maIdx]=br;
-              ctrl.maSum+=br;
-              ctrl.maIdx=(ctrl.maIdx+1)%ctrl.MA_SIZE;
-              ctrl.lastBridgeFilt=(uint16_t)(ctrl.maSum/ctrl.MA_SIZE);
-              ctrl.baseRead=(int16_t)ctrl.lastBridgeFilt-ctrl.zeroOffset;
-              ctrl.lastLCStatus=st;
-              ctrl.lastLCValid=true;
-              ctrl.lcPhase=LC_REQUEST;
-            }
-          }
-        }
-
-        ctrl.motorRPM      =mbw.motorRPM;
-        ctrl.motorTorqueX10=mbw.motorTorqueX10;
-        ctrl.servoConnected=mbw.connected;
-
-        if(ctrl.forceLimit>0&&ctrl.lastLCValid){
-          int16_t af=(ctrl.baseRead<0)?-ctrl.baseRead:ctrl.baseRead;
-          if((uint16_t)af>ctrl.forceLimit&&
-             (ctrl.currentState==STATE_MOVING_A||ctrl.currentState==STATE_MOVING_B)){
-            stopMovement();
-            ctrl.currentState=STATE_STOPPED;
-            Serial.printf("# FORCE LIMIT |%d|>%u\n",ctrl.baseRead,ctrl.forceLimit);
-          }
-        }
-
-        if(!mbw.connected&&mbw.failCount>=5){
-          stopCore1();
-          ctrl.servoConnected=false; ctrl.motorRPM=0; ctrl.motorTorqueX10=0;
-          ctrl.currentSpeedCmd=0;
-          ctrl.scanID=ctrl.servoID; ctrl.servoID=0;
-          ctrl.scanStartTime=millis(); ctrl.configureRetries=0;
-          Serial485.setTimeout(100);
-          ctrl.currentState=STATE_SCANNING;
-          break;
-        }
-
-        if(now-ctrl.lastTelemetryTime>=50){   // 50ms = 20Hz (antes 200ms)
-          telemetrySend(now,modeFlag);
-          ctrl.lastTelemetryTime=now;
-        }
-      }
-      break;
-
-    case STATE_ERROR:
-      if(now-ctrl.lastTelemetryTime>=1000){
-        telemetrySend(now,MODE_STOPPED);
-        ctrl.lastTelemetryTime=now;
-      }
-      break;
+  // v2: cierra la ventana de reporte tras DONE/FAIL
+  if((ctrl.homePhase==HOME_DONE || ctrl.homePhase==HOME_FAIL)
+     && ctrl.homeReportUntil && now > ctrl.homeReportUntil){
+    ctrl.homePhase = HOME_IDLE;
   }
+
+  // safety: force limit + endstops → zero the speed target (backstop, también en homing)
+  if(ctrl.forceLimit>0 && ctrl.lastLCValid && sv.phase==SV_RUNNING && sv.speedCmd!=0){
+    int16_t af=(ctrl.baseRead<0)?-ctrl.baseRead:ctrl.baseRead;
+    if((uint16_t)af>ctrl.forceLimit) sv.speedCmd=0;
+  }
+  if(digitalRead(PIN_LIMIT_A)==HIGH && sv.speedCmd<0) sv.speedCmd=0;  // running into A
+  if(digitalRead(PIN_LIMIT_B)==HIGH && sv.speedCmd>0) sv.speedCmd=0;  // running into B
+
+  // publish servo values + derive app state for telemetry
+  ctrl.motorRPM=sv.rpm; ctrl.motorTorqueX10=sv.torqueX10;
+  ctrl.servoConnected=sv.connected; ctrl.currentSpeedCmd=sv.speedCmd;
+  switch(sv.phase){                          // app state follows the servo (LC is independent)
+    case SV_IDLE:        ctrl.currentState=STATE_IDLE;        break;
+    case SV_CONFIGURING: ctrl.currentState=STATE_CONFIGURING; break;
+    case SV_RUNNING:     ctrl.currentState=(sv.speedCmd<0)?STATE_MOVING_A
+                                          :(sv.speedCmd>0)?STATE_MOVING_B:STATE_STOPPED; break;
+    case SV_FAULT:       ctrl.currentState=STATE_ERROR;       break;
+  }
+  // v2: durante el homing el estado manda
+  if(ctrl.homePhase==HOME_SEEK_A || ctrl.homePhase==HOME_SEEK_B || ctrl.homePhase==HOME_GOTO)
+    ctrl.currentState = STATE_HOMING;
+
+  // ══ ACT — one call, servo state machine + all writes ══
+  servoAction();
+
+  // ══ record this loop (with its work time), flush the whole batch every 200 ms (or if full) ══
+  uint32_t workUs = micros() - t0us;
+  recordSample(now, workUs > 65535 ? 65535 : (uint16_t)workUs);
+  uint32_t period=(ctrl.currentState==STATE_ERROR)?1000:TELEMETRY_MS;
+  if(sampleCount>=MAX_SAMPLES || now-ctrl.lastTelemetryTime>=period){
+    telemetryFlush();
+    if(ctrl.homePhase!=HOME_IDLE) telemetryFlushHome();   // v2: estado de homing sólo si está activo
+    ctrl.lastTelemetryTime=now;
+  }
+
+  // ══ pace the loop to a fixed period (caps read/bus rate) ══
+  unsigned long dt=millis()-now;
+  if(dt<LOOP_MS) delay(LOOP_MS-dt);
 }

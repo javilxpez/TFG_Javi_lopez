@@ -11,6 +11,7 @@ Controls:
     r  Reset position counter
     b  Move B  (+speed)
     a  Move A  (-speed)
+    h  Home (busca A y B, mide recorrido, fija home en el offset)
     x/s  Stop
     q  Shutdown + quit
 """
@@ -23,7 +24,7 @@ SYNC = bytes([0xAA, 0x55])
 # Batched frame: header (14 B) + N × sample (12 B)
 HEADER_FMT  = "<BIHBBBBBBB"   # id, base_t, bridge, lc_status, flags, error, servo_id, rpm_st, trq_st, n
 HEADER_SIZE = struct.calcsize(HEADER_FMT)
-SAMPLE_FMT  = "<HhhhhBB"      # dt_ms, rpm, current_x10, ref_cmd, base_read, io, state
+SAMPLE_FMT  = "<HhhhhBBH"     # dt_ms, rpm, current_x10, ref_cmd, base_read, io, state, work_us
 SAMPLE_SIZE = struct.calcsize(SAMPLE_FMT)
 
 MOVE_SPEED = 10  # RPM default
@@ -34,20 +35,32 @@ CMD_SET_PARAM = 0x03
 CMD_MOVE_A    = 0x04
 CMD_MOVE_B    = 0x05
 CMD_SHUTDOWN  = 0x06
+CMD_HOME      = 0x08   # v2: rutina de homing
 
-PARAM_SPEED       = 0x01
-PARAM_FORCE_LIMIT = 0x02
-PARAM_ZERO_OFFSET = 0x03
-PARAM_ACCEL       = 0x04
-PARAM_DECEL       = 0x05
-PARAM_STIFFNESS   = 0x06
-PARAM_FORCE_CALIB = 0x07
+PARAM_SPEED        = 0x01
+PARAM_FORCE_LIMIT  = 0x02
+PARAM_ZERO_OFFSET  = 0x03
+PARAM_ACCEL        = 0x04
+PARAM_DECEL        = 0x05
+PARAM_STIFFNESS    = 0x06
+PARAM_FORCE_CALIB  = 0x07
+PARAM_HOME_OFFSET  = 0x08   # v2: offset del home desde A, en centi-rev (0.01 rev)
+PARAM_HOMING_SPEED = 0x09   # v2: velocidad de búsqueda del homing (RPM)
+
+# v2: frame propio de estado de homing
+PACKET_ID_HOME = 0x03
+HOME_FMT  = "<BiiBB"   # id, pos_mrev, range_mrev, phase, flags
+HOME_SIZE = struct.calcsize(HOME_FMT)
 
 STATE_NAMES = {
     0: "IDLE", 1: "SCANNING", 2: "CONFIGURING",
-    3: "STOPPED", 4: "MOVING_A", 5: "MOVING_B", 6: "ERROR",
+    3: "STOPPED", 4: "MOVING_A", 5: "MOVING_B", 6: "ERROR", 7: "HOMING",
 }
 MODE_NAMES = {0: "PARADO", 1: "MOV_A", 2: "MOV_B"}
+HOME_PHASE_NAMES = {
+    0: "---", 1: "BUSCANDO A", 2: "BUSCANDO B",
+    3: "YENDO A HOME", 4: "COMPLETADO", 5: "FALLO",
+}
 
 CURSOR_HOME = "\033[H"; CLEAR_DOWN = "\033[J"
 BOLD = "\033[1m"; DIM = "\033[2m"
@@ -80,6 +93,7 @@ def send_stop(ser):     ser.write(build_packet(bytes([CMD_STOP])))
 def send_move_a(ser):   ser.write(build_packet(bytes([CMD_MOVE_A])))
 def send_move_b(ser):   ser.write(build_packet(bytes([CMD_MOVE_B])))
 def send_shutdown(ser): ser.write(build_packet(bytes([CMD_SHUTDOWN])))
+def send_home(ser):     ser.write(build_packet(bytes([CMD_HOME])))   # v2
 
 def send_param(ser, pid, value):
     ser.write(build_packet(bytes([CMD_SET_PARAM, pid]) + struct.pack("<h", value)))
@@ -111,6 +125,14 @@ def read_packet(ser) -> bytes | None:
     return payload
 
 
+def decode_home(payload: bytes) -> dict | None:
+    # v2: frame de estado de homing (PACKET_ID_HOME)
+    if len(payload) < HOME_SIZE or payload[0] != PACKET_ID_HOME: return None
+    _pid, pos_mrev, range_mrev, phase, flags = struct.unpack(HOME_FMT, payload[:HOME_SIZE])
+    return {"home_pos_rev": pos_mrev / 1000.0, "home_range_rev": range_mrev / 1000.0,
+            "home_phase": phase, "home_range_valid": bool(flags & 0x01)}
+
+
 def decode_packet(payload: bytes) -> dict | None:
     # Batched frame → return the LAST sample as a flat dict (terminal shows current state)
     if len(payload) < HEADER_SIZE or payload[0] != 0x02: return None
@@ -119,8 +141,8 @@ def decode_packet(payload: bytes) -> dict | None:
     if n == 0: return None
     off = HEADER_SIZE + (n - 1) * SAMPLE_SIZE
     if off + SAMPLE_SIZE > len(payload): return None
-    dt, rpm, cur, ref, base, io, state = struct.unpack(SAMPLE_FMT, payload[off:off + SAMPLE_SIZE])
-    return {"packet_id": _pid, "t_ms": (base_t + dt) & 0xFFFFFFFF, "bridge": bridge,
+    dt, rpm, cur, ref, base, io, state, work_us = struct.unpack(SAMPLE_FMT, payload[off:off + SAMPLE_SIZE])
+    return {"packet_id": _pid, "t_ms": (base_t + dt) & 0xFFFFFFFF, "work_us": work_us, "bridge": bridge,
             "lc_status": lc_status, "lc_flags": lc_flags, "rpm": rpm, "current_x10": cur,
             "servo_state": state, "mode": 1 if state == 4 else 2 if state == 5 else 0,
             "ref_cmd": ref, "base_read": base, "io": io, "error": error,
@@ -150,6 +172,9 @@ def render(data: dict, meta: dict):
 
     fc = meta.get("force_calib", 0)
     pos_rev = meta.get("pos_rev", 0.0)
+    home_phase = meta.get("home_phase", 0)
+    home_range = meta.get("home_range_rev", 0.0)
+    home_valid = meta.get("home_range_valid", False)
 
     lines = []
     lines.append(f"{BOLD}{'═'*58}")
@@ -177,7 +202,13 @@ def render(data: dict, meta: dict):
     lines.append(f"  Cmd velocidad│  {ref_cmd:>6d} RPM")
     lines.append(f"  Posición     │  {pos_rev:>8.4f} rev")
     lines.append("─"*58)
-    lines.append(f"{DIM}  [i] Init  [b] Mov_B  [a] Mov_A  [x] Stop  [r] ResetPos  [q] Salir{RESET}")
+    hp_s = HOME_PHASE_NAMES.get(home_phase, "???")
+    hpc = {0:DIM,1:YELLOW,2:YELLOW,3:CYAN,4:GREEN,5:RED}.get(home_phase, RESET)
+    lines.append(f"  Homing       │  {hpc}{hp_s}{RESET}")
+    rng_s = f"{home_range:>8.4f} rev" if home_valid else f"{DIM}sin medir{RESET}"
+    lines.append(f"  Recorrido A→B│  {rng_s}")
+    lines.append("─"*58)
+    lines.append(f"{DIM}  [i] Init  [b] Mov_B  [a] Mov_A  [h] Home  [x] Stop  [r] ResetPos  [q] Salir{RESET}")
 
     sys.stdout.write(CURSOR_HOME + "\033[K\n".join(lines) + "\033[K" + CLEAR_DOWN + "\n")
     sys.stdout.flush()
@@ -208,6 +239,8 @@ def input_thread(ser, running, meta):
                 send_move_b(ser)
             elif ch == "a":
                 send_move_a(ser)
+            elif ch in ("h","H"):
+                send_home(ser)
             elif ch in ("x","s","X","S"):
                 send_stop(ser)
             elif ch in ("q","Q"):
@@ -276,6 +309,14 @@ def main():
                 continue
             if payload == b"CRC_ERR":
                 meta["crc_err"] += 1
+                continue
+
+            if payload and payload[0] == PACKET_ID_HOME:      # v2: estado de homing
+                hp = decode_home(payload)
+                if hp is not None:
+                    meta.update(hp)
+                    meta["pos_rev"] = hp["home_pos_rev"]        # firmware manda la posición durante el homing
+                    if last_data: render(last_data, meta)
                 continue
 
             data = decode_packet(payload)

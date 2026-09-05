@@ -100,6 +100,7 @@
     button.b-stop   { border-color: var(--red);    color: var(--red); }
     button.b-a      { border-color: var(--cyan);   color: var(--cyan); }
     button.b-b      { border-color: var(--cyan);   color: var(--cyan); }
+    button.b-home   { border-color: var(--purple); color: var(--purple); }
     button.b-reset  { border-color: var(--muted);  color: var(--muted); }
     button.b-shut   { border-color: var(--yellow); color: var(--yellow); }
 
@@ -208,6 +209,8 @@
           <div class="limit" id="limit-a"><span class="led"></span><span class="lbl">A</span></div>
           <div class="limit" id="limit-b"><span class="led"></span><span class="lbl">B</span></div>
         </div>
+        <div class="sub" style="margin-top:8px">Homing: <span id="v-home-phase" class="dim">—</span></div>
+        <div class="sub">Recorrido A→B: <span id="v-home-range" class="dim">sin medir</span></div>
       </div>
     </div>
     <!-- Fuerza destacada -->
@@ -257,6 +260,7 @@
       <button class="b-init" onclick="sendInit()">⟳ Init</button>
       <button class="b-a"    onclick="cmd('move_a')">◄ Mov A</button>
       <button class="b-b"    onclick="cmd('move_b')">Mov B ►</button>
+      <button class="b-home" onclick="cmd('home')">⌂ Home</button>
       <button class="b-stop" onclick="cmd('stop')">■ Stop</button>
       <button class="b-reset" onclick="cmd('reset_pos')">↺ Reset pos</button>
       <button class="b-shut"  onclick="cmd('shutdown')">⏻ Shutdown</button>
@@ -276,6 +280,16 @@
         <label>Offset cero</label>
         <input type="number" id="p-zero" value="8210">
         <button class="btn-apply" onclick="applyParam(3,'p-zero')">✓</button>
+      </div>
+      <div class="param">
+        <label>Home offset (rev)</label>
+        <input type="number" id="p-home-offset" value="0" step="0.01" title="Posición del home desde el final A, en revoluciones">
+        <button class="btn-apply" onclick="applyHomeOffset()">✓</button>
+      </div>
+      <div class="param">
+        <label>Vel. homing (RPM)</label>
+        <input type="number" id="p-home-speed" value="8" min="1" max="100">
+        <button class="btn-apply" onclick="applyParam(9,'p-home-speed')">✓</button>
       </div>
     </div>
   </div>
@@ -317,9 +331,12 @@ const tickStyle = { color: '#8b949e', font: { size: 10, family: 'Courier New' } 
 const DIAG_WINDOW = 20;            // seconds visible
 const cmdEvents = [];              // {x, label, color}
 const CMD_COLORS = {
-  init:'#58a6ff', move_a:'#79c0ff', move_b:'#79c0ff',
+  init:'#58a6ff', move_a:'#79c0ff', move_b:'#79c0ff', home:'#bc8cff',
   stop:'#f85149', shutdown:'#d29922', reset_pos:'#8b949e', set_param:'#bc8cff'
 };
+
+// v2: colores de fase de homing
+const HOME_PHASE_CLS = { 0:'dim', 1:'warn', 2:'warn', 3:'info', 4:'ok', 5:'err' };
 
 // Draws vertical dashed lines + labels where commands were sent.
 const cmdMarkerPlugin = {
@@ -352,7 +369,7 @@ const chartDiag = new Chart(document.getElementById('chart-diag'), {
   type: 'line',
   data: { datasets: [
     { label:'Vel. cmd',  data:[], borderColor:'#79c0ff', stepped:true, pointRadius:0, borderWidth:1.6, yAxisID:'y' },
-    { label:'Vel. real', data:[], borderColor:'#58a6ff', pointRadius:0, borderWidth:1.2, yAxisID:'y' },
+    { label:'Vel. real', data:[], borderColor:'#58a6ff', pointRadius:1.5, pointBackgroundColor:'#58a6ff', borderWidth:1.2, yAxisID:'y', tension:0.25 },
     { label:'Limit A',   data:[], borderColor:'#f85149', stepped:true, pointRadius:0, borderWidth:1.5, yAxisID:'y1' },
     { label:'Limit B',   data:[], borderColor:'#d29922', stepped:true, pointRadius:0, borderWidth:1.5, yAxisID:'y1' },
   ] },
@@ -394,6 +411,7 @@ const chartFT = new Chart(document.getElementById('chart-ft'), {
       borderColor: '#79c0ff',
       borderWidth: 1.5,
       pointRadius: 0,
+      tension: 0.25,
       fill: { target: 'origin', above: 'rgba(121,192,255,0.08)', below: 'rgba(248,81,73,0.08)' },
     }]
   },
@@ -430,13 +448,40 @@ function connect() {
   ws.onerror = () => {
     el('ws-dot').className = 'dot err';
   };
-  ws.onmessage = e => updateUI(JSON.parse(e.data));
+  ws.onmessage = e => {
+    const d = JSON.parse(e.data);
+    if (d.type === 'home') { updateHome(d); return; }   // v2: frame de homing
+    updateUI(d);
+  };
+}
+
+// ── Homing: pinta fase + recorrido + posición (frame 0x03) ──
+function renderHoming(phase, phaseName, range, valid) {
+  const hp = el('v-home-phase');
+  if (hp) {
+    hp.className = HOME_PHASE_CLS[phase] || 'dim';
+    hp.textContent = phaseName || '—';
+  }
+  const hr = el('v-home-range');
+  if (hr) {
+    hr.className = valid ? 'ok' : 'dim';
+    hr.textContent = valid ? `${(range || 0).toFixed(4)} rev` : 'sin medir';
+  }
+}
+
+function updateHome(d) {
+  renderHoming(d.home_phase || 0, d.home_phase_name, d.home_range_rev || 0, !!d.home_range_valid);
+  // el firmware manda la posición durante el homing → reflejarla en Motor
+  if (d.pos_rev !== undefined) {
+    const pos = d.pos_rev || 0;
+    el('v-pos').innerHTML = `<span class="hi">${pos > 0 ? '+' : ''}${pos.toFixed(4)} rev</span>`;
+  }
 }
 
 // ── UI update ────────────────────────────────────────────
 const STATE_CLS = {
   IDLE:'dim', SCANNING:'warn', CONFIGURING:'warn',
-  STOPPED:'ok', MOVING_A:'info', MOVING_B:'info', ERROR:'err'
+  STOPPED:'ok', MOVING_A:'info', MOVING_B:'info', ERROR:'err', HOMING:'hi'
 };
 const MODE_CLS = { PARADO:'dim', MOV_A:'info', MOV_B:'info' };
 const LC_ST = { 0:'<span class="ok">VALID</span>', 1:'<span class="warn">STALE</span>', 2:'<span class="err">CMD</span>' };
@@ -470,8 +515,9 @@ function updateUI(d) {
   el('v-lc-cfg').innerHTML = 'RPM rd: ' + mbStatus(d.rpm_status)
     + ' · TRQ rd: ' + mbStatus(d.trq_status);
   el('v-time').textContent  = (d.t_ms / 1000).toFixed(1) + ' s';
-  el('v-rate').textContent  = `${d.rate || 0} Hz  |  ${d.count || 0} paquetes`;
-  el('meta-bar').textContent = `Puerto: ${d.port||'?'}  |  ${d.rate||0} Hz  |  ${d.count||0} paquetes`;
+  const loopMs = ((d.work_us || 0) / 1000).toFixed(1);
+  el('v-rate').textContent  = `${d.rate || 0} Hz  |  loop ${loopMs} ms`;
+  el('meta-bar').textContent = `Puerto: ${d.port||'?'}  |  ${d.rate||0} Hz  |  loop ${loopMs} ms  |  ${d.count||0} muestras`;
 
   // Load cell
   const br = d.base_read || 0;
@@ -514,6 +560,10 @@ function updateUI(d) {
   el('v-speedcmd').textContent = `${d.ref_cmd || 0} RPM`;
   const pos = d.pos_rev || 0;
   el('v-pos').innerHTML = `<span class="hi">${pos > 0 ? '+' : ''}${pos.toFixed(4)} rev</span>`;
+
+  // Homing (los campos viajan también en la telemetría normal)
+  if (d.home_phase !== undefined)
+    renderHoming(d.home_phase, d.home_phase_name, d.home_range_rev || 0, !!d.home_range_valid);
 
   // Fuerza vs Tiempo (device clock, so batched samples spread correctly)
   const now = (d.t_ms || 0) / 1000;
@@ -569,6 +619,12 @@ function applyCalib() {
     forceCalib = v;
     cmd('set_param', { param: 7, value: v });
   }
+}
+
+// v2: offset del home en rev → centi-rev (PARAM_HOME_OFFSET = 8)
+function applyHomeOffset() {
+  const rev = parseFloat(el('p-home-offset').value);
+  if (!isNaN(rev)) cmd('set_param', { param: 8, value: Math.round(rev * 100) });
 }
 
 function el(id) { return document.getElementById(id); }
