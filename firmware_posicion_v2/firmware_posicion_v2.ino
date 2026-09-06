@@ -122,6 +122,7 @@ static TwoWire I2C1Bus(i2c1, 2, 3);
 #define PACKET_ID       0x02   // telemetría por lotes
 #define PACKET_ID_HOME  0x03   // estado de homing (posición/recorrido)
 #define PACKET_ID_LC    0x04   // resultado de programar la EEPROM de la célula
+#define PACKET_ID_CYCLE 0x05   // estado del ciclo A<->B
 
 // Comandos Python → Pico
 #define CMD_INIT      0x01
@@ -135,6 +136,8 @@ static TwoWire I2C1Bus(i2c1, 2, 3);
 #define CMD_LC_PROGRAM 0x09  // graba ganancia/offset en la EEPROM de la célula (sólo parado)
 #define CMD_LC_QUERY   0x0A  // lee lo que hay grabado, sin escribir nada (sólo parado)
 #define CMD_LC_HOLD    0x0B  // mantiene la célula en reset para medirla con el polímetro
+#define CMD_CYCLE_START 0x0C // arranca el ciclo A<->B
+#define CMD_CYCLE_STOP  0x0D // lo para donde esté
 
 // Resultado de la última programación, para que la GUI diga qué ha pasado
 enum LcProgResult : uint8_t {
@@ -237,6 +240,17 @@ enum State {
 #define MODE_MOVING_A 1
 #define MODE_MOVING_B 2
 
+// ── Ciclo A<->B ───────────────────────────────────
+// A es siempre el home (posRev = 0, que es donde deja el homing). B es o el final de
+// carrera, o una posición en revoluciones que elige el operario.
+enum CyclePhase : uint8_t {
+  CYC_IDLE = 0,
+  CYC_TO_B,     // yendo hacia B
+  CYC_TO_A,     // volviendo a A (home)
+  CYC_DONE,     // completadas las repeticiones pedidas
+  CYC_FAIL      // abortado: servo caído, timeout o tope inesperado
+};
+
 // ── Fases del homing (v2) ─────────────────────────
 enum HomingPhase {
   HOME_IDLE  = 0,   // sin homing
@@ -312,6 +326,15 @@ struct ControlState {
   bool     homeRangeValid  = false;  // true tras medir A→B con éxito
   unsigned long homePhaseStart  = 0; // t de inicio del tramo actual (timeout)
   unsigned long homeReportUntil = 0; // seguir reportando tras DONE/FAIL hasta este t
+
+  // ── Ciclo A<->B ──
+  CyclePhase cycPhase      = CYC_IDLE;
+  bool     cycToLimitB     = true;   // true = B es el final de carrera; false = posición
+  float    cycTargetRev    = 0.0f;   // B cuando es una posición (rev desde el home)
+  int16_t  cycSpeed        = 10;     // RPM del ciclo
+  uint16_t cycTarget       = 1;      // repeticiones pedidas (0 = sin fin)
+  uint16_t cycDone         = 0;      // repeticiones completadas
+  unsigned long cycPhaseStart = 0;
 };
 
 static ControlState ctrl;
@@ -554,6 +577,7 @@ void processCommand(const uint8_t *payload, uint8_t len) {
       break;
 
     case CMD_STOP:
+      ctrl.cycPhase = CYC_IDLE;                     // el paro de siempre también corta el ciclo
       abortHoming();                               // v2: STOP también aborta el homing
       if (sv.phase == SV_RUNNING)          sv.speedCmd = 0;
       else if (sv.phase == SV_CONFIGURING) sv.phase = SV_IDLE;
@@ -589,6 +613,33 @@ void processCommand(const uint8_t *payload, uint8_t len) {
     case CMD_LC_QUERY:                              // sin payload: sólo relee la EEPROM
       lcReqPending  = CMD_LC_QUERY;
       lcReqDeadline = millis() + LC_REQ_TIMEOUT_MS;
+      break;
+
+    // [op, modo, objetivo centi-rev LE(int16), velocidad LE(int16), repeticiones LE(uint16)]
+    // modo: 0 = B es el final de carrera, 1 = B es la posición indicada
+    case CMD_CYCLE_START: {
+      if (len < 8) break;
+      if (ctrl.lcProgBusy) break;                   // célula cortada: no se mueve nada
+      if (ctrl.homePhase != HOME_IDLE && ctrl.homePhase != HOME_DONE) break;  // homing en curso
+      if (sv.phase != SV_RUNNING) break;            // servo sin habilitar
+      int16_t  tgt = (int16_t)((uint16_t)payload[2] | ((uint16_t)payload[3] << 8));
+      int16_t  spd = (int16_t)((uint16_t)payload[4] | ((uint16_t)payload[5] << 8));
+      uint16_t rep = (uint16_t)payload[6] | ((uint16_t)payload[7] << 8);
+      ctrl.cycToLimitB  = (payload[1] == 0);
+      ctrl.cycTargetRev = (float)tgt / 100.0f;      // centi-rev → rev
+      if (ctrl.cycTargetRev < 0.0f) ctrl.cycTargetRev = 0.0f;
+      ctrl.cycSpeed     = (spd > 0) ? spd : -spd;
+      if (ctrl.cycSpeed == 0) ctrl.cycSpeed = ctrl.moveSpeed;
+      ctrl.cycTarget    = rep;                      // 0 = sin fin, hasta que se pare
+      ctrl.cycDone      = 0;
+      ctrl.cycPhase     = CYC_TO_B;
+      ctrl.cycPhaseStart = millis();
+      break;
+    }
+
+    case CMD_CYCLE_STOP:
+      ctrl.cycPhase = CYC_IDLE;
+      sv.speedCmd   = 0;
       break;
 
     case CMD_LC_HOLD:                               // diagnóstico con el polímetro
@@ -1218,6 +1269,84 @@ void positionUpdate(){
 
 // ── Homing (v2) — máquina de estados, sólo fija sv.speedCmd ──
 // Busca A (datum→0) → busca B (mide recorrido) → va al offset → fija HOME=0.
+// ── Ciclo A<->B ───────────────────────────────────
+// Va del home (A, posRev = 0) a B y vuelve, tantas veces como se le pida. B es o el
+// final de carrera de ese lado, o una posición en revoluciones.
+//
+// No lleva control de posición fino: manda velocidad y mira la posición integrada, igual
+// que el homing. Los topes y el límite de fuerza siguen actuando en el loop como red de
+// seguridad, así que si algo se pasa de largo el eje se para de todas formas.
+void cycleUpdate(){
+  if(ctrl.cycPhase==CYC_IDLE || ctrl.cycPhase==CYC_DONE || ctrl.cycPhase==CYC_FAIL) return;
+
+  unsigned long now = millis();
+
+  // El ciclo exige servo habilitado, igual que el homing
+  if(sv.phase != SV_RUNNING){ ctrl.cycPhase = CYC_FAIL; sv.speedCmd = 0; return; }
+  if(now - ctrl.cycPhaseStart > HOMING_TIMEOUT_MS){   // un tramo que no termina
+    ctrl.cycPhase = CYC_FAIL; sv.speedCmd = 0; return;
+  }
+
+  bool limA = (digitalRead(PIN_LIMIT_A)==HIGH);
+  bool limB = (digitalRead(PIN_LIMIT_B)==HIGH);
+
+  switch(ctrl.cycPhase){
+    case CYC_TO_B: {
+      bool arrived = ctrl.cycToLimitB
+                   ? limB
+                   : (ctrl.posRev >= ctrl.cycTargetRev - HOMING_TOL_REV) || limB;
+      if(arrived){
+        sv.speedCmd = 0;
+        ctrl.cycPhase = CYC_TO_A;
+        ctrl.cycPhaseStart = now;
+      } else {
+        sv.speedCmd = +ctrl.cycSpeed;
+      }
+      break;
+    }
+
+    case CYC_TO_A: {
+      // A es el home: posRev = 0. El final de carrera A vale como tope de respaldo.
+      bool arrived = (ctrl.posRev <= HOMING_TOL_REV) || limA;
+      if(arrived){
+        sv.speedCmd = 0;
+        ctrl.cycDone++;
+        if(ctrl.cycTarget && ctrl.cycDone >= ctrl.cycTarget){
+          ctrl.cycPhase = CYC_DONE;                 // hechas las que se pedían
+        } else {
+          ctrl.cycPhase = CYC_TO_B;                 // otra vuelta
+          ctrl.cycPhaseStart = now;
+        }
+      } else {
+        sv.speedCmd = -ctrl.cycSpeed;
+      }
+      break;
+    }
+
+    default: break;
+  }
+}
+
+// ── Estado del ciclo — PACKET_ID_CYCLE ────────────
+void telemetryFlushCycle(){
+  int32_t pm = (int32_t)(ctrl.posRev * 1000.0f);
+  int32_t tm = (int32_t)(ctrl.cycTargetRev * 1000.0f);
+  uint8_t payload[14];
+  payload[0]  = PACKET_ID_CYCLE;
+  payload[1]  = (uint8_t)ctrl.cycPhase;
+  payload[2]  = (ctrl.cycDone  >>0)&0xFF; payload[3]  = (ctrl.cycDone  >>8)&0xFF;
+  payload[4]  = (ctrl.cycTarget>>0)&0xFF; payload[5]  = (ctrl.cycTarget>>8)&0xFF;
+  payload[6]  = (pm>> 0)&0xFF; payload[7]  = (pm>> 8)&0xFF;
+  payload[8]  = (pm>>16)&0xFF; payload[9]  = (pm>>24)&0xFF;
+  payload[10] = (tm>> 0)&0xFF; payload[11] = (tm>> 8)&0xFF;
+  payload[12] = (tm>>16)&0xFF; payload[13] = (tm>>24)&0xFF;
+  uint8_t frame[3 + sizeof(payload) + 1];
+  frame[0]=SYNC_0; frame[1]=SYNC_1; frame[2]=(uint8_t)sizeof(payload);
+  memcpy(&frame[3], payload, sizeof(payload));
+  frame[3+sizeof(payload)] = crc8(payload, sizeof(payload));
+  Serial.write(frame, 3 + sizeof(payload) + 1);
+}
+
 void homingUpdate(){
   if(ctrl.homePhase==HOME_IDLE || ctrl.homePhase==HOME_DONE || ctrl.homePhase==HOME_FAIL) return;
 
@@ -1448,8 +1577,13 @@ void loop(){
   // orden de movimiento llegada por USB en ese momento no puede arrancarlo.
   if(ctrl.lcProgBusy){
     sv.speedCmd = 0;                       // se reafirma cada vuelta, no sólo al entrar
+    ctrl.cycPhase = CYC_IDLE;              // y el ciclo no sobrevive a una grabación
+  } else if(ctrl.homePhase==HOME_SEEK_A || ctrl.homePhase==HOME_SEEK_B
+         || ctrl.homePhase==HOME_GOTO){
+    homingUpdate();                        // el homing manda: nunca los dos a la vez
   } else {
-    homingUpdate();                        // v2: máquina de homing → fija sv.speedCmd
+    homingUpdate();                        // deja que cierre DONE/FAIL
+    cycleUpdate();                         // ciclo A<->B
   }
 
   // v2: cierra la ventana de reporte tras DONE/FAIL
@@ -1491,6 +1625,7 @@ void loop(){
   if(sampleCount>=MAX_SAMPLES || now-ctrl.lastTelemetryTime>=period){
     telemetryFlush();
     if(ctrl.homePhase!=HOME_IDLE) telemetryFlushHome();   // v2: estado de homing sólo si está activo
+    if(ctrl.cycPhase !=CYC_IDLE)  telemetryFlushCycle();  // ídem para el ciclo A<->B
     ctrl.lastTelemetryTime=now;
   }
 

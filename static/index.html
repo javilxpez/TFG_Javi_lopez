@@ -121,6 +121,19 @@
       margin-bottom: 12px;
     }
     .group + .group { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+
+    /* Configuración avanzada: plegada, para no tener la palabra de configuración
+       entera delante mientras se trabaja con la célula */
+    details.group > summary {
+      cursor: pointer; list-style: none; display: flex; gap: 8px; align-items: center;
+      font-size: 10px; text-transform: uppercase; letter-spacing: .09em; color: var(--muted);
+    }
+    details.group > summary::-webkit-details-marker { display: none; }
+    details.group > summary::before { content: '▸'; font-size: 11px; }
+    details.group[open] > summary::before { content: '▾'; }
+    details.group > summary:hover { color: var(--text); }
+    details.group[open] > summary { margin-bottom: 11px; }
+    details.group > summary .sum { text-transform: none; letter-spacing: 0; }
     .group-title {
       font-size: 10px; text-transform: uppercase; letter-spacing: .09em;
       color: var(--muted); margin-bottom: 9px;
@@ -144,6 +157,8 @@
       padding: 2px 7px; font-size: 10px; color: var(--muted); white-space: nowrap;
     }
     .chip b { color: var(--text); font-weight: 400; }
+    a.chip { text-decoration: none; }
+    a.chip:hover { border-color: var(--blue); color: var(--blue); }
     .chip.bad { border-color: var(--red); color: var(--red); }
     .chip.bad b { color: var(--red); }
     input[type=number] {
@@ -305,6 +320,9 @@
     <button class="tab active" data-tab="servo" onclick="showTab('servo')">Servo</button>
     <button class="tab"        data-tab="lc1"   onclick="showTab('lc1')">Célula 1 · ZSC31014</button>
     <button class="tab"        data-tab="lc2"   onclick="showTab('lc2')">Célula 2 · NAU7802</button>
+    <button class="tab"        data-tab="ciclo" onclick="showTab('ciclo')">Ciclo A↔B</button>
+    <button class="btn-apply" style="align-self:center;margin-left:10px" onclick="tareBoth()"
+            title="Pone a cero las dos células con su lectura actual. La de LC1 se manda al firmware; la de LC2 se queda en el navegador.">⌀ Tara ambas</button>
     <span id="v-cmd-ack" class="hint" style="font-size:11px;align-self:center;margin-left:10px"></span>
   </div>
 
@@ -359,8 +377,13 @@
           <input type="number" id="p-calib" value="0" min="0">
         </div>
         <div class="param">
-          <label>Offset de cero</label>
-          <input type="number" id="p-zero" value="8210">
+          <label>Tara</label>
+          <div class="field">
+            <input type="number" id="p-zero" value="8210"
+                   title="Cero de la célula 1. Vive en el firmware: el botón lo fija con la lectura cruda actual y lo envía.">
+            <button class="btn-apply" onclick="tareLc1()"
+                    title="Fija la tara con la lectura actual">⌀</button>
+          </div>
         </div>
       </div>
       <div class="group-actions">
@@ -369,7 +392,8 @@
       </div>
     </div>
 
-    <div class="group">
+    <details class="group">
+      <summary>Configuración avanzada <span class="sum" id="v-lc-summary"></span></summary>
       <div class="group-title">B_Config · palabra 0x0F — puente y amplificador</div>
       <div class="grid">
         <div class="param">
@@ -438,10 +462,6 @@
       <div class="group-actions">
         <button class="b-shut" onclick="programLc()"
                 title="Graba ganancia y cero en la EEPROM. Para el eje mientras dura.">⚙ Programar</button>
-        <button class="btn-apply" onclick="cmd('lc_query')"
-                title="Lee lo que hay grabado ahora mismo, sin escribir nada.">⟲ Leer</button>
-        <button class="btn-apply" onclick="cmd('lc_hold', { park: 1 })"
-                title="Diagnóstico: corta la alimentación de la célula 8 s con SDA, SCL e INT a masa, para medir su rail con el polímetro.">⏱ Reset 8 s</button>
         <span id="v-lc-ready" class="hint">—</span>
       </div>
       <div class="readout">
@@ -450,7 +470,7 @@
         <div class="line hint" id="v-lc-rate" hidden></div>
         <div class="line err" id="v-lc-warn" hidden></div>
       </div>
-    </div>
+    </details>
   </div>
 
   <!-- ── Célula 2: NAU7802. Sin EEPROM que tocar; su calibración no sale del navegador ── -->
@@ -476,6 +496,55 @@
         <button class="b-init" onclick="applyLc2()">✓ Aplicar parámetros</button>
         <span id="v-apply-lc2" class="hint">—</span>
       </div>
+    </div>
+  </div>
+
+  <!-- ── Ciclo A↔B: A es el home, B el final de carrera o un punto elegido ── -->
+  <div class="panel" data-panel="ciclo" hidden>
+    <div class="group">
+      <div class="group-title">Recorrido — A es siempre el home (posición 0)</div>
+      <div class="grid">
+        <div class="param">
+          <label>Punto B</label>
+          <select id="c-mode" onchange="cycModeChanged()">
+            <option value="1">final de carrera</option>
+            <option value="0">posición elegida</option>
+          </select>
+        </div>
+        <div class="param" id="c-target-wrap">
+          <label>Posición de B (rev desde el home)</label>
+          <input type="number" id="c-target" value="1" step="0.01" min="0"
+                 title="Distancia desde el home hacia B, en revoluciones.">
+        </div>
+        <div class="param">
+          <label>Velocidad (RPM)</label>
+          <input type="number" id="c-speed" value="10" min="1" max="300">
+        </div>
+        <div class="param">
+          <label>Repeticiones (0 = sin fin)</label>
+          <input type="number" id="c-reps" value="1" min="0" max="65535">
+        </div>
+      </div>
+      <div class="group-actions">
+        <button class="b-a"    onclick="cycleStart()">▶ Iniciar ciclo</button>
+        <button class="b-stop" onclick="cmd('cycle_stop')">■ Parar</button>
+        <span id="v-cyc-ready" class="hint">—</span>
+      </div>
+      <div class="readout">
+        <div class="line dim"  id="v-cyc-state">sin ciclo en curso</div>
+        <div class="chips"     id="v-cyc-chips" hidden></div>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">Ensayos grabados — un CSV por ciclo, con cuentas crudas</div>
+      <div class="group-actions">
+        <button class="btn-apply" onclick="loadCycles()">⟲ Actualizar lista</button>
+        <a class="btn-apply" href="/ensayos" target="_blank"
+           style="text-decoration:none;display:inline-block">📈 Ver ensayos</a>
+        <span id="v-rec" class="hint">—</span>
+      </div>
+      <div class="readout"><div class="chips" id="v-cyc-files" hidden></div></div>
     </div>
   </div>
 
@@ -632,6 +701,7 @@ let forceCalib = 0;
 let lc2Calib   = 0;    // cuentas por newton de la célula 2 (sólo navegador)
 let lc2Zero    = 0;    // tara de la célula 2
 let lc2Last    = 0;    // última lectura cruda, para el botón de tara
+let lc1Last    = 0;    // ídem para la célula 1
 let t0 = null;
 let lastTsec = null;   // latest device time (s), for command markers
 
@@ -655,6 +725,7 @@ function connect() {
     if (d.type === 'home') { updateHome(d); return; }   // v2: frame de homing
     if (d.type === 'lc_config') { updateLcConfig(d); return; }  // respuesta de programación
     if (d.type === 'cmd_ack')   { updateCmdAck(d);   return; }  // acuse de cada comando
+    if (d.type === 'cycle')     { updateCycle(d);    return; }  // estado del ciclo A↔B
     updateUI(d);
   };
 }
@@ -683,6 +754,8 @@ function updateHome(d) {
 }
 
 // ── UI update ────────────────────────────────────────────
+let lcReady = false;      // el firmware aceptaría leer/grabar la célula ahora mismo
+
 const STATE_CLS = {
   IDLE:'dim', SCANNING:'warn', CONFIGURING:'warn',
   STOPPED:'ok', MOVING_A:'info', MOVING_B:'info', ERROR:'err', HOMING:'hi',
@@ -709,6 +782,18 @@ function updateUI(d) {
   el('v-state').textContent = sn;
   // El firmware sólo acepta programar la EEPROM parado: se avisa antes de pulsar
   const ready = (sn === 'IDLE' || sn === 'STOPPED');
+  lcReady = ready;
+  // Si la pestaña ya estaba abierta al conectar, se lee en cuanto el estado lo permite
+  if (ready && !lc1Read && el('v-lc-prog') && !document.querySelector('[data-panel="lc1"]').hidden) {
+    lc1Read = true; cmd('lc_query');
+  }
+  const cr = el('v-cyc-ready');
+  if (cr) {
+    // El firmware exige servo habilitado; y sin homing, "A = home" no significa nada
+    const run = (sn === 'STOPPED' || sn === 'MOVING_A' || sn === 'MOVING_B');
+    cr.className = run ? 'ok' : 'err';
+    cr.textContent = run ? `${sn} · servo habilitado` : `${sn} · haz Init y Home primero`;
+  }
   const lr = el('v-lc-ready');
   if (lr) {
     lr.className = ready ? 'ok' : 'err';
@@ -733,6 +818,7 @@ function updateUI(d) {
 
   // Load cell
   const br = d.base_read || 0;
+  lc1Last = d.bridge || 0;
   el('v-bridge').textContent     = `${d.bridge || 0} cnt`;
   el('v-lcstatus').innerHTML     = LC_ST[d.lc_status] || '?';
   el('v-baseread').textContent   = `${br > 0 ? '+' : ''}${br} cnt`;
@@ -830,6 +916,62 @@ function updateUI(d) {
   el('diag-now').textContent = `cmd ${d.ref_cmd || 0} / real ${rpm} RPM`;
 }
 
+// ── Ciclo A↔B ────────────────────────────────────────────
+const CYC_CLS = { 0:'dim', 1:'info', 2:'info', 3:'ok', 4:'err' };
+
+// Con B en el final de carrera la posición no pinta nada: se esconde el campo para no
+// dar a entender que se está usando.
+function cycModeChanged() {
+  const toLimit = el('c-mode').value === '1';
+  el('c-target-wrap').hidden = toLimit;
+}
+
+function cycleStart() {
+  pushLc2Consts();                  // que la cabecera del CSV lleve las constantes
+  cmd('cycle_start', {
+    to_limit:   el('c-mode').value === '1' ? 1 : 0,
+    target_rev: parseFloat(el('c-target').value) || 0,
+    speed:      parseInt(el('c-speed').value) || 10,
+    reps:       parseInt(el('c-reps').value)  || 0
+  });
+}
+
+// La calibración y la tara de LC2 sólo las sabe el navegador: se empujan al puente para
+// que queden escritas en la cabecera del CSV, si no el ensayo no sería reproducible.
+function pushLc2Consts() {
+  cmd('set_lc2', { calib: lc2Calib, zero: lc2Zero });
+}
+
+async function loadCycles() {
+  const c = el('v-cyc-files');
+  try {
+    const r = await fetch('/cycles');
+    const list = await r.json();
+    c.hidden = list.length === 0;
+    c.innerHTML = list.map(f =>
+      `<a class="chip" href="/cycles/${encodeURIComponent(f.name)}" download`
+      + ` title="${f.when} · ${f.bytes} bytes">⤓ <b>${f.name}</b></a>`).join('');
+    el('v-rec').textContent = list.length ? `${list.length} ensayo(s)` : 'todavía no hay ensayos';
+  } catch (e) {
+    el('v-rec').className = 'hint err';
+    el('v-rec').textContent = 'no se pudo leer la lista: ' + e;
+  }
+}
+
+function updateCycle(d) {
+  const v = el('v-cyc-state');
+  v.className = 'line ' + (CYC_CLS[d.cyc_phase] || 'dim');
+  v.textContent = d.cyc_phase_name
+    + (d.cyc_target ? ` · ${d.cyc_done}/${d.cyc_target}` : ` · ${d.cyc_done} (sin fin)`);
+  const c = el('v-cyc-chips');
+  const chip = (k, x) => `<span class="chip">${k} <b>${x}</b></span>`;
+  c.hidden = false;
+  c.innerHTML = chip('posición', `${(d.cyc_pos_rev || 0).toFixed(3)} rev`)
+              + chip('B', d.cyc_target_rev > 0 ? `${d.cyc_target_rev.toFixed(3)} rev` : 'final de carrera')
+              + (d.rec ? chip('grabando', d.rec) : '');
+  if (!d.rec && (d.cyc_phase === 3 || d.cyc_phase === 4)) loadCycles();   // ha cerrado: refresca
+}
+
 // ── Acuse de recibo de TODO comando ──────────────────────
 // Un comando que no sale por el puerto, o que nadie reconoce, tiene el mismo aspecto
 // que uno que ha funcionado: ninguno. Por eso cada uno contesta, y si es de la célula
@@ -882,16 +1024,97 @@ function programLc() {
   cmd('lc_program', { bcfg, cfg1 });
 }
 
+// ── Decodificación de la configuración del chip ──────────────────────────
+// El campo de ganancia son 3 bits, pero las dos implementaciones de referencia no
+// coinciden en su codificación: MikroE la da monótona y mbed entrelazada. Se enseña la
+// de MikroE y la otra queda en el tooltip, hasta que el datasheet zanje cuál es.
+const GAIN_MIKROE = [1.5, 3, 6, 12, 24, 48, 96, 192];
+const GAIN_MBED   = [1.5, 6, 24, 96, 3, 12, 48, 192];
+
+// Tiempo de conversión según ZMDI_Config1: bits [7:6] y el reloj (tabla de MikroE).
+const UPRATE_MS = { 0: [1.60, 0.50], 1: [5.00, 1.50], 2: [25.00, 6.50], 3: [125.00, 32.00] };
+
+// Los bits [11:10] sólo admiten 0b10 (puente completo) o 0b11 (medio): si ahí sale otra
+// cosa, la palabra está desalineada. Es la comprobación que valida los desplazamientos
+// sin tener que creerse ninguna de las dos referencias.
+function decodeBConfig(cfg) {
+  const mux = (cfg >> 10) & 0x03;
+  return {
+    offset: cfg & 0x0F, gain: (cfg >> 4) & 0x07,
+    polarity: (cfg >> 7) & 1, longInt: (cfg >> 8) & 1, bSink: (cfg >> 9) & 1,
+    mux, muxName: mux === 2 ? 'puente completo' : mux === 3 ? 'medio puente'
+                            : `INVÁLIDO (0b${mux.toString(2).padStart(2, '0')})`,
+    aligned: mux === 2 || mux === 3,
+    nulling: (cfg >> 12) & 1, top: (cfg >> 13) & 0x07
+  };
+}
+
+function decodeConfig1(c1) {
+  const clk1MHz = !!((c1 >> 3) & 1);
+  const rate    = (c1 >> 6) & 3;
+  const ms      = UPRATE_MS[rate][clk1MHz ? 0 : 1];
+  return { clk: clk1MHz ? '1 MHz' : '4 MHz', spi: !!((c1 >> 4) & 1),
+           sleep: !!((c1 >> 5) & 1), ms, hz: 1000 / ms };
+}
+
+function renderBConfig(cfg) {
+  const c = el('v-lc-chips');
+  if (!c) return;
+  if (cfg === null) { c.hidden = true; return; }
+  const b = decodeBConfig(cfg);
+  const chip = (k, v, bad, t) => `<span class="chip${bad ? ' bad' : ''}"${t ? ` title="${t}"` : ''}>${k} <b>${v}</b></span>`;
+  c.hidden = false;
+  c.innerHTML =
+      chip('cfg', '0x' + cfg.toString(16).toUpperCase().padStart(4, '0'))
+    + chip('ganancia', `${b.gain} · x${GAIN_MIKROE[b.gain]}`, false,
+           `Según MikroE x${GAIN_MIKROE[b.gain]}; según mbed x${GAIN_MBED[b.gain]}. Discrepan.`)
+    + chip('cero A/D', b.offset)
+    + chip('mux', b.muxName, !b.aligned)
+    + chip('polaridad', b.polarity) + chip('integr. larga', b.longInt)
+    + chip('B-sink', b.bSink) + chip('nulling', b.nulling);
+}
+
+function renderConfig1(c1) {
+  const e = el('v-lc-rate');
+  if (!e) return;
+  if (c1 === null || c1 === undefined) { e.hidden = true; return; }
+  const d = decodeConfig1(c1);
+  e.hidden = false;
+  // En Sleep Mode el chip no convierte solo: cada medida hay que pedirla, y leer sin
+  // pedir devuelve una y otra vez la misma.
+  const slow = d.sleep || d.hz < 40;
+  e.className = 'line ' + (slow ? 'err' : 'hint');
+  e.textContent = `cfg1 0x${c1.toString(16).toUpperCase().padStart(4, '0')} · reloj ${d.clk}`
+    + ` · ${d.sleep ? 'SLEEP MODE (mide sólo cuando se le pide)' : 'conversión continua'}`
+    + ` · tasa ${d.ms} ms (${d.hz.toFixed(1)} Hz)`
+    + (slow ? '  ← el loop lee a 20 Hz: por eso el valor se repite y luego salta' : '');
+}
+
+// Lo esencial, para que plegado siga diciendo algo: qué ganancia y a qué ritmo mide.
+function renderSummary(d) {
+  const e = el('v-lc-summary');
+  if (!e) return;
+  if (!d.lc_ok) { e.className = 'sum err'; e.textContent = '· sin lectura válida'; return; }
+  const b = decodeBConfig(d.lc_cfg_after || 0);
+  let txt = `· ganancia x${GAIN_MIKROE[b.gain]} · cero ${b.offset}`;
+  if (d.lc_cfg1 !== undefined) {
+    const c = decodeConfig1(d.lc_cfg1);
+    txt += ` · ${c.ms} ms${c.sleep ? ' · SLEEP' : ''}`;
+  }
+  e.className = 'sum hint';
+  e.textContent = txt;
+}
+
 function updateLcConfig(d) {
   const v = el('v-lc-prog');
   const ack = (d.lc_ack === undefined) ? 0xFF : d.lc_ack;
   v.className = 'line ' + (d.lc_ok ? 'ok' : 'err');
   v.textContent = d.lc_result_name
-    + (d.lc_ok && d.lc_entry_us !== undefined ? ` · ventana a ${d.lc_entry_us} µs` : '')
     + (d.lc_ok ? '' : ` · resp 0x${ack.toString(16).toUpperCase().padStart(2, '0')}`);
 
   renderBConfig(d.lc_ok ? (d.lc_cfg_after || 0) : null);
   renderConfig1(d.lc_ok ? d.lc_cfg1 : null);
+  renderSummary(d);
 
   // El aviso sólo aparece cuando hay algo que avisar; el resto del tiempo, nada.
   const w = el('v-lc-warn');
@@ -947,16 +1170,24 @@ function applyParam(pid, inputId) {
 // ── Pestañas ─────────────────────────────────────────────
 // Servo y célula no se mezclan: cada pestaña manda lo suyo con UN botón, en vez de
 // un ✓ por campo. Se recuerda cuál estaba abierta para no perderla al recargar.
+// La configuración se lee sola al abrir la pestaña de la célula: pulsar "Leer" a mano
+// era un paso que siempre había que dar para ver algo. Se hace una sola vez por carga
+// de página —leer resetea la célula y para el eje medio segundo— y sólo si está parado.
+let lc1Read = false;
+
 function showTab(name) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
   document.querySelectorAll('.panel').forEach(p => { p.hidden = (p.dataset.panel !== name); });
   try { localStorage.setItem('tfg-tab', name); } catch (e) {}
+  if (name === 'lc1' && !lc1Read && lcReady) { lc1Read = true; cmd('lc_query'); }
 }
 
 try {
   const saved = localStorage.getItem('tfg-tab');
   if (saved) showTab(saved);
 } catch (e) {}
+cycModeChanged();   // el campo de posición arranca oculto si B es el final de carrera
+loadCycles();
 
 // Un solo envío por pestaña: se manda todo el bloque y se dice qué ha salido.
 function flashApply(id, n) {
@@ -993,6 +1224,22 @@ function applyLc2() {
 }
 
 // Célula 2: tara y calibración viven en el navegador — el firmware la manda cruda
+// La tara de LC1 no es como la de LC2: la de la célula 2 se queda en el navegador, y
+// ésta vive en el firmware (ctrl.zeroOffset, que es lo que se resta a cada medida). Por
+// eso además de rellenar el campo hay que mandarla, si no el cero sólo sería aparente.
+// Las dos de una vez. No son la misma operación por dentro —la de LC1 viaja al firmware
+// y la de LC2 se queda aquí— pero para quien está delante de la máquina sí lo es.
+function tareBoth() {
+  tareLc1();
+  tareLc2();
+}
+
+function tareLc1() {
+  el('p-zero').value = lc1Last;
+  cmd('set_param', { param: 3, value: lc1Last });
+  flashApply('v-apply-lc1', 1);
+}
+
 function tareLc2() {
   lc2Zero = lc2Last;
   el('p-lc2-zero').value = lc2Zero;

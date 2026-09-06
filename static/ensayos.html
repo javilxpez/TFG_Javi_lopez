@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ensayos grabados</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg:#0d1117; --card:#161b22; --border:#30363d; --text:#c9d1d9; --muted:#8b949e;
+      --green:#3fb950; --yellow:#d29922; --red:#f85149; --blue:#58a6ff;
+      --cyan:#79c0ff; --purple:#bc8cff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'Courier New', monospace;
+           font-size: 13px; min-height: 100vh; }
+    .wrap { max-width: 1500px; margin: 0 auto; padding: 14px; }
+    .top { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+    .top h1 { font-size: 15px; font-weight: 400; }
+    a { color: var(--blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    button, select {
+      padding: 6px 12px; border: 1px solid var(--border); border-radius: 4px;
+      background: #21262d; color: var(--text); cursor: pointer;
+      font-family: inherit; font-size: 12px;
+    }
+    button:hover { background: #30363d; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; }
+    .card { background: var(--card); border: 1px solid var(--border);
+            border-radius: 6px; padding: 12px 14px; }
+    .col-list { flex: 0 0 300px; }
+    .col-main { flex: 1; min-width: 420px; display: flex; flex-direction: column; gap: 12px; }
+    .title { font-size: 10px; text-transform: uppercase; letter-spacing: .09em;
+             color: var(--muted); margin-bottom: 9px; }
+    .files { display: flex; flex-direction: column; gap: 4px; max-height: 70vh; overflow-y: auto; }
+    .file {
+      padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px;
+      background: #0d1117; cursor: pointer; font-size: 11px; line-height: 1.5;
+    }
+    .file:hover { border-color: var(--blue); }
+    .file.sel { border-color: var(--blue); background: #10263f; }
+    .file .w { color: var(--muted); font-size: 10px; }
+    .file .head { display: flex; align-items: center; gap: 6px; }
+    .file .name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+    .del {
+      padding: 1px 6px; font-size: 11px; line-height: 1.4;
+      border-color: transparent; background: transparent; color: var(--muted);
+    }
+    .del:hover { background: #2d1113; border-color: var(--red); color: var(--red); }
+    .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+    .chip { background:#0d1117; border:1px solid var(--border); border-radius:4px;
+            padding:2px 7px; font-size:10px; color:var(--muted); white-space:nowrap; }
+    .chip b { color: var(--text); font-weight: 400; }
+    table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    th, td { text-align: right; padding: 4px 8px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 400; text-transform: uppercase;
+         font-size: 10px; letter-spacing: .06em; }
+    td:first-child, th:first-child { text-align: left; }
+    .muted { color: var(--muted); }
+    canvas { max-height: 300px; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <h1>Ensayos grabados</h1>
+    <a href="/">← volver al monitor</a>
+    <button onclick="cargarLista()">⟲ Actualizar</button>
+    <span id="estado" class="muted"></span>
+  </div>
+
+  <div class="row">
+    <div class="card col-list">
+      <div class="title">Ficheros en cycles/</div>
+      <div class="files" id="lista"><span class="muted">cargando…</span></div>
+    </div>
+
+    <div class="col-main">
+      <div class="card" id="c-resumen" hidden>
+        <div class="title">Resumen</div>
+        <div class="chips" id="chips"></div>
+        <table id="tabla" style="margin-top:11px"></table>
+      </div>
+      <div class="card" id="c-pos" hidden>
+        <div class="title">Fuerza frente a posición — una traza por repetición</div>
+        <div style="margin-bottom:8px">
+          <select id="sel-celula" onchange="repintar()">
+            <option value="1">Célula 1 · ZSC31014</option>
+            <option value="2">Célula 2 · NAU7802</option>
+          </select>
+        </div>
+        <canvas id="gPos"></canvas>
+      </div>
+      <div class="card" id="c-t" hidden>
+        <div class="title">Fuerza y posición frente al tiempo</div>
+        <canvas id="gT"></canvas>
+      </div>
+      <div class="card" id="c-vel" hidden>
+        <div class="title">Velocidad · finales de carrera · comandos</div>
+        <canvas id="gVel"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const el = id => document.getElementById(id);
+const COLORES = ['#58a6ff','#3fb950','#d29922','#bc8cff','#79c0ff','#f85149','#8b949e'];
+let gPos = null, gT = null, gVel = null, sel = null;
+let actual = null;   // el ensayo cargado, para repintar al cambiar de célula
+
+// El CSV lleva una cabecera de líneas '#' con las constantes del ensayo. Se separan
+// aquí: sin ellas no se puede pasar de cuentas a newtons.
+function parseCSV(texto) {
+  const consts = {}, filas = [];
+  let cols = null;
+  for (const linea of texto.split('\n')) {
+    const l = linea.trim();
+    if (!l) continue;
+    if (l.startsWith('#')) {
+      for (const t of l.slice(1).trim().split(/\s+/)) {
+        const i = t.indexOf('=');
+        if (i > 0) consts[t.slice(0, i)] = t.slice(i + 1);
+      }
+    } else if (!cols) {
+      cols = l.split(',');
+    } else {
+      const v = l.split(',');
+      const o = {};
+      cols.forEach((c, i) => { const n = parseFloat(v[i]); o[c] = isNaN(n) ? v[i] : n; });
+      filas.push(o);
+    }
+  }
+  return { consts, filas };
+}
+
+async function cargarLista() {
+  const cont = el('lista');
+  try {
+    const r = await fetch('/cycles');
+    const lista = await r.json();
+    if (!lista.length) { cont.innerHTML = '<span class="muted">todavía no hay ensayos</span>'; return; }
+    cont.innerHTML = lista.map(f =>
+      `<div class="file" data-n="${f.name}">
+         <div class="head">
+           <span class="name" onclick="abrir('${f.name}')">${f.name}</span>
+           <button class="del" title="Borrar este ensayo"
+                   onclick="event.stopPropagation(); borrar('${f.name}')">✕</button>
+         </div>
+         <div class="w" onclick="abrir('${f.name}')">${f.when} · ${(f.bytes/1024).toFixed(1)} kB</div>
+       </div>`).join('');
+    if (sel) marcar(sel);
+  } catch (e) {
+    cont.innerHTML = `<span class="muted">no se pudo leer la lista: ${e}</span>`;
+  }
+}
+
+function marcar(n) {
+  document.querySelectorAll('.file').forEach(d => d.classList.toggle('sel', d.dataset.n === n));
+}
+
+// Borrar no tiene vuelta atrás y el fichero es el ensayo entero: se pregunta antes.
+async function borrar(nombre) {
+  if (!confirm(`¿Borrar el ensayo ${nombre}?\n\nNo se puede deshacer.`)) return;
+  try {
+    const r = await fetch('/cycles/' + encodeURIComponent(nombre), { method: 'DELETE' });
+    const j = await r.json();
+    if (!r.ok) { el('estado').textContent = 'no se pudo borrar: ' + (j.error || r.status); return; }
+    el('estado').textContent = 'borrado ' + nombre;
+    if (sel === nombre) {           // si era el que se estaba viendo, se limpia la vista
+      sel = null;
+      el('c-resumen').hidden = el('c-pos').hidden = el('c-t').hidden = el('c-vel').hidden = true;
+    }
+    cargarLista();
+  } catch (e) {
+    el('estado').textContent = 'no se pudo borrar: ' + e;
+  }
+}
+
+async function abrir(nombre) {
+  sel = nombre; marcar(nombre);
+  el('estado').textContent = 'leyendo ' + nombre + '…';
+  const r = await fetch('/cycles/' + encodeURIComponent(nombre));
+  const { consts, filas } = parseCSV(await r.text());
+  el('estado').textContent = `${nombre} · ${filas.length} muestras`;
+  if (!filas.length) return;
+
+  // Sólo se convierte a newtons si el ensayo dejó escrita la constante; si no, cuentas.
+  const cal1 = parseFloat(consts.lc1_cuentas_por_N || 0) || 0;
+  const cal2 = parseFloat(consts.lc2_cuentas_por_N || 0) || 0;
+  const f1 = f => cal1 ? f.lc1_base / cal1 : f.lc1_base;
+  const f2 = f => cal2 ? f.lc2_raw  / cal2 : f.lc2_raw;
+  const u1 = cal1 ? 'N' : 'cuentas', u2 = cal2 ? 'N' : 'cuentas';
+
+  actual = { filas, f1, f2, u1, u2, cal1, cal2 };
+  resumen(consts, filas, f1, u1, cal1, f2, u2, cal2);
+  repintar();
+  pintarT(filas, f1, u1, f2, u2);
+  pintarVel(filas);
+  el('c-resumen').hidden = el('c-pos').hidden = el('c-t').hidden = el('c-vel').hidden = false;
+}
+
+// Repinta sólo la gráfica de posición, con la célula que se haya elegido.
+function repintar() {
+  if (!actual) return;
+  const dos = el('sel-celula').value === '2';
+  pintarPos(actual.filas, dos ? actual.f2 : actual.f1,
+                          dos ? actual.u2 : actual.u1, dos ? 'LC2' : 'LC1');
+}
+
+function resumen(consts, filas, f1, u1, cal1, f2, u2, cal2) {
+  const t = filas.map(f => f.t_rel_s), pos = filas.map(f => f.pos_rev);
+  const v1 = filas.map(f1), v2 = filas.map(f2);
+  const reps = [...new Set(filas.map(f => f.rep))].sort((a, b) => a - b);
+  const chip = (k, v) => `<span class="chip">${k} <b>${v}</b></span>`;
+  el('chips').innerHTML =
+      chip('muestras', filas.length)
+    + chip('duración', t[t.length - 1].toFixed(2) + ' s')
+    + chip('cadencia', (filas.length / Math.max(t[t.length - 1], 1e-9)).toFixed(1) + ' Hz')
+    + chip('repeticiones', reps.length)
+    + chip('posición', `${Math.min(...pos).toFixed(3)} … ${Math.max(...pos).toFixed(3)} rev`)
+    + chip(`LC1 (${u1})`, `${Math.min(...v1).toFixed(cal1 ? 2 : 0)} … ${Math.max(...v1).toFixed(cal1 ? 2 : 0)}`)
+    + chip(`LC2 (${u2})`, `${Math.min(...v2).toFixed(cal2 ? 2 : 0)} … ${Math.max(...v2).toFixed(cal2 ? 2 : 0)}`)
+    + (cal1 ? '' : chip('aviso', 'LC1 sin calibrar: cuentas'))
+    + (cal2 ? '' : chip('aviso', 'LC2 sin calibrar: cuentas'))
+    // Si la NAU7802 no llegó a dar datos, el CSV lleva ceros y la gráfica saldría plana:
+    // mejor decirlo que dejar que parezca que la célula no midió nada.
+    + (Math.min(...v2) === 0 && Math.max(...v2) === 0
+        ? chip('aviso', 'LC2 sin datos en este ensayo') : '');
+
+  let h = `<tr><th>rep</th><th>muestras</th><th>t (s)</th><th>LC1 máx (${u1})</th><th>pos máx (rev)</th></tr>`;
+  for (const r of reps) {
+    const f = filas.filter(x => x.rep === r);
+    const ts = f.map(x => x.t_rel_s);
+    h += `<tr><td>${r}</td><td>${f.length}</td><td>${(ts[ts.length-1]-ts[0]).toFixed(2)}</td>`
+       + `<td>${Math.max(...f.map(f1)).toFixed(cal1 ? 2 : 0)}</td>`
+       + `<td>${Math.max(...f.map(x => x.pos_rev)).toFixed(4)}</td></tr>`;
+  }
+  el('tabla').innerHTML = h;
+}
+
+const EJES = (xt, yt) => ({
+  responsive: true, animation: false,
+  plugins: { legend: { labels: { color: '#8b949e', boxWidth: 10, font: { size: 10 } } } },
+  scales: {
+    x: { type: 'linear', title: { display: true, text: xt, color: '#8b949e' },
+         ticks: { color: '#8b949e' }, grid: { color: '#21262d' } },
+    y: { title: { display: true, text: yt, color: '#8b949e' },
+         ticks: { color: '#8b949e' }, grid: { color: '#21262d' } }
+  }
+});
+
+// Fuerza frente a posición: con una traza por repetición, la ida y la vuelta se separan
+// y el lazo de histéresis se ve directamente.
+function pintarPos(filas, fx, ux, nombre) {
+  const reps = [...new Set(filas.map(f => f.rep))].sort((a, b) => a - b);
+  const ds = reps.map((r, i) => ({
+    label: 'rep ' + r, showLine: true, pointRadius: 0, borderWidth: 1.4,
+    borderColor: COLORES[i % COLORES.length],
+    data: filas.filter(x => x.rep === r).map(x => ({ x: x.pos_rev, y: fx(x) }))
+  }));
+  if (gPos) gPos.destroy();
+  gPos = new Chart(el('gPos'), { type: 'scatter', data: { datasets: ds },
+                                 options: EJES('posición (rev)', `${nombre} (${ux})`) });
+}
+
+function pintarT(filas, f1, u1, f2, u2) {
+  const ds = [
+    { label: `LC1 (${u1})`, showLine: true, pointRadius: 0, borderWidth: 1.4,
+      borderColor: '#3fb950', yAxisID: 'y',
+      data: filas.map(x => ({ x: x.t_rel_s, y: f1(x) })) },
+    { label: `LC2 (${u2})`, showLine: true, pointRadius: 0, borderWidth: 1.4,
+      borderColor: '#d29922', yAxisID: 'y3',
+      data: filas.map(x => ({ x: x.t_rel_s, y: f2(x) })) },
+    { label: 'posición (rev)', showLine: true, pointRadius: 0, borderWidth: 1.2,
+      borderColor: '#58a6ff', yAxisID: 'y2',
+      data: filas.map(x => ({ x: x.t_rel_s, y: x.pos_rev })) }
+  ];
+  const o = EJES('tiempo (s)', `LC1 (${u1})`);
+  o.scales.y2 = { position: 'right', title: { display: true, text: 'posición (rev)', color: '#58a6ff' },
+                  ticks: { color: '#58a6ff' }, grid: { drawOnChartArea: false } };
+  // LC2 en su propio eje: son cuentas de 24 bits contra 14 de LC1, y compartir escala
+  // aplastaría una de las dos contra el cero.
+  o.scales.y3 = { position: 'right', title: { display: true, text: `LC2 (${u2})`, color: '#d29922' },
+                  ticks: { color: '#d29922' }, grid: { drawOnChartArea: false } };
+  if (gT) gT.destroy();
+  gT = new Chart(el('gT'), { type: 'scatter', data: { datasets: ds }, options: o });
+}
+
+// Velocidad real contra la consigna, con los finales de carrera al lado: es donde se
+// ve si el eje llegó al tope antes de alcanzar B, o si la consigna se quedó sin seguir.
+// Los finales son 0/1 y van en un eje propio a la derecha, en escalón, para que no se
+// pierdan contra la escala de las RPM.
+function pintarVel(filas) {
+  const ds = [
+    { label: 'consigna (RPM)', showLine: true, pointRadius: 0, borderWidth: 1.2,
+      borderColor: '#d29922', stepped: true, yAxisID: 'y',
+      data: filas.map(x => ({ x: x.t_rel_s, y: x.ref_rpm })) },
+    { label: 'real (RPM)', showLine: true, pointRadius: 0, borderWidth: 1.4,
+      borderColor: '#3fb950', yAxisID: 'y',
+      data: filas.map(x => ({ x: x.t_rel_s, y: x.rpm })) },
+    { label: 'final A', showLine: true, pointRadius: 0, borderWidth: 1.2,
+      borderColor: '#f85149', stepped: true, yAxisID: 'y2',
+      data: filas.map(x => ({ x: x.t_rel_s, y: x.lim_a })) },
+    { label: 'final B', showLine: true, pointRadius: 0, borderWidth: 1.2,
+      borderColor: '#bc8cff', stepped: true, yAxisID: 'y2',
+      data: filas.map(x => ({ x: x.t_rel_s, y: x.lim_b })) }
+  ];
+  const o = EJES('tiempo (s)', 'RPM');
+  o.scales.y2 = {
+    position: 'right', min: -0.05, max: 1.6,
+    title: { display: true, text: 'finales', color: '#8b949e' },
+    ticks: { color: '#8b949e', stepSize: 1, callback: v => (v === 0 || v === 1) ? v : '' },
+    grid: { drawOnChartArea: false }
+  };
+  if (gVel) gVel.destroy();
+  gVel = new Chart(el('gVel'), { type: 'scatter', data: { datasets: ds }, options: o });
+}
+
+cargarLista();
+</script>
+</body>
+</html>

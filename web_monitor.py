@@ -24,7 +24,7 @@ from pathlib import Path
 import serial
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
 # ── Logging (console + file) ──────────────────────────────
 LOG_FILE = str(Path(__file__).parent / "web_monitor.log")
@@ -52,6 +52,7 @@ SAMPLE_SIZE = struct.calcsize(SAMPLE_FMT)   # 18
 CMD_INIT = 0x01; CMD_STOP = 0x02; CMD_SET_PARAM = 0x03
 CMD_MOVE_A = 0x04; CMD_MOVE_B = 0x05; CMD_SHUTDOWN = 0x06; CMD_HOME = 0x08
 CMD_LC_PROGRAM = 0x09; CMD_LC_QUERY = 0x0A; CMD_LC_HOLD = 0x0B
+CMD_CYCLE_START = 0x0C; CMD_CYCLE_STOP = 0x0D
 
 PARAM_SPEED = 0x01; PARAM_FORCE_LIMIT = 0x02; PARAM_ZERO_OFFSET = 0x03
 PARAM_ACCEL = 0x04; PARAM_DECEL = 0x05; PARAM_STIFFNESS = 0x06; PARAM_FORCE_CALIB = 0x07
@@ -64,6 +65,12 @@ HOME_SIZE = struct.calcsize(HOME_FMT)
 
 # Programación de la célula: modelo pregunta-respuesta. Cada CMD_LC_PROGRAM /
 # CMD_LC_QUERY devuelve exactamente un frame de estos, también cuando se rechaza.
+# Ciclo A<->B: A es el home, B el final de carrera o una posición elegida
+PACKET_ID_CYCLE = 0x05
+CYC_FMT  = "<BBHHii"   # id, fase, hechas, pedidas, pos_mrev, objetivo_mrev
+CYC_SIZE = struct.calcsize(CYC_FMT)
+CYC_PHASE_NAMES = {0: "—", 1: "hacia B", 2: "volviendo a A", 3: "completado", 4: "abortado"}
+
 PACKET_ID_LC = 0x04
 LC_FMT  = "<BBBBBHHBBH" # id, req, res, ganancia, offset, cfg_antes, cfg_después, ack, flags, cfg1
 LC_SIZE = struct.calcsize(LC_FMT)
@@ -92,6 +99,55 @@ MB_STATUS   = {0x00:"OK",0x01:"IllegalFn",0x02:"IllegalAddr",0x03:"IllegalVal",0
                0xE0:"BadSlaveID",0xE1:"BadFn",0xE2:"TIMEOUT",0xE3:"badCRC"}
 def mbst(s): return MB_STATUS.get(s, f"0x{s:02X}")
 
+# ── Grabación de ciclos ───────────────────────────────────
+# Un CSV por ciclo, abierto y cerrado por los frames PACKET_ID_CYCLE. Se escriben las
+# CUENTAS CRUDAS, no newtons: así el ensayo se puede recalibrar después sin repetirlo.
+# Las constantes que hagan falta para convertirlas van en la cabecera del propio fichero.
+CYCLE_DIR = Path(__file__).parent / "cycles"
+CSV_COLS = ("t_ms", "t_rel_s", "rep", "fase", "pos_rev", "lc1_raw", "lc1_base",
+            "lc2_raw", "rpm", "par_x10", "ref_rpm", "lim_a", "lim_b", "estado", "work_us")
+
+rec = {"f": None, "path": None, "t0": None, "rep": 1, "fase": "", "filas": 0}
+
+
+def rec_open(cy: dict):
+    CYCLE_DIR.mkdir(exist_ok=True)
+    path = CYCLE_DIR / (time.strftime("%Y%m%d-%H%M%S") + "_ciclo.csv")
+    f = path.open("w", encoding="utf-8")
+    with shared_lock:
+        fc, l2c, l2z = shared["force_calib"], shared["lc2_calib"], shared["lc2_zero"]
+    f.write(f"# ensayo {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+    f.write(f"# lc1_cuentas_por_N={fc}  lc2_cuentas_por_N={l2c}  lc2_tara={l2z}\n")
+    f.write(f"# repeticiones_pedidas={cy['cyc_target']}  B={cy['cyc_target_rev']:.3f} rev"
+            f" ({'posicion' if cy['cyc_target_rev'] > 0 else 'final de carrera'})\n")
+    f.write("# lc1_base ya lleva restada la tara del firmware; lc1_raw y lc2_raw son crudas\n")
+    f.write(",".join(CSV_COLS) + "\n")
+    rec.update(f=f, path=path, t0=None, rep=1, fase="", filas=0)
+    log.info("REC   abierto %s", path.name)
+
+
+def rec_close(motivo: str):
+    if not rec["f"]:
+        return
+    rec["f"].close()
+    log.info("REC   cerrado %s (%d filas, %s)", rec["path"].name, rec["filas"], motivo)
+    rec.update(f=None)
+
+
+def rec_row(d: dict, pos_rev: float):
+    if not rec["f"]:
+        return
+    t = d["t_ms"]
+    if rec["t0"] is None:
+        rec["t0"] = t
+    rec["f"].write("%d,%.3f,%d,%s,%.4f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n" % (
+        t, (t - rec["t0"]) / 1000.0, rec["rep"], rec["fase"], pos_rev,
+        d["bridge"], d["base_read"], d["lc2"], d["rpm"], d["current_x10"],
+        d["ref_cmd"], 1 if d["io"] & 0x01 else 0, 1 if d["io"] & 0x02 else 0,
+        d["servo_state"], d["work_us"]))
+    rec["filas"] += 1
+
+
 # ── Estado compartido (serial thread → async broadcaster) ──
 msg_deque: deque = deque(maxlen=100)   # thread-safe single-producer single-consumer
 clients: set[WebSocket] = set()
@@ -108,6 +164,8 @@ shared = {
     "home_range_valid": False,
     "lc_gain": None,       # lo que el firmware dice que hay grabado en la célula
     "lc_offset": None,
+    "lc2_calib": 0.0,      # el navegador las empuja para que consten en el CSV
+    "lc2_zero": 0,
 }
 shared_lock = threading.Lock()
 ser_ref: list = [None]   # contenedor mutable para la referencia al puerto serie
@@ -131,6 +189,16 @@ def decode_home(payload: bytes) -> dict | None:
     _pid, pos_mrev, range_mrev, phase, flags = struct.unpack(HOME_FMT, payload[:HOME_SIZE])
     return {"home_pos_rev": pos_mrev / 1000.0, "home_range_rev": range_mrev / 1000.0,
             "home_phase": phase, "home_range_valid": bool(flags & 0x01)}
+
+def decode_cycle(payload: bytes) -> dict | None:
+    """Estado del ciclo A<->B (PACKET_ID_CYCLE)."""
+    if len(payload) < CYC_SIZE or payload[0] != PACKET_ID_CYCLE:
+        return None
+    _pid, phase, done, target, pos_mrev, tgt_mrev = struct.unpack(CYC_FMT, payload[:CYC_SIZE])
+    return {"cyc_phase": phase, "cyc_phase_name": CYC_PHASE_NAMES.get(phase, "?"),
+            "cyc_done": done, "cyc_target": target,
+            "cyc_pos_rev": pos_mrev / 1000.0, "cyc_target_rev": tgt_mrev / 1000.0}
+
 
 def decode_lc(payload: bytes) -> dict | None:
     """Respuesta a CMD_LC_PROGRAM / CMD_LC_QUERY (PACKET_ID_LC)."""
@@ -225,6 +293,21 @@ def serial_thread(preferred: str | None):
                 if payload is None or payload == b"CRC_ERR":
                     continue
 
+                if payload and payload[0] == PACKET_ID_CYCLE:  # estado del ciclo A<->B
+                    cy = decode_cycle(payload)
+                    if cy:
+                        ph = cy["cyc_phase"]                    # 1,2 = en marcha
+                        if ph in (1, 2) and rec["f"] is None:
+                            rec_open(cy)
+                        rec["fase"] = cy["cyc_phase_name"].replace(" ", "_")
+                        rec["rep"]  = cy["cyc_done"] + 1
+                        if ph not in (1, 2) and rec["f"] is not None:
+                            rec_close(cy["cyc_phase_name"])
+                        msg = dict(cy); msg["type"] = "cycle"; msg["port"] = port
+                        msg["rec"] = rec["path"].name if rec["f"] else None
+                        msg_deque.append(msg)
+                    continue
+
                 if payload and payload[0] == PACKET_ID_LC:     # respuesta de programación
                     lc = decode_lc(payload)
                     if lc:
@@ -286,6 +369,7 @@ def serial_thread(preferred: str | None):
                                 shared["pos_rev"] += rpm * dt / 60.0
                         shared["last_t"] = t_ms
                         shared["count"] += 1
+                        rec_row(data, shared["pos_rev"])
                         pos_rev = shared["pos_rev"]; fc = shared["force_calib"]; cnt = shared["count"]
                         h_range = shared["home_range_rev"]; h_phase = shared["home_phase"]
                         h_valid = shared["home_range_valid"]
@@ -349,6 +433,50 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+@app.get("/ensayos")
+async def ensayos():
+    """Página aparte para mirar los ciclos ya grabados, sin tocar el monitor en vivo."""
+    return HTMLResponse((Path(__file__).parent / "static" / "ensayos.html").read_text())
+
+
+@app.get("/cycles")
+async def list_cycles():
+    """Los ensayos grabados, el más reciente primero."""
+    CYCLE_DIR.mkdir(exist_ok=True)
+    files = sorted(CYCLE_DIR.glob("*.csv"), key=lambda p: p.stat().st_mtime, reverse=True)
+    return JSONResponse([{"name": f.name, "bytes": f.stat().st_size,
+                          "when": time.strftime("%Y-%m-%d %H:%M:%S",
+                                                time.localtime(f.stat().st_mtime))}
+                         for f in files[:50]])
+
+
+@app.delete("/cycles/{name}")
+async def del_cycle(name: str):
+    """Borra un ensayo. Irreversible: no hay papelera."""
+    safe = Path(name).name          # nunca una ruta, igual que al descargar
+    path = CYCLE_DIR / safe
+    if path.suffix != ".csv" or not path.is_file():
+        return JSONResponse({"error": "no existe"}, status_code=404)
+    # El ensayo que se está grabando ahora mismo no se toca: borrarlo con el fichero
+    # abierto dejaría al grabador escribiendo en algo que ya no está en ningún sitio.
+    if rec["f"] is not None and rec["path"] and rec["path"].name == safe:
+        return JSONResponse({"error": "ese ensayo se está grabando ahora"}, status_code=409)
+    path.unlink()
+    log.info("REC   borrado %s", safe)
+    return JSONResponse({"ok": True, "name": safe})
+
+
+@app.get("/cycles/{name}")
+async def get_cycle(name: str):
+    # Sólo un nombre de fichero, nunca una ruta: sin esto, "../.." serviría cualquier
+    # cosa del disco a quien abriera la página.
+    safe = Path(name).name
+    path = CYCLE_DIR / safe
+    if path.suffix != ".csv" or not path.is_file():
+        return JSONResponse({"error": "no existe"}, status_code=404)
+    return FileResponse(path, media_type="text/csv", filename=safe)
+
+
 @app.get("/")
 async def index():
     return HTMLResponse((Path(__file__).parent / "static" / "index.html").read_text())
@@ -404,6 +532,24 @@ def _handle_command(cmd: dict):
             ser.write(build_packet(bytes([CMD_HOME])))
         elif action == "lc_query":
             ser.write(build_packet(bytes([CMD_LC_QUERY])))
+        elif action == "set_lc2":
+            # El navegador es quien conoce la calibración y la tara de LC2; se guardan
+            # aquí para que consten en la cabecera del CSV del ensayo.
+            with shared_lock:
+                shared["lc2_calib"] = float(cmd.get("calib", 0) or 0)
+                shared["lc2_zero"]  = int(cmd.get("zero", 0) or 0)
+            _ack(action, True, "constantes de LC2 anotadas")
+            return
+        elif action == "cycle_start":
+            # modo 0 = B es el final de carrera; 1 = B es la posición indicada
+            mode = 0 if int(cmd.get("to_limit", 1)) else 1
+            tgt  = max(0, min(32767, int(round(float(cmd.get("target_rev", 0)) * 100))))
+            spd  = max(0, min(300, int(cmd.get("speed", 10))))
+            rep  = max(0, min(65535, int(cmd.get("reps", 1))))
+            ser.write(build_packet(bytes([CMD_CYCLE_START, mode])
+                                   + struct.pack("<hhH", tgt, spd, rep)))
+        elif action == "cycle_stop":
+            ser.write(build_packet(bytes([CMD_CYCLE_STOP])))
         elif action == "lc_hold":
             # park: 0 = líneas en alta impedancia, 1 = forzadas a masa
             park = 1 if int(cmd.get("park", 0)) else 0
