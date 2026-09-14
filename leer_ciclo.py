@@ -32,9 +32,12 @@ def cargar(path: Path):
 def resumen(consts, filas):
     if not filas:
         print("El fichero no tiene ni una muestra."); return
-    num = lambda c: [float(f[c]) for f in filas if f[c] not in ("", None)]
+    num = lambda c: [float(f[c]) for f in filas if f.get(c) not in ("", None)]
     t, pos = num("t_rel_s"), num("pos_rev")
-    lc1, lc2 = num("lc1_base"), num("lc2_raw")
+    lc1 = num("lc1_base")
+    # Los ensayos anteriores a retirar la célula 2 traen la columna; los nuevos no.
+    hay_lc2 = "lc2_raw" in filas[0]
+    lc2 = num("lc2_raw") if hay_lc2 else []
     reps = sorted({int(f["rep"]) for f in filas})
 
     print(f"\n  Muestras ....... {len(filas)}  en {t[-1]:.2f} s"
@@ -42,11 +45,14 @@ def resumen(consts, filas):
     print(f"  Repeticiones ... {reps[0]}..{reps[-1]}  ({len(reps)})")
     print(f"  Posición ....... {min(pos):+.4f} .. {max(pos):+.4f} rev")
     print(f"  LC1 (tarada) ... {min(lc1):+.0f} .. {max(lc1):+.0f} cuentas")
-    print(f"  LC2 (cruda) .... {min(lc2):+.0f} .. {max(lc2):+.0f} cuentas")
+    if hay_lc2:
+        print(f"  LC2 (cruda) .... {min(lc2):+.0f} .. {max(lc2):+.0f} cuentas")
 
     # Sólo se convierte a newtons si el ensayo dejó escrita la constante
-    for nombre, datos, clave in (("LC1", lc1, "lc1_cuentas_por_N"),
-                                 ("LC2", lc2, "lc2_cuentas_por_N")):
+    celulas = [("LC1", lc1, "lc1_cuentas_por_N")]
+    if hay_lc2:
+        celulas.append(("LC2", lc2, "lc2_cuentas_por_N"))
+    for nombre, datos, clave in celulas:
         cal = float(consts.get(clave, 0) or 0)
         if cal:
             print(f"  {nombre} en fuerza . {min(datos)/cal:+.2f} .. {max(datos)/cal:+.2f} N"

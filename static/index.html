@@ -299,9 +299,6 @@
         <div class="metric"><span class="metric-label">LC1 estado</span><span class="metric-value" id="v-lcstatus">—</span></div>
         <div class="metric"><span class="metric-label">LC1 fuerza relativa</span><span class="metric-value" id="v-baseread">—</span></div>
         <div class="metric"><span class="metric-label">LC1 fuerza (N)</span><span class="metric-value" id="v-force-n">—</span></div>
-        <div class="metric"><span class="metric-label">LC2 crudo</span><span class="metric-value" id="v-lc2-raw">—</span></div>
-        <div class="metric"><span class="metric-label">LC2 tarada</span><span class="metric-value" id="v-lc2-net">—</span></div>
-        <div class="metric"><span class="metric-label">LC2 fuerza (N)</span><span class="metric-value" id="v-lc2-n">—</span></div>
       </div>
     </div>
     <div class="col2">
@@ -319,10 +316,10 @@
   <div class="tabs">
     <button class="tab active" data-tab="servo" onclick="showTab('servo')">Servo</button>
     <button class="tab"        data-tab="lc1"   onclick="showTab('lc1')">Célula 1 · ZSC31014</button>
-    <button class="tab"        data-tab="lc2"   onclick="showTab('lc2')">Célula 2 · NAU7802</button>
     <button class="tab"        data-tab="ciclo" onclick="showTab('ciclo')">Ciclo A↔B</button>
-    <button class="btn-apply" style="align-self:center;margin-left:10px" onclick="tareBoth()"
-            title="Pone a cero las dos células con su lectura actual. La de LC1 se manda al firmware; la de LC2 se queda en el navegador.">⌀ Tara ambas</button>
+    <button class="tab"        data-tab="teo"   onclick="showTab('teo')">Cálculo teórico</button>
+    <button class="btn-apply" style="align-self:center;margin-left:10px" onclick="tareLc1()"
+            title="Pone la célula a cero con su lectura actual. La tara vive en el firmware.">⌀ Tara</button>
     <span id="v-cmd-ack" class="hint" style="font-size:11px;align-self:center;margin-left:10px"></span>
   </div>
 
@@ -357,7 +354,7 @@
         </div>
         <div class="param">
           <label>Velocidad de homing (RPM)</label>
-          <input type="number" id="p-home-speed" value="8" min="1" max="100">
+          <input type="number" id="p-home-speed" value="30" min="1" max="100">
         </div>
       </div>
       <div class="group-actions">
@@ -374,7 +371,13 @@
       <div class="grid">
         <div class="param">
           <label>Calibración (cuentas/N)</label>
-          <input type="number" id="p-calib" value="0" min="0">
+          <input type="number" id="p-calib" value="14.41" step="any"
+                 title="Cuentas por newton. Puede ser NEGATIVA: esta célula da cuentas negativas al aumentar la tensión.">
+        </div>
+        <div class="param">
+          <label>Fuerza en el punto de tara (N)</label>
+          <input type="number" id="p-offset" value="51.78" step="any"
+                 title="La tara no es fuerza cero: la pesa cuelga siempre. Este es el valor real de la tensión cuando se puso la tara, y es lo que hace que la fuerza salga absoluta.">
         </div>
         <div class="param">
           <label>Tara</label>
@@ -473,32 +476,6 @@
     </details>
   </div>
 
-  <!-- ── Célula 2: NAU7802. Sin EEPROM que tocar; su calibración no sale del navegador ── -->
-  <div class="panel" data-panel="lc2" hidden>
-    <div class="group">
-      <div class="group-title">Calibración — sólo en el navegador, no viaja al Pico</div>
-      <div class="grid">
-        <div class="param">
-          <label>Calibración (cuentas/N)</label>
-          <input type="number" id="p-lc2-calib" value="0" step="any"
-                 title="Cuentas del NAU7802 por newton.">
-        </div>
-        <div class="param">
-          <label>Tara</label>
-          <div class="field">
-            <input type="number" id="p-lc2-zero" value="0" title="Cero de la célula 2.">
-            <button class="btn-apply" onclick="tareLc2()"
-                    title="Fija la tara con la lectura actual">⌀</button>
-          </div>
-        </div>
-      </div>
-      <div class="group-actions">
-        <button class="b-init" onclick="applyLc2()">✓ Aplicar parámetros</button>
-        <span id="v-apply-lc2" class="hint">—</span>
-      </div>
-    </div>
-  </div>
-
   <!-- ── Ciclo A↔B: A es el home, B el final de carrera o un punto elegido ── -->
   <div class="panel" data-panel="ciclo" hidden>
     <div class="group">
@@ -518,7 +495,7 @@
         </div>
         <div class="param">
           <label>Velocidad (RPM)</label>
-          <input type="number" id="c-speed" value="10" min="1" max="300">
+          <input type="number" id="c-speed" value="30" min="1" max="300">
         </div>
         <div class="param">
           <label>Repeticiones (0 = sin fin)</label>
@@ -545,6 +522,81 @@
         <span id="v-rec" class="hint">—</span>
       </div>
       <div class="readout"><div class="chips" id="v-cyc-files" hidden></div></div>
+    </div>
+  </div>
+
+  <!-- ── Cálculo teórico del par motor ── -->
+  <div class="panel" data-panel="teo" hidden>
+    <div class="group">
+      <div class="group-title">Geometría — así he entendido el montaje</div>
+      <svg viewBox="0 0 470 210" style="width:100%;max-width:470px;height:auto;display:block">
+        <!-- barra, mástil y cable -->
+        <line x1="45" y1="160" x2="415" y2="160" stroke="#c9d1d9" stroke-width="4"/>
+        <line x1="45" y1="160" x2="45"  y2="45"  stroke="#30363d" stroke-width="3"
+              stroke-dasharray="4 3"/>
+        <line x1="45" y1="45"  x2="235" y2="160" stroke="#58a6ff" stroke-width="2"/>
+        <!-- espiral del servo -->
+        <circle cx="45" cy="45" r="13" fill="none" stroke="#bc8cff" stroke-width="2"/>
+        <circle cx="45" cy="45" r="4"  fill="#bc8cff"/>
+        <!-- articulación -->
+        <circle cx="45" cy="160" r="5" fill="#8b949e"/>
+        <!-- punto donde tira el cable -->
+        <circle cx="235" cy="160" r="4" fill="#58a6ff"/>
+        <!-- pesa -->
+        <line x1="380" y1="160" x2="380" y2="185" stroke="#8b949e" stroke-width="1.5"/>
+        <rect x="366" y="185" width="28" height="18" fill="#d29922"/>
+        <!-- ángulo alpha -->
+        <path d="M 265 160 A 30 30 0 0 0 253 142" fill="none" stroke="#3fb950" stroke-width="1.5"/>
+        <!-- cotas -->
+        <text x="60"  y="40"  fill="#bc8cff" font-size="12" font-family="monospace">L1 (radio espiral)</text>
+        <text x="8"   y="105" fill="#8b949e" font-size="12" font-family="monospace">L2</text>
+        <text x="130" y="178" fill="#8b949e" font-size="12" font-family="monospace">L3</text>
+        <text x="295" y="178" fill="#8b949e" font-size="12" font-family="monospace">L4</text>
+        <text x="272" y="150" fill="#3fb950" font-size="12" font-family="monospace">α</text>
+        <text x="30"  y="180" fill="#8b949e" font-size="11" font-family="monospace">O</text>
+        <text x="352" y="203" fill="#d29922" font-size="11" font-family="monospace">m·g</text>
+        <text x="120" y="88"  fill="#58a6ff" font-size="11" font-family="monospace">cable (hipotenusa)</text>
+      </svg>
+      <div class="group-actions">
+        <span class="hint">Barra articulada en O. El cable sale de la espiral, baja por el
+        mástil de altura L2 y tira de la barra en un punto a L3 de O. La pesa cuelga a
+        L3+L4. Catetos L2 y L3, cable = hipotenusa, α entre cable y barra.</span>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">Datos</div>
+      <div class="grid">
+        <div class="param"><label>L1 · radio de la espiral (mm)</label>
+          <input type="number" id="t-l1" value="25" step="0.1" min="0.1" oninput="calcTeo()"></div>
+        <div class="param"><label>L2 · cateto vertical (mm)</label>
+          <input type="number" id="t-l2" value="290" step="1" min="0" oninput="calcTeo()"></div>
+        <div class="param"><label>L3 · cateto hasta el cable (mm)</label>
+          <input type="number" id="t-l3" value="95" step="1" min="0.1" oninput="calcTeo()"></div>
+        <div class="param"><label>L4 · resto de barra hasta la pesa (mm)</label>
+          <input type="number" id="t-l4" value="110" step="1" min="0" oninput="calcTeo()"></div>
+        <div class="param"><label>Masa colgada (kg)</label>
+          <input type="number" id="t-m" value="2" step="0.01" min="0" oninput="calcTeo()"></div>
+        <div class="param"><label>g (m/s²)</label>
+          <input type="number" id="t-g" value="9.81" step="0.01" min="0" oninput="calcTeo()"></div>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">Curva teórica frente al giro del servo</div>
+      <canvas id="gTeo" style="max-height:300px"></canvas>
+      <div class="group-actions">
+        <span class="hint" id="t-rango"></span>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">Resultado en la posición de partida (barra horizontal)</div>
+      <div class="chips" id="t-chips"></div>
+      <div class="readout">
+        <div class="line hint" id="t-formulas"></div>
+        <div class="line" id="t-comp"></div>
+      </div>
     </div>
   </div>
 
@@ -669,15 +721,6 @@ const chartFT = new Chart(document.getElementById('chart-ft'), {
       tension: 0.25,
       yAxisID: 'y',
       fill: { target: 'origin', above: 'rgba(121,192,255,0.08)', below: 'rgba(248,81,73,0.08)' },
-    }, {
-      label: 'LC2',
-      data: [],
-      borderColor: '#d2a8ff',
-      borderWidth: 1.5,
-      pointRadius: 0,
-      tension: 0.25,
-      yAxisID: 'y1',
-      fill: false,
     }]
   },
   options: {
@@ -688,19 +731,24 @@ const chartFT = new Chart(document.getElementById('chart-ft'), {
     scales: {
       x:  { grid: darkGrid, ticks: { ...tickStyle, maxTicksLimit: 6 } },
       y:  { grid: darkGrid, ticks: tickStyle, position: 'left' },
-      // LC2 en su propio eje: sin calibrar las dos células están en escalas
-      // muy distintas (miles frente a cientos de miles de cuentas)
-      y1: { grid: { display: false }, ticks: tickStyle, position: 'right' },
     }
   }
 });
 
 // ── WebSocket ────────────────────────────────────────────
 let ws = null;
-let forceCalib = 0;
-let lc2Calib   = 0;    // cuentas por newton de la célula 2 (sólo navegador)
-let lc2Zero    = 0;    // tara de la célula 2
-let lc2Last    = 0;    // última lectura cruda, para el botón de tara
+// Calibración de LC1: fuerza = cuentas/forceCalib + forceOffset
+//
+// Son DOS constantes y las dos hacen falta:
+//   · forceCalib puede ser negativa, así que el código no exige fc > 0 como antes.
+//     En esta máquina sale POSITIVA (+14.41): las cuentas crecen con la tensión. Salió
+//     negativa en un primer ajuste hecho con la geometría invertida, y el signo de la
+//     calibración es justamente lo que delata ese error.
+//   · forceOffset existe porque la tara NO es fuerza cero: la pesa de 2 kg cuelga
+//     siempre, así que al tarar se está poniendo a cero una tensión que ya existía.
+//     Sin este término la fuerza sale desplazada por ese valor.
+let forceCalib  = 14.41;
+let forceOffset = 51.78;
 let lc1Last    = 0;    // ídem para la célula 1
 let t0 = null;
 let lastTsec = null;   // latest device time (s), for command markers
@@ -824,8 +872,8 @@ function updateUI(d) {
   el('v-baseread').textContent   = `${br > 0 ? '+' : ''}${br} cnt`;
 
   const fc = forceCalib;
-  const hasCalib = fc > 0;
-  const forceN = hasCalib ? br / fc : null;
+  const hasCalib = fc !== 0;
+  const forceN = hasCalib ? br / fc + forceOffset : null;
   const forceDisplay = hasCalib ? forceN : br;
   const forceUnit    = hasCalib ? 'N' : 'cnt';
   const forceStr = hasCalib ? `${forceN.toFixed(2)} N` : `${br} cnt`;
@@ -848,37 +896,13 @@ function updateUI(d) {
   bar.style.width = pct + '%';
   bar.style.background = barColor;
 
-  // Célula 2 (NAU7802) — llega en crudo, la tara y la calibración van aquí
-  const lc2ok    = !!(flags & 0x10);
-  const lc2valid = !!(flags & 0x08);
-  const lc2raw   = d.lc2 || 0;
-  lc2Last = lc2raw;
-  const lc2net = lc2raw - lc2Zero;
-  const lc2N   = lc2Calib ? lc2net / lc2Calib : null;
-
-  if (!lc2ok) {
-    el('v-lc2-raw').innerHTML = '<span class="dim">no detectada</span>';
-    el('v-lc2-net').textContent = '—';
-    el('v-lc2-n').textContent   = '—';
-  } else if (!lc2valid) {
-    el('v-lc2-raw').innerHTML = '<span class="err">sin dato</span>';
-    el('v-lc2-net').textContent = '—';
-    el('v-lc2-n').textContent   = '—';
-  } else {
-    el('v-lc2-raw').textContent = `${lc2raw} cnt`;
-    el('v-lc2-net').textContent = `${lc2net > 0 ? '+' : ''}${lc2net} cnt`;
-    el('v-lc2-n').innerHTML = lc2N !== null
-      ? `<span class="ok">${lc2N.toFixed(2)} N</span>`
-      : '<span class="dim">calibrar primero</span>';
-  }
-
-  el('ft-now').textContent = forceStr
-    + (lc2ok && lc2valid ? `  |  LC2 ${lc2N !== null ? lc2N.toFixed(2) + ' N' : lc2net + ' cnt'}` : '');
+  el('ft-now').textContent = forceStr;
 
   // Motor
   const rpm = d.rpm || 0;
   el('v-rpm').innerHTML = `<span class="${rpm!==0?'info':'dim'}">${rpm>0?'+':''}${rpm} RPM</span>`;
   const cur = (d.current_x10 || 0) / 10.0;
+  ultimoPar = cur;
   el('v-current').innerHTML = `<span class="${cur!==0?'ok':'dim'}">${cur.toFixed(1)} A</span>`;
   el('v-speedcmd').textContent = `${d.ref_cmd || 0} RPM`;
   const pos = d.pos_rev || 0;
@@ -893,11 +917,9 @@ function updateUI(d) {
   if (t0 === null) t0 = now;
   chartFT.data.labels.push((now - t0).toFixed(1));
   chartFT.data.datasets[0].data.push(forceDisplay);
-  chartFT.data.datasets[1].data.push(lc2ok && lc2valid ? (lc2N !== null ? lc2N : lc2net) : null);
   if (chartFT.data.labels.length > MAX_FT) {
     chartFT.data.labels.shift();
     chartFT.data.datasets[0].data.shift();
-    chartFT.data.datasets[1].data.shift();
   }
   chartFT.update('none');
 
@@ -916,6 +938,142 @@ function updateUI(d) {
   el('diag-now').textContent = `cmd ${d.ref_cmd || 0} / real ${rpm} RPM`;
 }
 
+// ── Cálculo teórico del par motor ────────────────────────
+// Estática de la barra articulada en O, en equilibrio:
+//
+//   El peso hace momento respecto a O:        M = m·g·(L3+L4)
+//   El cable lo equilibra tirando a L3 de O:  M = T·L3·sen(α)
+//   con α el ángulo entre cable y barra:      α = atan(L2/L3),  sen(α) = L2/√(L2²+L3²)
+//   de donde                                  T = m·g·(L3+L4) / (L3·sen α)
+//   y en el eje del servo, con la espiral:    τ = T·L1
+//
+// Ojo con lo que NO entra: se desprecia el peso propio de la barra, el rozamiento de la
+// articulación y el rendimiento del reductor, y se supone la barra horizontal y el peso
+// vertical. El par real será algo mayor que este.
+let ultimoPar = null;    // último par medido, para comparar
+
+// ── Curva teórica: par frente al giro del servo ──────────
+// Cinemática: la barra gira θ sobre O, el punto P donde tira el cable está a L3 de O y
+// el anclaje A a L2 sobre O, así que la longitud de cable sale del teorema del coseno:
+//
+//   c(θ)² = L3² + L2² − 2·L2·L3·sen θ
+//   brazo del cable respecto a O:  d = L2·L3·cos θ / c
+//   momento del peso:              M = m·g·(L3+L4)·cos θ
+//
+// Al plantear T·d = M el cos θ SE CANCELA en los dos lados, y queda
+//
+//   T(θ) = m·g·(L3+L4)·c(θ) / (L2·L3)
+//
+// es decir: la tensión es proporcional a la longitud de cable que queda. Y como enrollar
+// es lineal (c = c0 − L1·φ), el par τ = T·L1 resulta LINEAL con el giro del servo.
+// Verificado numéricamente: la media de los extremos coincide con el punto medio.
+//
+// El recorrido útil termina cuando la barra llega a la vertical (θ = 90°), que es cuando
+// el cable ha bajado a |L2 − L3|; más allá la geometría ya no tiene solución.
+let gTeo = null;
+
+function curvaTeo(L1, L2, L3, L4, m, g) {
+  const c0 = Math.hypot(L2, L3), cmin = Math.abs(L2 - L3);
+  const phimax = (c0 - cmin) / L1;               // rad de giro del servo
+  const pts = [];
+  const N = 120;
+  for (let i = 0; i <= N; i++) {
+    const phi = phimax * i / N;
+    const c   = c0 - L1 * phi;
+    let sth   = (L2*L2 + L3*L3 - c*c) / (2*L2*L3);
+    sth = Math.max(-1, Math.min(1, sth));
+    const th  = Math.asin(sth) * 180 / Math.PI;
+    const T   = m * g * (L3 + L4) * c / (L2 * L3);
+    pts.push({ gradosServo: phi * 180 / Math.PI, c, theta: th, T, tau: T * L1 / 1000 });
+  }
+  return { pts, phimax, c0, cmin };
+}
+
+function pintarTeo(L1, L2, L3, L4, m, g) {
+  const { pts, phimax, c0, cmin } = curvaTeo(L1, L2, L3, L4, m, g);
+  el('t-rango').textContent =
+      `Recorrido útil: ${(phimax * 180 / Math.PI).toFixed(0)}° de servo`
+    + ` (${(phimax / (2 * Math.PI)).toFixed(2)} rev), con el cable pasando de`
+    + ` ${c0.toFixed(1)} a ${cmin.toFixed(0)} mm y la barra de 0° a 90°.`
+    + ` El par cae de forma lineal porque la tensión es proporcional al cable que queda.`;
+
+  const ds = [
+    { label: 'par del motor (N·m)', showLine: true, pointRadius: 0, borderWidth: 2,
+      borderColor: '#d29922', yAxisID: 'y',
+      data: pts.map(p => ({ x: p.gradosServo, y: p.tau })) },
+    { label: 'tensión del cable (N)', showLine: true, pointRadius: 0, borderWidth: 1.4,
+      borderColor: '#58a6ff', yAxisID: 'y1',
+      data: pts.map(p => ({ x: p.gradosServo, y: p.T })) },
+    { label: 'ángulo de la barra (°)', showLine: true, pointRadius: 0, borderWidth: 1.2,
+      borderColor: '#3fb950', borderDash: [5, 3], yAxisID: 'y2',
+      data: pts.map(p => ({ x: p.gradosServo, y: p.theta })) }
+  ];
+  const ejes = {
+    responsive: true, animation: false,
+    plugins: { legend: { labels: { color: '#8b949e', boxWidth: 10, font: { size: 10 } } } },
+    scales: {
+      x:  { type: 'linear', title: { display: true, text: 'giro del servo (°)', color: '#8b949e' },
+            ticks: { color: '#8b949e' }, grid: { color: '#21262d' } },
+      y:  { position: 'left',  title: { display: true, text: 'par (N·m)', color: '#d29922' },
+            ticks: { color: '#d29922' }, grid: { color: '#21262d' } },
+      y1: { position: 'right', title: { display: true, text: 'tensión (N)', color: '#58a6ff' },
+            ticks: { color: '#58a6ff' }, grid: { drawOnChartArea: false } },
+      y2: { position: 'right', min: 0, max: 90, display: false }
+    }
+  };
+  if (gTeo) gTeo.destroy();
+  gTeo = new Chart(el('gTeo'), { type: 'scatter', data: { datasets: ds }, options: ejes });
+}
+
+function calcTeo() {
+  const v = id => parseFloat(el(id).value);
+  const L1 = v('t-l1'), L2 = v('t-l2'), L3 = v('t-l3'), L4 = v('t-l4');
+  const m  = v('t-m'),  g  = v('t-g');
+  const chip = (k, x) => `<span class="chip">${k} <b>${x}</b></span>`;
+
+  if ([L1, L2, L3, L4, m, g].some(isNaN) || L3 <= 0 || L1 <= 0) {
+    el('t-chips').innerHTML = chip('aviso', 'faltan datos (L1 y L3 no pueden ser 0)');
+    el('t-formulas').textContent = ''; el('t-comp').textContent = '';
+    return;
+  }
+
+  const hip   = Math.hypot(L2, L3);
+  const alpha = Math.atan2(L2, L3);              // rad
+  const sen   = L2 / hip;                        // = sen(alpha)
+  const W     = m * g;                           // N
+  const M     = W * (L3 + L4) / 1000;            // N·m
+  const T     = W * (L3 + L4) / (L3 * sen);      // N
+  const tau   = T * L1 / 1000;                   // N·m
+
+  pintarTeo(L1, L2, L3, L4, m, g);
+
+  el('t-chips').innerHTML =
+      chip('hipotenusa', hip.toFixed(1) + ' mm')
+    + chip('α', (alpha * 180 / Math.PI).toFixed(2) + '°')
+    + chip('barra L3+L4', (L3 + L4).toFixed(1) + ' mm')
+    + chip('peso', W.toFixed(2) + ' N')
+    + chip('momento en O', M.toFixed(3) + ' N·m')
+    + chip('tensión del cable', T.toFixed(2) + ' N')
+    + chip('par del motor', tau.toFixed(4) + ' N·m');
+
+  el('t-formulas').innerHTML =
+      `T = m·g·(L3+L4) / (L3·sen α) = ${m}·${g}·${(L3+L4).toFixed(0)} / (${L3.toFixed(0)}·${sen.toFixed(4)}) = <b>${T.toFixed(2)} N</b>`
+    + ` &nbsp;·&nbsp; τ = T·L1 = ${T.toFixed(2)}·${(L1/1000).toFixed(4)} = <b>${tau.toFixed(4)} N·m</b>`;
+
+  // Comparación con lo medido, si hay algo medido
+  const c = el('t-comp');
+  if (ultimoPar === null) {
+    c.className = 'line hint';
+    c.textContent = 'sin par medido todavía (conecta y habilita el servo para comparar)';
+  } else {
+    const rel = tau !== 0 ? (Math.abs(ultimoPar) / tau) : 0;
+    c.className = 'line hint';
+    c.textContent = `par medido ahora: ${ultimoPar.toFixed(1)} (unidades del drive)`
+      + ` · teórico ${tau.toFixed(4)} N·m · cociente ${rel.toFixed(2)}`
+      + ' — no son las mismas unidades hasta saber qué escala usa el registro 16387';
+  }
+}
+
 // ── Ciclo A↔B ────────────────────────────────────────────
 const CYC_CLS = { 0:'dim', 1:'info', 2:'info', 3:'ok', 4:'err' };
 
@@ -927,19 +1085,12 @@ function cycModeChanged() {
 }
 
 function cycleStart() {
-  pushLc2Consts();                  // que la cabecera del CSV lleve las constantes
   cmd('cycle_start', {
     to_limit:   el('c-mode').value === '1' ? 1 : 0,
     target_rev: parseFloat(el('c-target').value) || 0,
     speed:      parseInt(el('c-speed').value) || 10,
     reps:       parseInt(el('c-reps').value)  || 0
   });
-}
-
-// La calibración y la tara de LC2 sólo las sabe el navegador: se empujan al puente para
-// que queden escritas en la cabecera del CSV, si no el ensayo no sería reproducible.
-function pushLc2Consts() {
-  cmd('set_lc2', { calib: lc2Calib, zero: lc2Zero });
 }
 
 async function loadCycles() {
@@ -1187,6 +1338,7 @@ try {
   if (saved) showTab(saved);
 } catch (e) {}
 cycModeChanged();   // el campo de posición arranca oculto si B es el final de carrera
+calcTeo();          // el cálculo teórico ya sale hecho con los valores por defecto
 loadCycles();
 
 // Un solo envío por pestaña: se manda todo el bloque y se dice qué ha salido.
@@ -1211,38 +1363,29 @@ function applyServo() {
 function applyLc1() {
   let n = 0;
   const c = parseInt(el('p-calib').value);
-  if (!isNaN(c)) { forceCalib = c; cmd('set_param', { param: 7, value: c }); n++; }
+  if (!isNaN(c)) {
+    forceCalib = c;
+    // Al firmware va redondeada porque el parámetro es int16 (y allí no se usa para
+    // nada, sólo se guarda); la buena, con decimales, va al puente para que quede en
+    // la cabecera del CSV y los ensayos sean reproducibles.
+    cmd('set_param', { param: 7, value: Math.round(c) });
+    n++;
+  }
+  const off = parseFloat(el('p-offset').value);
+  if (!isNaN(off)) { forceOffset = off; n++; }
+  cmd('set_calib', { calib: forceCalib, offset: forceOffset });
   if (applyParam(3, 'p-zero')) n++;
   flashApply('v-apply-lc1', n);
 }
 
-// La NAU7802 no tiene nada que grabar: su calibración se queda en esta página.
-function applyLc2() {
-  const v = parseFloat(el('p-lc2-calib').value);
-  if (!isNaN(v)) lc2Calib = v;
-  flashApply('v-apply-lc2', isNaN(v) ? 0 : 1);
-}
-
 // Célula 2: tara y calibración viven en el navegador — el firmware la manda cruda
-// La tara de LC1 no es como la de LC2: la de la célula 2 se queda en el navegador, y
-// ésta vive en el firmware (ctrl.zeroOffset, que es lo que se resta a cada medida). Por
-// eso además de rellenar el campo hay que mandarla, si no el cero sólo sería aparente.
-// Las dos de una vez. No son la misma operación por dentro —la de LC1 viaja al firmware
-// y la de LC2 se queda aquí— pero para quien está delante de la máquina sí lo es.
-function tareBoth() {
-  tareLc1();
-  tareLc2();
-}
-
+// La tara vive en el firmware (ctrl.zeroOffset, que es lo que se resta a cada medida),
+// así que además de rellenar el campo hay que mandarla: si no, el cero sería aparente y
+// el límite de fuerza seguiría midiendo desde el origen viejo.
 function tareLc1() {
   el('p-zero').value = lc1Last;
   cmd('set_param', { param: 3, value: lc1Last });
   flashApply('v-apply-lc1', 1);
-}
-
-function tareLc2() {
-  lc2Zero = lc2Last;
-  el('p-lc2-zero').value = lc2Zero;
 }
 
 // v2: offset del home en rev → centi-rev (PARAM_HOME_OFFSET = 8)

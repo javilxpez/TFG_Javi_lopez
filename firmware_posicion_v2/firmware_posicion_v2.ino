@@ -12,9 +12,6 @@
 //  Estado/recorrido se reportan en un frame propio (PACKET_ID_HOME=0x03).
 //
 //  ── v2.1: SEGUNDA CÉLULA DE CARGA ──────────────────────────────
-//  Load Cell 4 Click (NAU7802 @ 0x2A) en el mismo bus I2C1 que la
-//  Load Cell 2 Click (ZSC31014 @ 0x28). Se lee sin filtrar y viaja
-//  en cada muestra de telemetría (campo lc2, int32).
 // ═══════════════════════════════════════════════════════════
 
 #include <Wire.h>
@@ -51,13 +48,6 @@ static TwoWire I2C1Bus(i2c1, 2, 3);
 // pull-down de ~50 k) contra un pull-up de ~10 k salen ~2,7 V, que es justo el orden
 // de lo medido. Poniendo aquí el GPIO correcto, el corte lo lleva a 0 de verdad.
 #define LC1_INT_GPIO  4
-// Durante el corte se le quita también la tensión a la LC2 (su enable es GP0). No es
-// por su INT —GP0 ya es LC2_EN_GPIO, son redes distintas— sino porque la NAU7802
-// comparte SDA/SCL: alimentada, sus propios pines sostienen el bus y vuelven a ofrecer
-// un camino hacia el ZSC31014. Cuesta que la LC2 se reinicie después, cosa que la
-// grabación ya hace de todas formas. Ponlo a 0 si prefieres no tocarla.
-#define LC_PARK_LC2   1
-#define LC2_EN_GPIO  0     // alimentación/enable Load Cell 4 Click (NAU7802)
 
 #define ZSC31014_ADDR 0x28
 // Ganancia y offset del A/D con los que ARRANCA la GUI. No se graban en el arranque:
@@ -86,35 +76,6 @@ static TwoWire I2C1Bus(i2c1, 2, 3);
 #define LC_STATUS_VALID   0x00
 #define LC_STATUS_STALE   0x01
 #define LC_STATUS_COMMAND 0x02
-
-// ── LC2: Load Cell 4 Click — NAU7802 @ 0x2A, 24 bit con signo ──
-// Config validada en test_loadcell_dual_v2 (ruido de reposo ~350 cuentas p-p):
-// el LDO interno a 3.0 V (la Click va a 3V3, 4.5 V lo dejaba en dropout), el
-// chopper del PGA ACTIVO (desactivarlo multiplica por 10 la deriva lenta) y la
-// calibración interna de offset. AVDD debe salir del LDO interno: esta Click no
-// alimenta el pin AVDD por fuera y con AVDDS=0 el ADC se clava en -8388608.
-#define NAU7802_ADDR  0x2A
-#define NAU_PU_CTRL   0x00
-#define NAU_CTRL1     0x01
-#define NAU_CTRL2     0x02
-#define NAU_ADCO_B2   0x12
-#define NAU_ADC_REG   0x15
-#define NAU_PGA       0x1B
-#define NAU_PWR_CTRL  0x1C
-#define NAU_REVISION  0x1F
-
-#define NAU_RR    0x01
-#define NAU_PUD   0x02
-#define NAU_PUA   0x04
-#define NAU_PUR   0x08
-#define NAU_CS    0x10
-#define NAU_CR    0x20
-#define NAU_AVDDS 0x80
-
-#define NAU_GAIN   7     // x128
-#define NAU_VLDO   5     // 3.0 V
-#define NAU_RATE   3     // 80 SPS
-#define NAU_CALMOD 0     // calibración interna de offset
 
 // ── Protocolo binario ─────────────────────────────
 #define SYNC_0     0xAA
@@ -308,13 +269,6 @@ struct ControlState {
   uint32_t maSum           = 0;
   uint16_t lastBridgeFilt  = 0;
 
-  // ── Segunda célula (NAU7802) — sin filtrar, tal cual sale del ADC ──
-  bool     lc2OK           = false;
-  bool     lc2CalOK        = false;
-  bool     lc2Valid        = false;
-  int32_t  lc2Raw          = 0;
-  uint8_t  lc2Discard      = 0;      // muestras a tirar tras (re)configurar
-  unsigned long lc2LastGood = 0;
 
   // ── Posición + Homing (v2) ──
   float    posRev          = 0.0f;   // posición integrada de RPM (rev), signo + = hacia B
@@ -322,7 +276,7 @@ struct ControlState {
   HomingPhase homePhase    = HOME_IDLE;
   float    rangeRev        = 0.0f;   // recorrido A→B medido (rev)
   float    homeOffsetRev   = 0.0f;   // offset deseado del home desde A (rev)
-  int16_t  homingSpeed     = 8;      // velocidad de búsqueda del homing (RPM, lenta)
+  int16_t  homingSpeed     = 30;     // velocidad de búsqueda del homing (RPM)
   bool     homeRangeValid  = false;  // true tras medir A→B con éxito
   unsigned long homePhaseStart  = 0; // t de inicio del tramo actual (timeout)
   unsigned long homeReportUntil = 0; // seguir reportando tras DONE/FAIL hasta este t
@@ -331,7 +285,7 @@ struct ControlState {
   CyclePhase cycPhase      = CYC_IDLE;
   bool     cycToLimitB     = true;   // true = B es el final de carrera; false = posición
   float    cycTargetRev    = 0.0f;   // B cuando es una posición (rev desde el home)
-  int16_t  cycSpeed        = 10;     // RPM del ciclo
+  int16_t  cycSpeed        = 30;     // RPM del ciclo
   uint16_t cycTarget       = 1;      // repeticiones pedidas (0 = sin fin)
   uint16_t cycDone         = 0;      // repeticiones completadas
   unsigned long cycPhaseStart = 0;
@@ -400,19 +354,17 @@ static uint8_t crc8(const uint8_t *data, uint8_t len) {
 //  +10   io          (b0=limit_A, b1=limit_B)
 //  +11   state
 //  +12-13 work_us    (duración de trabajo del loop en µs, sin el pacing — rendimiento)
-//  +14-17 lc2        (int32 — célula 2 en crudo, 24 bit con signo)
 #define MAX_SAMPLES 8      // LOOP_MS=50 → ~4-5 por ventana de 200 ms; margen a 8
 struct Sample {
   uint16_t dt_ms;
   int16_t  rpm, current, ref, base;
   uint8_t  io, state;
   uint16_t work_us;
-  int32_t  lc2;
 };
 static Sample   sampleBuf[MAX_SAMPLES];
 static uint8_t  sampleCount = 0;
 static uint32_t frameBaseT  = 0;
-static uint8_t  txBuf[14 + MAX_SAMPLES*18];
+static uint8_t  txBuf[14 + MAX_SAMPLES*14];
 
 // Cache one loop iteration into the batch (no I/O). work = loop work time (µs, pre-pacing)
 void recordSample(uint32_t now, uint16_t work){
@@ -428,7 +380,6 @@ void recordSample(uint32_t now, uint16_t work){
             | (digitalRead(PIN_LIMIT_B)==HIGH ? 0x02 : 0x00);
   s.state   = (uint8_t)ctrl.currentState;
   s.work_us = work;
-  s.lc2     = ctrl.lc2Raw;
 }
 
 // Send the whole batch as one frame, then reset
@@ -437,8 +388,7 @@ void telemetryFlush(){
   uint8_t flags = (ctrl.lastLCValid     ? 0x01 : 0x00)
                 | (ctrl.servoConnected  ? 0x02 : 0x00)
                 | (ctrl.lcConfigApplied ? 0x04 : 0x00)
-                | (ctrl.lc2Valid        ? 0x08 : 0x00)
-                | (ctrl.lc2OK           ? 0x10 : 0x00);
+                ;
   uint8_t *p = txBuf;
   *p++ = PACKET_ID;
   *p++ = (frameBaseT>> 0)&0xFF; *p++ = (frameBaseT>> 8)&0xFF;
@@ -461,10 +411,8 @@ void telemetryFlush(){
     *p++ = s.io;
     *p++ = s.state;
     *p++ = (s.work_us>>0)&0xFF; *p++ = (s.work_us>>8)&0xFF;
-    *p++ = (s.lc2>> 0)&0xFF; *p++ = (s.lc2>> 8)&0xFF;
-    *p++ = (s.lc2>>16)&0xFF; *p++ = (s.lc2>>24)&0xFF;
   }
-  uint8_t payloadLen = (uint8_t)(p - txBuf);   // 14 + n*18, ≤ 158 for MAX_SAMPLES=8
+  uint8_t payloadLen = (uint8_t)(p - txBuf);   // 14 + n*14, ≤ 126 for MAX_SAMPLES=8
   uint8_t frame[3 + sizeof(txBuf) + 1];
   frame[0]=SYNC_0; frame[1]=SYNC_1; frame[2]=payloadLen;
   memcpy(&frame[3], txBuf, payloadLen);
@@ -881,8 +829,6 @@ static bool zscResp(uint16_t &v){
 // ese pull-up es permanente y estas tres líneas tendrían que ir forzadas a 0 en vez
 // de sueltas (pinMode OUTPUT + digitalWrite LOW).
 //
-// LC2_EN es la excepción y va forzado: no es una señal con pull-up, es el enable de
-// alimentación de la otra Click, y soltarlo no apagaría nada.
 static void zscParkLines(){
   I2C1Bus.end();
   if(lcParkMode){
@@ -894,11 +840,9 @@ static void zscParkLines(){
     pinMode(LC_SCL_PIN, INPUT);
     if(LC1_INT_GPIO >= 0) pinMode(LC1_INT_GPIO, INPUT);
   }
-  if(LC_PARK_LC2) digitalWrite(LC2_EN_GPIO, LOW);
 }
 
 static void zscRestoreLines(){
-  if(LC_PARK_LC2) digitalWrite(LC2_EN_GPIO, HIGH);
   I2C1Bus.begin(); I2C1Bus.setClock(LC_CM_I2C_FREQ);   // recupera SDA y SCL, a 100 kHz
   // INT se queda como entrada, que es su estado normal de funcionamiento.
 }
@@ -1074,94 +1018,12 @@ static uint8_t loadCellProgram(uint16_t wantB, uint16_t want1,
   return res;
 }
 
-// ── Load Cell 2 (NAU7802) ─────────────────────────
-static bool nauWrite(uint8_t reg, uint8_t val){
-  I2C1Bus.beginTransmission(NAU7802_ADDR);
-  I2C1Bus.write(reg); I2C1Bus.write(val);
-  return I2C1Bus.endTransmission()==0;
-}
 
-// STOP en vez de repeated start: el ZSC31014 comparte bus y su protocolo no admite
-// la condicion de restart — un flanco de bajada de SDA con SCL alto le rompe la
-// comunicacion SIGUIENTE, aunque esta vaya dirigida a la NAU7802.
-static uint8_t nauReadReg(uint8_t reg){
-  I2C1Bus.beginTransmission(NAU7802_ADDR);
-  I2C1Bus.write(reg);
-  I2C1Bus.endTransmission();
-  I2C1Bus.requestFrom((uint8_t)NAU7802_ADDR,(uint8_t)1);
-  return I2C1Bus.available() ? I2C1Bus.read() : 0xFF;
-}
 
-// Calibración interna de offset — obligatoria tras fijar ganancia, LDO y tasa
-static bool nauCalibrate(){
-  uint8_t c2 = ((uint8_t)(NAU_RATE&7)<<4) | (NAU_CALMOD&3);
-  nauWrite(NAU_CTRL2, c2 | 0x04);                 // CALS = 1
-  uint32_t t = millis();
-  while(nauReadReg(NAU_CTRL2) & 0x04){            // espera a que CALS baje
-    if(millis()-t > 1000) return false;
-    delay(1);
-  }
-  return (nauReadReg(NAU_CTRL2) & 0x08)==0;       // CAL_ERR = 0
-}
 
-static bool loadCell2Setup(){
-  if(!nauWrite(NAU_PU_CTRL, NAU_RR)) return false;
-  delay(10);
-  if(!nauWrite(NAU_PU_CTRL, NAU_AVDDS|NAU_PUA|NAU_PUD)) return false;
-  delay(10);
-  uint32_t t = millis();
-  while(!(nauReadReg(NAU_PU_CTRL) & NAU_PUR)){    // espera power-up ready
-    if(millis()-t > 200) return false;
-    delay(5);
-  }
-  nauWrite(NAU_CTRL1, ((uint8_t)(NAU_VLDO&7)<<3) | (NAU_GAIN&7));  // LDO + ganancia
-  nauWrite(NAU_CTRL2, (uint8_t)(NAU_RATE&7)<<4);                   // tasa (bits 6:4)
-  nauWrite(NAU_ADC_REG,  0x30);                                    // chopper del ADC apagado
-  nauWrite(NAU_PWR_CTRL, nauReadReg(NAU_PWR_CTRL) | 0x80);         // cap de 330 pF del PGA
-  nauWrite(NAU_PGA,      (uint8_t)(nauReadReg(NAU_PGA) & ~0x01));  // chopper del PGA ACTIVO
-  ctrl.lc2CalOK = nauCalibrate();
-  nauWrite(NAU_PU_CTRL, NAU_AVDDS|NAU_CS|NAU_PUA|NAU_PUD);         // conversiones continuas
-  ctrl.lc2Discard = 4;
-  return true;
-}
 
-// Corre en setup() con el loop todavía parado, pero pide el bus igual: la regla no
-// tiene excepciones, y el cuerpo va aparte porque tiene cinco salidas de error.
-bool loadCell2Init(){
-  if(!i2cAcquire(I2C_LC2)) return false;
-  bool ok = loadCell2Setup();
-  i2cRelease(I2C_LC2);
-  return ok;
-}
 
-// El cuerpo va aparte para que loadCell2Update() sea sólo el pedir y soltar el bus:
-// así ninguno de los tres caminos de salida de aquí se puede olvidar de liberarlo.
-static void loadCell2Poll(){
-  unsigned long now = millis();
-  if(!(nauReadReg(NAU_PU_CTRL) & NAU_CR)){
-    if(ctrl.lc2Valid && now-ctrl.lc2LastGood > 500) ctrl.lc2Valid=false;
-    return;
-  }
-  I2C1Bus.beginTransmission(NAU7802_ADDR);
-  I2C1Bus.write(NAU_ADCO_B2);
-  I2C1Bus.endTransmission();                      // sin repeated start (ver nauReadReg)
-  if(I2C1Bus.requestFrom((uint8_t)NAU7802_ADDR,(uint8_t)3) < 3) return;
-  uint8_t b2=I2C1Bus.read(), b1=I2C1Bus.read(), b0=I2C1Bus.read();
-  int32_t v = ((int32_t)b2<<16) | ((int32_t)b1<<8) | b0;
-  if(v & 0x800000) v |= 0xFF000000;               // signo 24 → 32 bit
-  if(ctrl.lc2Discard){ ctrl.lc2Discard--; return; }
-  ctrl.lc2Raw      = v;
-  ctrl.lc2Valid    = true;
-  ctrl.lc2LastGood = now;
-}
 
-// Lectura no bloqueante: sólo cuando el bit CR dice que hay muestra nueva.
-void loadCell2Update(){
-  if(!ctrl.lc2OK) return;
-  if(!i2cAcquire(I2C_LC2)) return;      // LC1 está en mitad de una conversión: turno perdido
-  loadCell2Poll();
-  i2cRelease(I2C_LC2);
-}
 
 // ── Servo (single owner: Core0) ───────────────────
 void servoInit(){
@@ -1438,8 +1300,7 @@ static void lcRequestService(){
     lcParkMode = LC_PARK_DEFAULT;   // el modo de la medida era sólo para esa medida
     i2cRelease(I2C_CFG);
     ctrl.loadCellOK        = loadCellInit();
-    ctrl.lc2OK             = loadCell2Init();
-    ctrl.lastPosTime       = 0;                   // el hueco no cuenta como movimiento
+      ctrl.lastPosTime       = 0;                   // el hueco no cuenta como movimiento
     ctrl.lastTelemetryTime = millis();
     ctrl.lcProgBusy        = false;
     telemetryFlushLc(CMD_LC_HOLD, LCPROG_HELD);
@@ -1471,9 +1332,7 @@ static void lcRequestService(){
 
   // Nadie más toca el bus mientras dure esto: la célula se queda sin tensión varias
   // veces y lo que hubiera leído antes ya no significa nada.
-  ctrl.loadCellOK  = false; ctrl.lc2OK    = false;
-  ctrl.lastLCValid = false; ctrl.lc2Valid = false;
-
+  ctrl.loadCellOK  = false;  ctrl.lastLCValid = false;
   if(req==CMD_LC_HOLD){
     // Corta y se va: la célula queda sin tensión y el bus parqueado, exactamente en la
     // misma condición que usa la grabación, y así se puede medir su rail. Quien lo
@@ -1510,7 +1369,6 @@ static void lcRequestService(){
 
   // El chip ha pasado por varios resets: las dos células se reinician desde cero.
   ctrl.loadCellOK      = loadCellInit();
-  ctrl.lc2OK           = loadCell2Init();
   ctrl.lcConfigApplied = (res==LCPROG_OK || res==LCPROG_UNCHANGED);
 
   // ── Se reanuda, reparando lo que el parón deja mal ───────────────────────
@@ -1526,11 +1384,10 @@ static void lcRequestService(){
 
 // ══ Único punto del firmware que mueve el bus I2C1 en marcha ══════
 // Una vez por vuelta y siempre en este orden: primero LC1, que es quien puede
-// reservar el bus mientras convierte, y después LC2, que aprovecha los huecos.
+// reservar el bus mientras convierte. Ya no hay segunda célula en este bus.
 // Fuera de aquí sólo lo tocan los init y la escritura de EEPROM, todos en setup().
 void i2cUpdate(){
   loadCellUpdate();      // LC1 — ZSC31014 (retiene el bus durante la conversión)
-  loadCell2Update();     // LC2 — NAU7802  (sólo si LC1 lo ha soltado)
 }
 
 // ── Setup / Loop (Core0) ──────────────────────────
@@ -1538,16 +1395,14 @@ void setup(){
   // ── Células primero, sólo para arrancarlas. Aquí no se programa nada: el ZSC31014
   //    ya viene con lo último que se le grabó, y la GUI lo consulta o lo cambia con
   //    CMD_LC_QUERY / CMD_LC_PROGRAM, siempre con el eje parado.
-  pinMode(LC1_EN_GPIO,OUTPUT); pinMode(LC2_EN_GPIO,OUTPUT);
+  pinMode(LC1_EN_GPIO,OUTPUT);
   gpio_set_drive_strength(LC1_EN_GPIO, GPIO_DRIVE_STRENGTH_12MA);
-  gpio_set_drive_strength(LC2_EN_GPIO, GPIO_DRIVE_STRENGTH_12MA);
-  digitalWrite(LC1_EN_GPIO,HIGH); digitalWrite(LC2_EN_GPIO,HIGH);
+  digitalWrite(LC1_EN_GPIO,HIGH);
   delay(50);
   I2C1Bus.begin(); I2C1Bus.setClock(LC_I2C_FREQ);
   // Aquí NO se programa nada: el ZSC31014 arranca con lo último que se le grabó, y
   // leerlo obligaría a resetearlo. La GUI lo pregunta con CMD_LC_QUERY cuando quiere.
   ctrl.loadCellOK      = loadCellInit();
-  ctrl.lc2OK           = loadCell2Init();                // la NAU7802 no tiene prisa
 
   // ── Everything else ──
   Serial.begin(115200);

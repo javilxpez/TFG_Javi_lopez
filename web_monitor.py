@@ -42,12 +42,10 @@ SYNC = bytes([0xAA, 0x55])
 # Batched frame: header (14 B) + N × sample (18 B)
 HEADER_FMT  = "<BIHBBBBBBB"   # id, base_t, bridge, lc_status, flags, error, servo_id, rpm_st, trq_st, n
 HEADER_SIZE = struct.calcsize(HEADER_FMT)   # 14
-# lc2 = célula 2 (NAU7802) en crudo, 24 bit con signo extendido a int32
-SAMPLE_FMT  = "<HhhhhBBHi"    # dt_ms, rpm, current_x10, ref_cmd, base_read, io, state, work_us, lc2
-SAMPLE_SIZE = struct.calcsize(SAMPLE_FMT)   # 18
+SAMPLE_FMT  = "<HhhhhBBH"     # dt_ms, rpm, current_x10, ref_cmd, base_read, io, state, work_us
+SAMPLE_SIZE = struct.calcsize(SAMPLE_FMT)   # 14
 
 # lc_flags: b0 = LC1 válida, b1 = servo conectado, b2 = config LC1 aplicada,
-#           b3 = LC2 válida, b4 = LC2 inicializada
 
 CMD_INIT = 0x01; CMD_STOP = 0x02; CMD_SET_PARAM = 0x03
 CMD_MOVE_A = 0x04; CMD_MOVE_B = 0x05; CMD_SHUTDOWN = 0x06; CMD_HOME = 0x08
@@ -105,7 +103,7 @@ def mbst(s): return MB_STATUS.get(s, f"0x{s:02X}")
 # Las constantes que hagan falta para convertirlas van en la cabecera del propio fichero.
 CYCLE_DIR = Path(__file__).parent / "cycles"
 CSV_COLS = ("t_ms", "t_rel_s", "rep", "fase", "pos_rev", "lc1_raw", "lc1_base",
-            "lc2_raw", "rpm", "par_x10", "ref_rpm", "lim_a", "lim_b", "estado", "work_us")
+            "rpm", "par_x10", "ref_rpm", "lim_a", "lim_b", "estado", "work_us")
 
 rec = {"f": None, "path": None, "t0": None, "rep": 1, "fase": "", "filas": 0}
 
@@ -115,12 +113,15 @@ def rec_open(cy: dict):
     path = CYCLE_DIR / (time.strftime("%Y%m%d-%H%M%S") + "_ciclo.csv")
     f = path.open("w", encoding="utf-8")
     with shared_lock:
-        fc, l2c, l2z = shared["force_calib"], shared["lc2_calib"], shared["lc2_zero"]
+        fc = shared["force_calib"]
+        cal, off = shared["lc1_calib"], shared["lc1_offset"]
     f.write(f"# ensayo {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-    f.write(f"# lc1_cuentas_por_N={fc}  lc2_cuentas_por_N={l2c}  lc2_tara={l2z}\n")
+    # La de verdad es lc1_cuentas_por_N (float, con signo) y su cero en newtons;
+    # lc1_int16 queda sólo como referencia de lo que tiene el firmware.
+    f.write(f"# lc1_cuentas_por_N={cal}  lc1_cero_N={off}  lc1_int16={fc}\n")
     f.write(f"# repeticiones_pedidas={cy['cyc_target']}  B={cy['cyc_target_rev']:.3f} rev"
             f" ({'posicion' if cy['cyc_target_rev'] > 0 else 'final de carrera'})\n")
-    f.write("# lc1_base ya lleva restada la tara del firmware; lc1_raw y lc2_raw son crudas\n")
+    f.write("# lc1_base ya lleva restada la tara del firmware; lc1_raw es cruda\n")
     f.write(",".join(CSV_COLS) + "\n")
     rec.update(f=f, path=path, t0=None, rep=1, fase="", filas=0)
     log.info("REC   abierto %s", path.name)
@@ -140,9 +141,9 @@ def rec_row(d: dict, pos_rev: float):
     t = d["t_ms"]
     if rec["t0"] is None:
         rec["t0"] = t
-    rec["f"].write("%d,%.3f,%d,%s,%.4f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n" % (
+    rec["f"].write("%d,%.3f,%d,%s,%.4f,%d,%d,%d,%d,%d,%d,%d,%d,%d\n" % (
         t, (t - rec["t0"]) / 1000.0, rec["rep"], rec["fase"], pos_rev,
-        d["bridge"], d["base_read"], d["lc2"], d["rpm"], d["current_x10"],
+        d["bridge"], d["base_read"], d["rpm"], d["current_x10"],
         d["ref_cmd"], 1 if d["io"] & 0x01 else 0, 1 if d["io"] & 0x02 else 0,
         d["servo_state"], d["work_us"]))
     rec["filas"] += 1
@@ -164,8 +165,8 @@ shared = {
     "home_range_valid": False,
     "lc_gain": None,       # lo que el firmware dice que hay grabado en la célula
     "lc_offset": None,
-    "lc2_calib": 0.0,      # el navegador las empuja para que consten en el CSV
-    "lc2_zero": 0,
+    "lc1_calib": 14.41,    # cuentas/N (positiva: las cuentas crecen con la tensión)
+    "lc1_offset": 51.78,   # N reales en el punto donde se puso la tara
 }
 shared_lock = threading.Lock()
 ser_ref: list = [None]   # contenedor mutable para la referencia al puerto serie
@@ -233,7 +234,7 @@ def decode_packet(payload: bytes) -> list | None:
         if off + SAMPLE_SIZE > len(payload):
             break
         (dt, rpm, cur, ref, base, io, state,
-         work_us, lc2) = struct.unpack(SAMPLE_FMT, payload[off:off + SAMPLE_SIZE])
+         work_us) = struct.unpack(SAMPLE_FMT, payload[off:off + SAMPLE_SIZE])
         off += SAMPLE_SIZE
         out.append({
             "t_ms": (base_t + dt) & 0xFFFFFFFF, "work_us": work_us,
@@ -241,7 +242,6 @@ def decode_packet(payload: bytes) -> list | None:
             "io": io, "servo_state": state,
             "mode": 1 if state == 4 else 2 if state == 5 else 0,
             "bridge": bridge, "lc_status": lc_status, "lc_flags": lc_flags,
-            "lc2": lc2, "lc2_valid": bool(lc_flags & 0x08), "lc2_ok": bool(lc_flags & 0x10),
             "error": error, "servo_id": servo_id,
             "rpm_status": rpm_status, "trq_status": trq_status,
         })
@@ -532,13 +532,14 @@ def _handle_command(cmd: dict):
             ser.write(build_packet(bytes([CMD_HOME])))
         elif action == "lc_query":
             ser.write(build_packet(bytes([CMD_LC_QUERY])))
-        elif action == "set_lc2":
-            # El navegador es quien conoce la calibración y la tara de LC2; se guardan
-            # aquí para que consten en la cabecera del CSV del ensayo.
+        elif action == "set_calib":
+            # La calibración buena de LC1 la tiene el navegador (float, y con signo);
+            # el firmware sólo guarda un int16 que no usa. Se anota aquí para que vaya
+            # completa en la cabecera del CSV.
             with shared_lock:
-                shared["lc2_calib"] = float(cmd.get("calib", 0) or 0)
-                shared["lc2_zero"]  = int(cmd.get("zero", 0) or 0)
-            _ack(action, True, "constantes de LC2 anotadas")
+                shared["lc1_calib"]  = float(cmd.get("calib", 0) or 0)
+                shared["lc1_offset"] = float(cmd.get("offset", 0) or 0)
+            _ack(action, True, "calibración de LC1 anotada")
             return
         elif action == "cycle_start":
             # modo 0 = B es el final de carrera; 1 = B es la posición indicada

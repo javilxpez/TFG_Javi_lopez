@@ -58,6 +58,13 @@
     td:first-child, th:first-child { text-align: left; }
     .muted { color: var(--muted); }
     canvas { max-height: 300px; }
+    input[type=number], select {
+      padding: 4px 6px; background: #0d1117; border: 1px solid var(--border);
+      color: var(--text); border-radius: 4px; font-family: inherit; font-size: 11px;
+      width: 100%; margin-top: 3px;
+    }
+    input:focus, select:focus { outline: none; border-color: var(--blue); }
+    details > summary::-webkit-details-marker { display: none; }
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -94,7 +101,73 @@
       </div>
       <div class="card" id="c-t" hidden>
         <div class="title">Fuerza y posición frente al tiempo</div>
+        <details style="margin-bottom:10px">
+          <summary style="cursor:pointer;color:var(--muted);font-size:11px;list-style:none">
+            ▸ superponer curva teórica</summary>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:9px">
+            <label style="font-size:11px;color:var(--muted)">tambor
+              <select id="e-tipo" onchange="tipoTambor()">
+                <option value="car">caracola (radio variable)</option>
+                <option value="cil">cilindro (radio fijo)</option>
+              </select></label>
+            <label style="font-size:11px;color:var(--muted)" id="w-l1" hidden>radio del cilindro (mm)
+              <input type="number" id="e-l1" value="25" step="0.1" min="0.1" oninput="reTeo()"></label>
+            <label style="font-size:11px;color:var(--muted)" id="w-r0">radio inicial r0 (mm)
+              <input type="number" id="e-r0" value="25" step="0.1" min="0.1" oninput="reTeo()"></label>
+            <label style="font-size:11px;color:var(--muted)" id="w-r1">radio final r1 (mm)
+              <input type="number" id="e-r1" value="45" step="0.1" min="0.1" oninput="reTeo()"></label>
+            <label style="font-size:11px;color:var(--muted)" id="w-barr">barrido del tambor (rev)
+              <input type="number" id="e-barr" value="0.5" step="0.01" min="0.01" oninput="reTeo()"
+                     title="Vueltas que da la caracola en el recorrido completo."></label>
+            <label style="font-size:11px;color:var(--muted)">L2 cateto vertical (mm)
+              <input type="number" id="e-l2" value="290" step="1" min="0" oninput="reTeo()"></label>
+            <label style="font-size:11px;color:var(--muted)">L3 hasta el cable (mm)
+              <input type="number" id="e-l3" value="95" step="1" min="0.1" oninput="reTeo()"></label>
+            <label style="font-size:11px;color:var(--muted)">L4 resto barra (mm)
+              <input type="number" id="e-l4" value="110" step="1" min="0" oninput="reTeo()"></label>
+            <label style="font-size:11px;color:var(--muted)">masa (kg)
+              <input type="number" id="e-m" value="2" step="0.01" min="0" oninput="reTeo()"></label>
+            <label style="font-size:11px;color:var(--muted)">g (m/s²)
+              <input type="number" id="e-g" value="9.81" step="0.01" min="0" oninput="reTeo()"></label>
+            <label style="font-size:11px;color:var(--muted)">barra en el home (°)
+              <input type="number" id="e-th0" value="90" step="1" min="-90" max="90" oninput="reTeo()"
+                     title="Ángulo de la barra cuando pos_rev = 0. 0 = horizontal, +90 = pesa arriba, -90 = pesa abajo. Es el que fija la longitud de cable de partida."></label>
+            <label style="font-size:11px;color:var(--muted)">reducción motor:tambor
+              <input type="number" id="e-red" value="4.0" step="0.01" min="0.01" oninput="reTeo()"
+                     title="Vueltas de motor por vuelta de espiral. Si hay reductor, el cable enrollado es L1·φ/reducción."></label>
+            <label style="font-size:11px;color:var(--muted)">giro positivo
+              <select id="e-sentido" onchange="reTeo()">
+                <option value="-1">desenrolla (se alarga)</option>
+                <option value="1">enrolla (cable se acorta)</option>
+              </select></label>
+            <label style="font-size:11px;color:var(--muted)">mostrar
+              <select id="e-ver" onchange="reTeo()">
+                <option value="0">no</option>
+                <option value="1">sí</option>
+              </select></label>
+          </div>
+          <div class="group-actions" style="margin-top:9px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button onclick="ajustarNC()" style="font-size:11px;padding:4px 10px"
+                    title="Mínimos cuadrados entre las cuentas de LC1 y la fuerza teórica, sobre las muestras donde la geometría tiene solución.">⇄ Ajustar N/cuenta</button>
+            <label style="font-size:11px;color:var(--muted);display:flex;gap:5px;align-items:center">
+              <input type="checkbox" id="e-usar" onchange="reTeo()" style="width:auto;margin:0">
+              usar el ajuste (LC1 en N)</label>
+          </div>
+          <div class="chips" style="margin-top:9px">
+            <span id="e-aviso" class="chip"></span>
+            <span id="e-fit" class="chip" hidden></span>
+          </div>
+          <div class="line hint" id="e-escala" style="margin-top:7px;font-size:11px"></div>
+        </details>
         <canvas id="gT"></canvas>
+      </div>
+      <div class="card" id="c-par" hidden>
+        <div class="title">Par del motor frente a posición — una traza por repetición</div>
+        <canvas id="gPar"></canvas>
+      </div>
+      <div class="card" id="c-part" hidden>
+        <div class="title">Par del motor frente al tiempo</div>
+        <canvas id="gParT"></canvas>
       </div>
       <div class="card" id="c-vel" hidden>
         <div class="title">Velocidad · finales de carrera · comandos</div>
@@ -107,7 +180,7 @@
 <script>
 const el = id => document.getElementById(id);
 const COLORES = ['#58a6ff','#3fb950','#d29922','#bc8cff','#79c0ff','#f85149','#8b949e'];
-let gPos = null, gT = null, gVel = null, sel = null;
+let gPos = null, gT = null, gVel = null, gPar = null, gParT = null, sel = null;
 let actual = null;   // el ensayo cargado, para repintar al cambiar de célula
 
 // El CSV lleva una cabecera de líneas '#' con las constantes del ensayo. Se separan
@@ -172,7 +245,8 @@ async function borrar(nombre) {
       sel = null;
       el('c-resumen').hidden = el('c-pos').hidden = el('c-t').hidden = el('c-vel').hidden = true;
     }
-    cargarLista();
+    tipoTambor();
+cargarLista();
   } catch (e) {
     el('estado').textContent = 'no se pudo borrar: ' + e;
   }
@@ -187,18 +261,30 @@ async function abrir(nombre) {
   if (!filas.length) return;
 
   // Sólo se convierte a newtons si el ensayo dejó escrita la constante; si no, cuentas.
+  // Los ensayos grabados antes de retirar la célula 2 traen la columna lc2_raw; los
+  // nuevos no. Se detecta en vez de suponerla, para que los antiguos sigan viéndose.
+  const hayLc2 = 'lc2_raw' in filas[0];
   const cal1 = parseFloat(consts.lc1_cuentas_por_N || 0) || 0;
+  // El cero en newtons, si el ensayo lo trae: la tara no es fuerza cero porque la pesa
+  // cuelga siempre. Los ensayos anteriores a esto no lo llevan y valen 0.
+  const off1 = parseFloat(consts.lc1_cero_N || 0) || 0;
+  ajuste = null; el('e-fit').hidden = true; el('e-usar').checked = false;
   const cal2 = parseFloat(consts.lc2_cuentas_por_N || 0) || 0;
-  const f1 = f => cal1 ? f.lc1_base / cal1 : f.lc1_base;
-  const f2 = f => cal2 ? f.lc2_raw  / cal2 : f.lc2_raw;
+  const f1 = f => cal1 ? f.lc1_base / cal1 + off1 : f.lc1_base;
+  const f2 = f => cal2 ? (f.lc2_raw || 0) / cal2 : (f.lc2_raw || 0);
   const u1 = cal1 ? 'N' : 'cuentas', u2 = cal2 ? 'N' : 'cuentas';
 
-  actual = { filas, f1, f2, u1, u2, cal1, cal2 };
-  resumen(consts, filas, f1, u1, cal1, f2, u2, cal2);
+  actual = { filas, f1, f2, u1, u2, cal1, cal2, hayLc2 };
+  el('sel-celula').parentElement.hidden = !hayLc2;
+  if (!hayLc2) el('sel-celula').value = '1';
+  resumen(consts, filas, f1, u1, cal1, f2, u2, cal2, hayLc2);
   repintar();
-  pintarT(filas, f1, u1, f2, u2);
+  pintarT(filas, f1, u1, f2, u2, hayLc2);
+  pintarPar(filas);
+  pintarParT(filas);
   pintarVel(filas);
-  el('c-resumen').hidden = el('c-pos').hidden = el('c-t').hidden = el('c-vel').hidden = false;
+  el('c-resumen').hidden = el('c-pos').hidden = el('c-t').hidden =
+    el('c-par').hidden = el('c-part').hidden = el('c-vel').hidden = false;
 }
 
 // Repinta sólo la gráfica de posición, con la célula que se haya elegido.
@@ -209,9 +295,10 @@ function repintar() {
                           dos ? actual.u2 : actual.u1, dos ? 'LC2' : 'LC1');
 }
 
-function resumen(consts, filas, f1, u1, cal1, f2, u2, cal2) {
+function resumen(consts, filas, f1, u1, cal1, f2, u2, cal2, hayLc2) {
   const t = filas.map(f => f.t_rel_s), pos = filas.map(f => f.pos_rev);
-  const v1 = filas.map(f1), v2 = filas.map(f2);
+  const v1 = filas.map(f1), v2 = hayLc2 ? filas.map(f2) : [0];
+  const par = filas.map(f => f.par_x10 / 10);
   const reps = [...new Set(filas.map(f => f.rep))].sort((a, b) => a - b);
   const chip = (k, v) => `<span class="chip">${k} <b>${v}</b></span>`;
   el('chips').innerHTML =
@@ -220,21 +307,23 @@ function resumen(consts, filas, f1, u1, cal1, f2, u2, cal2) {
     + chip('cadencia', (filas.length / Math.max(t[t.length - 1], 1e-9)).toFixed(1) + ' Hz')
     + chip('repeticiones', reps.length)
     + chip('posición', `${Math.min(...pos).toFixed(3)} … ${Math.max(...pos).toFixed(3)} rev`)
+    + chip('par', `${Math.min(...par).toFixed(1)} … ${Math.max(...par).toFixed(1)}`)
     + chip(`LC1 (${u1})`, `${Math.min(...v1).toFixed(cal1 ? 2 : 0)} … ${Math.max(...v1).toFixed(cal1 ? 2 : 0)}`)
-    + chip(`LC2 (${u2})`, `${Math.min(...v2).toFixed(cal2 ? 2 : 0)} … ${Math.max(...v2).toFixed(cal2 ? 2 : 0)}`)
+    + (hayLc2 ? chip(`LC2 (${u2})`,
+        `${Math.min(...v2).toFixed(cal2 ? 2 : 0)} … ${Math.max(...v2).toFixed(cal2 ? 2 : 0)}`) : '')
     + (cal1 ? '' : chip('aviso', 'LC1 sin calibrar: cuentas'))
-    + (cal2 ? '' : chip('aviso', 'LC2 sin calibrar: cuentas'))
-    // Si la NAU7802 no llegó a dar datos, el CSV lleva ceros y la gráfica saldría plana:
-    // mejor decirlo que dejar que parezca que la célula no midió nada.
-    + (Math.min(...v2) === 0 && Math.max(...v2) === 0
+    + (hayLc2 && !cal2 ? chip('aviso', 'LC2 sin calibrar: cuentas') : '')
+    + (hayLc2 && Math.min(...v2) === 0 && Math.max(...v2) === 0
         ? chip('aviso', 'LC2 sin datos en este ensayo') : '');
 
-  let h = `<tr><th>rep</th><th>muestras</th><th>t (s)</th><th>LC1 máx (${u1})</th><th>pos máx (rev)</th></tr>`;
+  let h = `<tr><th>rep</th><th>muestras</th><th>t (s)</th><th>LC1 máx (${u1})</th>`
+        + `<th>par máx</th><th>pos máx (rev)</th></tr>`;
   for (const r of reps) {
     const f = filas.filter(x => x.rep === r);
     const ts = f.map(x => x.t_rel_s);
     h += `<tr><td>${r}</td><td>${f.length}</td><td>${(ts[ts.length-1]-ts[0]).toFixed(2)}</td>`
        + `<td>${Math.max(...f.map(f1)).toFixed(cal1 ? 2 : 0)}</td>`
+       + `<td>${Math.max(...f.map(x => x.par_x10 / 10)).toFixed(1)}</td>`
        + `<td>${Math.max(...f.map(x => x.pos_rev)).toFixed(4)}</td></tr>`;
   }
   el('tabla').innerHTML = h;
@@ -265,25 +354,220 @@ function pintarPos(filas, fx, ux, nombre) {
                                  options: EJES('posición (rev)', `${nombre} (${ux})`) });
 }
 
-function pintarT(filas, f1, u1, f2, u2) {
+// ── Curva teórica sobre la gráfica de fuerza ─────────────
+// La teórica no es función del tiempo, sino del giro del servo. El CSV trae pos_rev por
+// muestra —la posición integrada, en revoluciones— así que para cada instante se sabe
+// cuánto ha girado y se puede evaluar la tensión ahí y pintarla contra el mismo eje de
+// tiempos. Es decir: la curva teórica hereda el tiempo de la medida.
+//
+//   φ = pos_rev·2π      c = c0 − sentido·L1·φ
+//   T = m·g·(L3+L4)·c / (L2·L3)
+//
+// Fuera del rango en que la geometría tiene solución (c entre |L2−L3| y L2+L3) no se
+// pinta nada en vez de extrapolar: una recta que sigue bajando donde el mecanismo ya no
+// puede estar sería un dato inventado.
+function tipoTambor() {
+  const car = el('e-tipo').value === 'car';
+  el('w-l1').hidden = car;
+  el('w-r0').hidden = el('w-r1').hidden = el('w-barr').hidden = !car;
+  reTeo();
+}
+
+function teoParams() {
+  const v = id => parseFloat(el(id).value);
+  return { tipo: el('e-tipo').value,
+           L1: v('e-l1'), r0: v('e-r0'), r1: v('e-r1'), barr: v('e-barr'),
+           L2: v('e-l2'), L3: v('e-l3'), L4: v('e-l4'),
+           m: v('e-m'), g: v('e-g'), red: v('e-red') || 1, th0: v('e-th0') || 0,
+           sentido: parseInt(el('e-sentido').value), ver: el('e-ver').value === '1' };
+}
+
+// ── Tambor: cuánto cable paga y con qué radio instantáneo ────────────────
+// En un cilindro el radio es fijo: el cable sale proporcional al giro y el par es
+// T·r constante. En una caracola el radio crece con el giro, así que:
+//
+//   r(φ) = r0 + (r1−r0)·φ/φtot          radio instantáneo
+//   s(φ) = r0·φ + (r1−r0)·φ²/(2·φtot)   cable pagado (la integral de r)
+//
+// y el par del motor pasa a ser τ = T·r(φ), que es justamente el sentido de poner una
+// caracola: cambiar la relación de transmisión a lo largo del recorrido. Pasado el
+// barrido el radio se queda en r1 en vez de seguir creciendo, que es lo que hace la
+// pieza real cuando el cable llega al final de la espiral.
+function tambor(q, phi) {
+  if (q.tipo === 'cil') return { r: q.L1, s: q.L1 * phi };
+  const phitot = q.barr * 2 * Math.PI;
+  if (phi <= phitot) {
+    const r = q.r0 + (q.r1 - q.r0) * phi / phitot;
+    return { r, s: q.r0 * phi + (q.r1 - q.r0) * phi * phi / (2 * phitot) };
+  }
+  const sTot = phitot * (q.r0 + q.r1) / 2;
+  return { r: q.r1, s: sTot + q.r1 * (phi - phitot) };
+}
+
+function teoSerie(filas) {
+  const q = teoParams();
+  if (!q.ver) return null;
+  if ([q.L1, q.L2, q.L3, q.L4, q.m, q.g].some(isNaN) || q.L1 <= 0 || q.L3 <= 0) {
+    el('e-aviso').textContent = 'faltan datos'; return null;
+  }
+  // Longitud de cable en el home, que depende del ángulo en que arranca la barra:
+  //   c² = L2² + L3² − 2·L2·L3·sen θ0
+  // Suponer θ0 = 0 (barra horizontal) era lo que descuadraba el recorrido: si la pesa
+  // arranca arriba, el cable de partida es mucho más corto y el margen para bajarla es
+  // otro. Los límites cmin/cmax son los topes geométricos: barra vertical arriba y abajo.
+  const th0r = q.th0 * Math.PI / 180;
+  const cHome = Math.sqrt(q.L2*q.L2 + q.L3*q.L3 - 2*q.L2*q.L3*Math.sin(th0r));
+  const cmin = Math.abs(q.L2 - q.L3), cmax = q.L2 + q.L3;
+  let fuera = 0;
+  // Se guarda también el par teórico: τ = T·r(φ), con el radio instantáneo del tambor.
+  teoPar = [];
+  const data = filas.map(x => {
+    const phi = Math.abs(x.pos_rev || 0) * 2 * Math.PI / q.red;   // rad del tambor
+    const t   = tambor(q, phi);
+    const c   = cHome - q.sentido * t.s;                 // mm de cable que quedan
+    if (c < cmin || c > cmax) {
+      fuera++; teoPar.push({ x: x.t_rel_s, y: null }); return { x: x.t_rel_s, y: null };
+    }
+    const T = q.m * q.g * (q.L3 + q.L4) * c / (q.L2 * q.L3);
+    teoPar.push({ x: x.t_rel_s, y: T * t.r / 1000 });    // N·m
+    return { x: x.t_rel_s, y: T };
+  });
+  // Diagnóstico de escala: las dos cantidades que TIENEN que cuadrar. El cable que paga
+  // el servo en todo el ensayo, y el que el mecanismo puede absorber entre la barra
+  // horizontal y la vertical. Si no cuadran, no hay sentido de giro ni offset que salve
+  // la curva: sobran o faltan milímetros, y es lo primero que hay que arreglar.
+  const posValidas = filas.map(x => x.pos_rev || 0);
+  const giro = Math.max(...posValidas) - Math.min(...posValidas);
+  const cableServo = tambor(q, giro * 2 * Math.PI / q.red).s;
+  // El margen disponible depende del sentido: enrollando se va de cHome a cmin,
+  // desenrollando de cHome a cmax. Antes se comparaba siempre contra el recorrido
+  // completo, que es lo que hacía que el aviso no cuadrara con lo que se veía.
+  const cableMec = q.sentido > 0 ? (cHome - cmin) : (cmax - cHome);
+  const ratio = cableMec > 0 ? cableServo / cableMec : 0;
+  const esc = el('e-escala');
+  if (ratio > 1.15 || ratio < 0.85) {
+    esc.className = 'line err';
+    esc.innerHTML = `Escala descuadrada: el servo mueve <b>${cableServo.toFixed(0)} mm</b> de cable`
+      + ` (${giro.toFixed(2)} rev de motor / reducción ${q.red}`
+      + (q.tipo === 'car' ? `, caracola ${q.r0}→${q.r1} mm` : `, cilindro ${q.L1} mm`)
+      + `) pero el mecanismo`
+      + ` sólo admite <b>${cableMec.toFixed(0)} mm</b> en ese sentido`
+      + ` (cable de ${cHome.toFixed(0)} a ${(q.sentido > 0 ? cmin : cmax).toFixed(0)} mm,`
+      + ` barra desde ${q.th0}° hasta ${q.sentido > 0 ? '+90' : '−90'}°) → factor <b>${ratio.toFixed(2)}×</b>.`
+      + ` Prueba otro ángulo en el home o el otro sentido.`
+      + ` Prueba reducción <b>${(q.red * ratio).toFixed(2)}</b>`
+      + (q.tipo === 'car'
+          ? ` o radios <b>${(q.r0/ratio).toFixed(1)}→${(q.r1/ratio).toFixed(1)} mm</b>.`
+          : ` o radio <b>${(q.L1/ratio).toFixed(1)} mm</b>.`);
+  } else {
+    esc.className = 'line hint';
+    esc.textContent = `Escala coherente: el tambor paga ${cableServo.toFixed(0)} mm de cable`
+      + ` y el mecanismo admite ${cableMec.toFixed(0)} mm en ese sentido (factor ${ratio.toFixed(2)}×),`
+      + ` con la barra saliendo de ${q.th0}° y el cable de ${cHome.toFixed(0)} mm.`;
+  }
+
+  const validos = data.filter(d => d.y !== null).map(d => d.y);
+  el('e-aviso').textContent = validos.length
+    ? `teórica ${Math.min(...validos).toFixed(2)} … ${Math.max(...validos).toFixed(2)} N`
+      + (fuera ? ` · ${fuera} muestras fuera del rango geométrico` : '')
+    : 'ninguna muestra cae dentro del rango geométrico: revisa el sentido de giro o L1..L3';
+  return data;
+}
+
+// Ajuste de N por cuenta: mínimos cuadrados entre las cuentas de LC1 y la fuerza
+// teórica, sobre las muestras donde la geometría tiene solución.
+//
+//   teórica_N = a·cuentas + b        a = N/cuenta,  b = desplazamiento del cero
+//
+// La R² dice si la recta explica los datos, pero NO si la geometría es correcta: con
+// pocos puntos y todos en un extremo se puede sacar una R² alta y un ajuste sin valor.
+// Por eso se informa también de la cobertura, que es el dato que de verdad avisa.
+let ajuste = null;   // {a, b, r2, n} del último ajuste
+let teoPar = null;   // par teórico por muestra, que lo calcula teoSerie de paso
+
+function ajustarNC() {
+  if (!actual) return;
+  const teo = teoSerie(actual.filas);
+  const f = el('e-fit');
+  if (!teo) { f.hidden = false; f.textContent = 'activa "mostrar" para poder ajustar'; return; }
+
+  const pares = [];
+  actual.filas.forEach((x, i) => {
+    if (teo[i].y !== null) pares.push([x.lc1_base, teo[i].y]);
+  });
+  if (pares.length < 3) { f.hidden = false; f.textContent = 'muy pocas muestras válidas'; return; }
+
+  const n = pares.length;
+  const sx = pares.reduce((s, p) => s + p[0], 0), sy = pares.reduce((s, p) => s + p[1], 0);
+  const sxx = pares.reduce((s, p) => s + p[0] * p[0], 0);
+  const sxy = pares.reduce((s, p) => s + p[0] * p[1], 0);
+  const den = n * sxx - sx * sx;
+  if (Math.abs(den) < 1e-9) { f.hidden = false; f.textContent = 'las cuentas no varían'; return; }
+  const a = (n * sxy - sx * sy) / den, b = (sy - a * sx) / n;
+  const ym = sy / n;
+  const sst = pares.reduce((s, p) => s + (p[1] - ym) ** 2, 0);
+  const sse = pares.reduce((s, p) => s + (p[1] - (a * p[0] + b)) ** 2, 0);
+  const r2 = sst ? 1 - sse / sst : 0;
+  const cob = 100 * n / actual.filas.length;
+
+  ajuste = { a, b, r2, n };
+  f.hidden = false;
+  f.className = 'chip' + (cob < 80 ? ' bad' : '');
+  f.innerHTML = `ajuste <b>${a.toFixed(5)} N/cuenta</b> (${(1/a).toFixed(1)} cuentas/N)`
+    + ` · cero ${b.toFixed(2)} N · R² ${r2.toFixed(4)} · ${n} muestras (${cob.toFixed(0)}%)`
+    + (cob < 80 ? ' ← cobertura baja: el ajuste sólo usa un tramo, no te fíes' : '');
+  reTeo();
+}
+
+function reTeo() {
+  if (!actual) return;
+  const a = actual;
+  pintarT(a.filas, a.f1, a.u1, a.f2, a.u2, a.hayLc2);   // calcula teoPar de paso
+  pintarParT(a.filas);
+}
+
+function pintarT(filas, f1, u1, f2, u2, hayLc2) {
   const ds = [
     { label: `LC1 (${u1})`, showLine: true, pointRadius: 0, borderWidth: 1.4,
       borderColor: '#3fb950', yAxisID: 'y',
       data: filas.map(x => ({ x: x.t_rel_s, y: f1(x) })) },
-    { label: `LC2 (${u2})`, showLine: true, pointRadius: 0, borderWidth: 1.4,
-      borderColor: '#d29922', yAxisID: 'y3',
-      data: filas.map(x => ({ x: x.t_rel_s, y: f2(x) })) },
     { label: 'posición (rev)', showLine: true, pointRadius: 0, borderWidth: 1.2,
       borderColor: '#58a6ff', yAxisID: 'y2',
       data: filas.map(x => ({ x: x.t_rel_s, y: x.pos_rev })) }
   ];
+  // La teórica va en newtons. Si LC1 está calibrada también, comparten eje y se
+  // superponen de verdad; si LC1 está en cuentas, la teórica necesita su propio eje.
+  const teo = teoSerie(filas);
+  // Con el ajuste aplicado, LC1 se pinta en newtons y las dos curvas comparten eje: es
+  // la única forma de ver si la medida sigue la teórica o sólo se le parece de forma.
+  const usar = ajuste && el('e-usar').checked;
+  if (usar) {
+    ds[0].label = 'LC1 ajustada (N)';
+    ds[0].data = filas.map(x => ({ x: x.t_rel_s, y: ajuste.a * x.lc1_base + ajuste.b }));
+    ds[0].yAxisID = 'y';
+  }
+  if (teo) ds.push({
+    label: 'teórica (N)', showLine: true, pointRadius: 0, borderWidth: 1.6,
+    borderColor: '#f85149', borderDash: [6, 3], spanGaps: false,
+    yAxisID: (u1 === 'N' || usar) ? 'y' : 'yteo', data: teo
+  });
+
+  if (hayLc2) ds.splice(1, 0,
+    { label: `LC2 (${u2})`, showLine: true, pointRadius: 0, borderWidth: 1.4,
+      borderColor: '#d29922', yAxisID: 'y3',
+      data: filas.map(x => ({ x: x.t_rel_s, y: f2(x) })) });
   const o = EJES('tiempo (s)', `LC1 (${u1})`);
   o.scales.y2 = { position: 'right', title: { display: true, text: 'posición (rev)', color: '#58a6ff' },
                   ticks: { color: '#58a6ff' }, grid: { drawOnChartArea: false } };
   // LC2 en su propio eje: son cuentas de 24 bits contra 14 de LC1, y compartir escala
   // aplastaría una de las dos contra el cero.
-  o.scales.y3 = { position: 'right', title: { display: true, text: `LC2 (${u2})`, color: '#d29922' },
-                  ticks: { color: '#d29922' }, grid: { drawOnChartArea: false } };
+  if (hayLc2)
+    o.scales.y3 = { position: 'right', title: { display: true, text: `LC2 (${u2})`, color: '#d29922' },
+                    ticks: { color: '#d29922' }, grid: { drawOnChartArea: false } };
+  if (usar) o.scales.y.title = { display: true, text: 'fuerza (N)', color: '#3fb950' };
+  if (teo && u1 !== 'N' && !usar)
+    o.scales.yteo = { position: 'left', title: { display: true, text: 'teórica (N)', color: '#f85149' },
+                      ticks: { color: '#f85149' }, grid: { drawOnChartArea: false } };
   if (gT) gT.destroy();
   gT = new Chart(el('gT'), { type: 'scatter', data: { datasets: ds }, options: o });
 }
@@ -292,6 +576,47 @@ function pintarT(filas, f1, u1, f2, u2) {
 // ve si el eje llegó al tope antes de alcanzar B, o si la consigna se quedó sin seguir.
 // Los finales son 0/1 y van en un eje propio a la derecha, en escalón, para que no se
 // pierdan contra la escala de las RPM.
+// Par del motor frente a posición, una traza por repetición. Como en la de fuerza, la
+// ida y la vuelta de cada repetición trazan caminos distintos, así que el lazo se ve
+// directamente: lo que cuesta subir contra lo que cuesta bajar en cada punto.
+//
+// El par llega como par_x10 (décimas) en el registro Modbus 16387 del drive.
+function pintarPar(filas) {
+  const reps = [...new Set(filas.map(f => f.rep))].sort((a, b) => a - b);
+  const ds = reps.map((r, i) => ({
+    label: 'rep ' + r, showLine: true, pointRadius: 0, borderWidth: 1.4,
+    borderColor: COLORES[i % COLORES.length],
+    data: filas.filter(x => x.rep === r).map(x => ({ x: x.pos_rev, y: x.par_x10 / 10 }))
+  }));
+  if (gPar) gPar.destroy();
+  gPar = new Chart(el('gPar'), { type: 'scatter', data: { datasets: ds },
+                                 options: EJES('posición (rev)', 'par del motor') });
+}
+
+// El mismo par, pero contra el tiempo: una sola traza, porque el tiempo es continuo a
+// lo largo de todo el ensayo. Aquí se ven los picos de arranque y de inversión de cada
+// tramo, que en la gráfica contra posición quedan solapados entre repeticiones.
+function pintarParT(filas) {
+  const ds = [{
+    label: 'par medido (unidades del drive)', showLine: true, pointRadius: 0, borderWidth: 1.4,
+    borderColor: '#d29922',
+    data: filas.map(x => ({ x: x.t_rel_s, y: x.par_x10 / 10 }))
+  }];
+  // Con la caracola el par teórico NO es plano: τ = T·r(φ), y el radio cambia. Es la
+  // curva que justifica montarla, así que se superpone aquí si está activada.
+  if (teoPar && teoParams().ver) ds.push({
+    label: 'par teórico (N·m)', showLine: true, pointRadius: 0, borderWidth: 1.6,
+    borderColor: '#f85149', borderDash: [6, 3], spanGaps: false,
+    yAxisID: 'ypar', data: teoPar
+  });
+  const o = EJES('tiempo (s)', 'par medido');
+  if (teoPar && teoParams().ver)
+    o.scales.ypar = { position: 'right', title: { display: true, text: 'par teórico (N·m)', color: '#f85149' },
+                      ticks: { color: '#f85149' }, grid: { drawOnChartArea: false } };
+  if (gParT) gParT.destroy();
+  gParT = new Chart(el('gParT'), { type: 'scatter', data: { datasets: ds }, options: o });
+}
+
 function pintarVel(filas) {
   const ds = [
     { label: 'consigna (RPM)', showLine: true, pointRadius: 0, borderWidth: 1.2,
