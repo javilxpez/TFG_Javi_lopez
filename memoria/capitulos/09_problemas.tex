@@ -1,0 +1,222 @@
+\chapter{Problemas técnicos y soluciones}
+\label{chap:problemas}
+
+Este capítulo reúne los problemas más costosos del desarrollo. Para cada uno se describen el
+síntoma, la causa y la solución, tal como quedaron documentados en el código y en el repositorio.
+Muchos de ellos no se deben a un error de programación, sino a detalles de los componentes que no
+son evidentes en una primera lectura de su documentación.
+
+\section{UART sobre PIO y latencia del enlace Modbus}
+\label{sec:prob-uart}
+
+\paragraph{Síntoma.} Tras migrar el firmware del ESP32-S3 a la Pico 2, las órdenes tardaban entre 3 y
+\SI{4}{\second} en tener efecto.
+
+\paragraph{Causa.} En el ESP32-S3 la UART es un periférico hardware: los bytes de la respuesta del
+esclavo llegan a una FIFO por interrupción, y cuando ModbusMaster los pide ya están disponibles, así
+que cada transacción dura 1 a \SI{3}{\milli\second}. En la Pico, el trazado de la placa lleva la
+transmisión a GP14 y la recepción a GP13, y se usó \codigo{SerialPIO}, una UART implementada con una
+máquina de estado PIO que funciona en cualquier pin
+\verificar{confirmar si el RP2350 permite la función UART en GP14 mediante su función alternativa}.
+En la práctica, con \codigo{SerialPIO} el bucle de espera de la respuesta de ModbusMaster agotaba
+su tiempo límite, de unos \SI{20}{\milli\second}, en muchas transacciones. Diez escrituras
+consecutivas bloqueaban así el núcleo \SI{200}{\milli\second}, y al acumular las lecturas de
+supervisión se llegaba a varios segundos.
+
+Un segundo detalle afectaba al cambio de sentido del transceptor. Llamar a \codigo{flush()} antes de
+desactivar el emisor, como se haría con una UART hardware, rompía la recepción inmediata de la
+respuesta con \codigo{SerialPIO}. La solución fue esperar un tiempo fijo de \SI{200}{\micro\second}
+tras el último byte y desactivar entonces DE/$\overline{\text{RE}}$.
+
+\paragraph{Primera solución: doble núcleo.} La versión \fichero{firmwarerasp} dedicó el núcleo 1 al bus
+Modbus. El núcleo 0 publicaba la consigna en variables \codigo{volatile} y el núcleo 1 la escribía en
+bucle, leyendo velocidad y par cada diez escrituras. Para tomar el bus desde el núcleo 0 (por ejemplo,
+para configurar el servo), había que desactivar el trabajador y esperar a que su indicador
+\codigo{busy} bajara. El núcleo 0 quedaba libre, pero el diseño tenía inconvenientes: variables
+compartidas sin atomicidad, un protocolo de relevo con esperas, y lecturas del servo cuyo instante no
+estaba ligado al de la muestra de telemetría.
+
+\paragraph{Solución final: dueño único con lazo de periodo fijo.} Una vez ajustados los tiempos de
+espera y el cambio de sentido, cada transacción volvió a durar unos pocos milisegundos. La versión
+final prescinde del segundo núcleo: un único lazo de \SI{50}{\milli\second} hace exactamente tres
+transacciones por vuelta, en posiciones fijas. El resultado es un tiempo de trabajo de
+\SI{11.0}{\milli\second} con sólo \SI{0.2}{\milli\second} de dispersión
+(sección~\ref{sec:res-temporizacion}), sin condiciones de carrera, y con lecturas, lógica y escritura
+en la misma vuelta y con la misma marca de tiempo.
+
+\section{Configuración del ZSC31014: la ventana del modo comando}
+\label{sec:prob-zsc}
+
+\paragraph{Contexto.} Para cambiar la ganancia o el cero del acondicionador hay que escribir en su
+EEPROM, y para ello hay que entrar en modo comando. Según la hoja de datos \cite{zsc31014}, tras un
+reinicio por encendido (POR) el chip espera la orden Start\_CM durante una ventana de \SI{6}{\milli\second}
+si la EEPROM no está bloqueada, o de \SI{1.5}{\milli\second} si lo está. Pasada la ventana, entra en
+funcionamiento normal e ignora Start\_CM sin dar ninguna señal de error.
+
+\subsection{Primer obstáculo: provocar el reinicio}
+
+\paragraph{Síntoma.} Tras reprogramar la Pico o reiniciarla por USB, la configuración nunca se
+aplicaba.
+
+\paragraph{Causa.} La placa Click seguía alimentada: sin un POR no se abre la ventana.
+
+\paragraph{Solución.} Controlar la alimentación de la Click con su pin EN (GPIO1) y hacer un ciclo
+completo de apagado y encendido antes de cada intento.
+
+\subsection{Segundo obstáculo: alimentación parásita por el bus}
+
+\paragraph{Síntoma.} Con EN a nivel bajo, el chip seguía respondiendo por I\textsuperscript{2}C. La
+tensión de la Click, medida con un polímetro, se quedaba en unos \num{2.5} a \SI{2.7}{\volt} en lugar
+de caer a cero.
+
+\paragraph{Causa.} Las resistencias de \emph{pull-up} de SDA, SCL e INT cuelgan del \SI{3.3}{\volt}
+permanente del zócalo mikroBUS, no del carril gobernado por EN. Con el chip sin alimentar, la
+corriente entraba por esos pines, atravesaba los diodos de protección internos y alimentaba el carril
+del chip. La hoja de datos sitúa el umbral de POR entre \num{1.8} y \SI{2.5}{\volt}: con
+\num{2.5}--\SI{2.7}{\volt} de alimentación parásita, el chip nunca veía un reinicio.
+
+\paragraph{Diagnóstico.} Para confirmarlo se añadió la orden LC\_HOLD, que mantiene la célula sin
+alimentación \SI{8}{\second} sin bloquear el lazo, con dos modos para las líneas del bus: en alta
+impedancia o forzadas a nivel bajo. Las medidas mostraron que sólo forzándolas a nivel bajo la
+tensión caía a cero. Hubo además un error en el propio diagnóstico: la primera versión de la prueba
+del pin de reinicio dejaba las líneas en alto mientras medía, así que siempre ``detectaba''
+realimentación y acusaba al pin EN sin motivo. Se corrigió para que midiera en exactamente las mismas
+condiciones que el ciclo real.
+
+\paragraph{Solución.} Durante el apagado se libera el periférico I\textsuperscript{2}C y SDA, SCL e
+INT se configuran como salidas a nivel bajo (\codigo{LC\_PARK\_DEFAULT = 1}). El bus se restaura
+\emph{antes} de volver a dar tensión, porque \codigo{Wire.begin()} tarda lo bastante como para comerse
+la ventana.
+
+\subsection{Tercer obstáculo: acertar la ventana}
+
+\paragraph{Síntoma.} Incluso con un POR limpio, Start\_CM no siempre entraba.
+
+\paragraph{Causa.} La orden tiene que llegar \emph{después} de que el chip termine de arrancar y
+\emph{antes} de que se cierre la ventana. El tiempo de arranque depende de los condensadores y del
+conmutador de alimentación de la placa Click, de modo que los retardos copiados de otros controladores
+(por ejemplo, los \SI{500}{\micro\second} de un controlador de mbed) no servían. Además, cualquier
+operación entre el encendido y Start\_CM, aunque sea una impresión por el puerto serie, desplaza el
+instante de envío.
+
+\paragraph{Solución.} En lugar de adivinar el retardo, se mide:
+\begin{enumerate}
+  \item tras dar tensión, se sondea la dirección del chip hasta que responde (unos
+        \SI{90}{\micro\second} por sondeo), lo que marca el fin del arranque;
+  \item se espera un retardo que cambia en cada intento, de \num{0} a \SI{1050}{\micro\second} en
+        pasos de \SI{150}{\micro\second}, a lo largo de hasta ocho ciclos de alimentación;
+  \item se envía Start\_CM y se confirma la entrada leyendo B\_Config, cuya respuesta debe empezar por
+        \codigo{0x5A};
+  \item el intento que funciona se devuelve a la interfaz (paquete \codigo{0x04}), para poder fijar el
+        retardo más adelante.
+\end{enumerate}
+Si ningún intento funciona, se clasifica la causa: ``no contesta'' si nunca hubo ACK, ``el reinicio no
+corta'' si sigue respondiendo con EN a nivel bajo, o ``no entra en la ventana''.
+
+\subsection{Cuarto obstáculo: integridad de la EEPROM}
+
+La firma MISR que protege la EEPROM se recalcula al salir del modo comando con Start\_NOM, y se
+comprueba en el siguiente POR. Si se corta la alimentación antes de que la firma quede grabada, el chip
+arranca desde entonces en estado de diagnóstico y la placa queda inservible. Por eso, tras cualquier
+escritura se envía Start\_NOM y se espera diez veces el tiempo típico antes de cortar la tensión. Como
+ZMDI\_Config1 sólo se carga tras un POR, la verificación se hace en una segunda pasada, desde un
+reinicio limpio.
+
+El firmware fuerza siempre el interfaz I\textsuperscript{2}C en ZMDI\_Config1. Si se grabara SPI, el
+chip dejaría de responder por I\textsuperscript{2}C en funcionamiento normal. La hoja de datos indica
+que tras el POR el chip atiende siempre por I\textsuperscript{2}C durante la ventana del modo comando,
+de modo que sería recuperable, pero es mejor no correr el riesgo.
+
+\section{Lecturas de la célula siempre ``antiguas''}
+
+\paragraph{Síntoma.} En una versión del firmware no se registraba ni una sola muestra válida de la
+célula.
+
+\paragraph{Causa.} La lectura se hacía en dos fases, separadas \SI{2}{\milli\second}, quedándose con
+la segunda. En modo de conversión continua leer no dispara una conversión, y el chip no había
+producido un dato nuevo en \SI{2}{\milli\second}, así que la segunda lectura venía siempre marcada como
+repetida. Una versión anterior funcionaba por casualidad: sus dos lecturas caían en vueltas distintas
+del lazo, separadas \SI{50}{\milli\second}.
+
+\paragraph{Solución.} Una única lectura por vuelta, aceptada sólo si el dato es nuevo. El ritmo
+efectivo es el menor entre el del lazo y el de conversión del chip.
+
+\section{Discrepancias con la hoja de datos detectadas durante la redacción}
+\label{sec:prob-estado}
+
+Al contrastar el firmware y la interfaz con la hoja de datos del ZSC31014 para esta memoria, se
+encontraron dos discrepancias que no afectan a los ensayos presentados, pero que conviene corregir:
+
+\begin{enumerate}
+  \item \textbf{Bits de estado.} Según la hoja de datos, 00 = dato válido, \textbf{01 = modo comando},
+        \textbf{10 = dato repetido} y 11 = diagnóstico. El firmware define
+        \codigo{LC\_STATUS\_STALE = 1} y \codigo{LC\_STATUS\_COMMAND = 2}, es decir, intercambiados. En la
+        lectura normal sólo se acepta 00, así que no hay efecto. En la confirmación del modo comando,
+        \codigo{zscResp} acepta un primer byte con estado 10 o igual a \codigo{0x5A}. La respuesta
+        real es \codigo{0x5A}, cuyos bits altos son 01, y el firmware la acepta por la segunda
+        condición; la primera condición es errónea pero inocua.
+  \item \textbf{Codificación de la ganancia.} Según la tabla de B\_Config, el campo PreAmp\_Gain [6:4]
+        no es lineal: 000 = ×1,5, 100 = ×3, 001 = ×6, 101 = ×12, 010 = ×24, 110 = ×48, 011 = ×96 y
+        111 = ×192. El índice de ganancia corresponde a los tres bits en orden inverso. El selector de
+        la interfaz supone un código lineal (1 = ×3, 2 = ×6\ldots), así que para los códigos 1 a 6 la
+        ganancia grabada no es la mostrada: elegir ``×3'' graba ×6, y elegir ``×24'' graba ×3. Los
+        códigos 0 (×1,5) y 7 (×192, el valor por defecto del firmware) coinciden.
+        \verificar{comprobar qué código de ganancia estaba grabado durante los ensayos}
+\end{enumerate}
+
+\section{Segunda célula de carga en el mismo bus}
+\label{sec:prob-nau}
+
+Se evaluó añadir una segunda célula con una Load Cell 4 Click (NAU7802) en el mismo bus
+I\textsuperscript{2}C (programa \fichero{test\_loadcell\_dual\_v2}). Surgieron dos problemas:
+
+\begin{itemize}
+  \item \textbf{Convivencia en el bus.} Con la lectura en dos fases, el ZSC31014 no toleraba
+        transacciones ajenas entre la petición y la recogida del dato: un reinicio de bus dirigido al
+        NAU7802 estropeaba la siguiente lectura del ZSC31014. De ahí nació el árbitro de
+        \fichero{i2c\_bus.h}.
+  \item \textbf{Ruido del NAU7802.} Las medidas sobre la placa, con ganancia 128 y en reposo, dieron
+        unas 18.000 cuentas pico a pico con el regulador interno a \SI{4.5}{\volt} (en caída, porque la
+        placa se alimenta a \SI{3.3}{\volt}); unas 3.500 con el regulador a \SI{3.0}{\volt} y
+        calibración interna de cero; y unas 350 al activar el \emph{chopper} del amplificador, que
+        equivalen a \SI{0.49}{\micro\volt} en la entrada y coinciden con las entradas cortocircuitadas.
+        También se comprobó que esa Click no alimenta AVDD por fuera, así que el conversor debe usar el
+        regulador interno; en caso contrario satura en $-8\,388\,608$.
+\end{itemize}
+
+La segunda célula se retiró del firmware final para simplificar el lazo y el bus. Los ensayos
+analizados usan sólo la célula del cable.
+
+\section{Otros problemas}
+
+\begin{description}[style=nextline,leftmargin=1.5em]
+  \item[Órdenes perdidas por los atajos de teclado] Un byte de CRC igual a una letra de atajo hacía que
+        se perdiera la orden y se reiniciara el servo (sección~\ref{chap:comunicaciones}). Se resolvió
+        aceptando los atajos sólo con el decodificador en reposo.
+  \item[Frecuencia de muestreo imposible] La interfaz llegó a mostrar \SI{3813}{\hertz}. Tras un reinicio
+        del microcontrolador su reloj volvía a cero, la ventana de medida no se podaba nunca y se
+        contaban todas las muestras acumuladas. Se detecta el salto de reloj y se reinicia la ventana.
+  \item[Desplazamientos fantasma] Tras la programación de la célula, que bloquea el lazo cerca de un
+        segundo, la integración multiplicaba ese hueco por la última velocidad. Se anula la base de
+        tiempo tras cada operación bloqueante.
+  \item[Órdenes que ``no hacían nada''] Una acción mal escrita en la interfaz se ignoraba sin avisar. Se
+        añadió una confirmación para toda orden, con el motivo del fallo cuando lo hay.
+  \item[Revisión A de la placa] Conflictos de red en el bloque RS-485, entradas analógicas en pines sin
+        ADC y amplificadores sin alimentar (tabla~\ref{tab:erratas}).
+\end{description}
+
+\section{Lecciones aprendidas}
+
+\begin{itemize}
+  \item \textbf{Leer la hoja de datos entera}, no sólo las tablas de registros: la ventana del modo
+        comando, la firma de la EEPROM, el umbral de POR y la codificación no lineal de la ganancia están
+        en secciones distintas y todas han resultado críticas.
+  \item \textbf{Medir antes de suponer}: la alimentación parásita sólo se descubrió con un polímetro, y
+        el retardo de la ventana, con un barrido.
+  \item \textbf{Cada operación debe responder}: las confirmaciones de órdenes y el modelo
+        pregunta-respuesta de la célula han convertido fallos silenciosos en diagnósticos claros.
+  \item \textbf{La sencillez da determinismo}: un lazo de periodo fijo con dueño único de cada bus ha
+        dado mejor resultado que repartir el trabajo entre dos núcleos.
+  \item \textbf{Conservar los datos brutos}: ha permitido recalibrar y reanalizar todos los ensayos para
+        esta memoria sin repetirlos.
+\end{itemize}

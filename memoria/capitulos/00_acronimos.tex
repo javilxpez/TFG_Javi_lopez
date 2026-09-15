@@ -1,0 +1,69 @@
+\chapter*{Acrónimos y símbolos}
+\addcontentsline{toc}{chapter}{Acrónimos y símbolos}
+\thispagestyle{plain}
+
+\section*{Acrónimos}
+\begin{longtable}{@{}L{0.18\textwidth}L{0.76\textwidth}@{}}
+\toprule
+\textbf{Sigla} & \textbf{Significado} \\
+\midrule
+\endhead
+A/D, ADC & Convertidor analógico-digital (\emph{Analog-to-Digital Converter}) \\
+API      & Interfaz de programación de aplicaciones \\
+CDC      & Clase de dispositivo USB de comunicaciones (puerto serie virtual) \\
+CRC      & Código de redundancia cíclica (\emph{Cyclic Redundancy Check}) \\
+CSV      & Valores separados por comas (\emph{Comma-Separated Values}) \\
+DE / RE  & Habilitación del emisor / receptor de un transceptor RS-485 \\
+DI / DO  & Entrada digital / salida digital \\
+EEPROM   & Memoria no volátil borrable eléctricamente \\
+ESD      & Descarga electrostática (\emph{Electrostatic Discharge}) \\
+FC       & Final de carrera \\
+GPIO     & Entrada/salida de propósito general \\
+GUI      & Interfaz gráfica de usuario \\
+HTTP     & Protocolo de transferencia de hipertexto \\
+I\textsuperscript{2}C & Bus serie síncrono de dos hilos (\emph{Inter-Integrated Circuit}) \\
+LC       & Célula de carga (\emph{Load Cell}); LC1 y LC2 en el firmware \\
+MISR     & Registro de firma de la EEPROM del ZSC31014 (\emph{Multiple-Input Signature Register}) \\
+NC       & Contacto normalmente cerrado \\
+ODS      & Objetivos de Desarrollo Sostenible \\
+PCB      & Placa de circuito impreso (\emph{Printed Circuit Board}) \\
+PIO      & E/S programable del RP2350 (\emph{Programmable I/O}) \\
+POR      & Reinicio por encendido (\emph{Power-On Reset}) \\
+RPM, rpm & Revoluciones por minuto \\
+RS-485   & Estándar TIA/EIA-485 de transmisión diferencial multipunto \\
+RTU      & Modo binario de Modbus sobre línea serie (\emph{Remote Terminal Unit}) \\
+SMD      & Componente de montaje superficial \\
+STO      & Desconexión segura del par (\emph{Safe Torque Off}) \\
+TFG      & Trabajo Fin de Grado \\
+UART     & Transmisor-receptor asíncrono universal \\
+USB      & Bus serie universal \\
+VRD      & Tambor de radio variable (\emph{Variable Radius Drum}) \\
+WS       & WebSocket \\
+\bottomrule
+\end{longtable}
+
+\section*{Símbolos principales}
+\begin{longtable}{@{}L{0.17\textwidth}L{0.55\textwidth}L{0.16\textwidth}@{}}
+\toprule
+\textbf{Símbolo} & \textbf{Descripción} & \textbf{Unidad} \\
+\midrule
+\endhead
+$L_2$     & Altura del punto de salida del cable sobre la articulación O & mm \\
+$L_3$     & Distancia de O al punto de anclaje del cable en la barra & mm \\
+$L_4$     & Distancia del anclaje del cable al punto de suspensión de la masa & mm \\
+$m$       & Masa suspendida & kg \\
+$g$       & Aceleración de la gravedad & \si{\metre\per\second\squared} \\
+$\theta$  & Ángulo de la barra respecto a la horizontal (positivo hacia arriba) & ° \\
+$c$       & Longitud libre de cable entre la salida y el anclaje & mm \\
+$T$       & Tensión del cable & N \\
+$K$       & Constante de proporcionalidad $T = Kc$ & N/mm \\
+$\varphi$ & Giro del tambor (caracola) medido desde el origen del recorrido & rad \\
+$r(\varphi)$ & Radio instantáneo de enrollamiento del tambor & mm \\
+$s(\varphi)$ & Cable pagado por el tambor, $s=\int r\,\mathrm{d}\varphi$ & mm \\
+$\tau$    & Par en el eje del tambor & N·m \\
+$N$       & Reducción motor:tambor (vueltas de motor por vuelta de tambor) & -- \\
+$\tau_g$, $\tau_f$ & Componentes gravitatoria y de pérdidas del par medido & \ua \\
+$p$       & Posición integrada del eje del motor & rev \\
+\ua       & Unidades internas del accionamiento (registro 16387) & -- \\
+\bottomrule
+\end{longtable}

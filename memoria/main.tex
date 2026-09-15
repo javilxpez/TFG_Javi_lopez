@@ -1,0 +1,183 @@
+% ════════════════════════════════════════════════════════════════════════
+%  Trabajo Fin de Grado — Caracola de radio variable accionada por servo
+%  Compilar:  latexmk -pdf main.tex      (o subir la carpeta a Overleaf)
+%             tectonic main.tex          (sin instalación de TeX Live)
+%  Las marcas \completar{...} y \verificar{...} señalan datos que sólo
+%  puede aportar la persona autora (nombres, cotas, precios, fotos).
+% ════════════════════════════════════════════════════════════════════════
+\documentclass[11pt,a4paper,twoside,openright]{report}
+
+% ── Idioma y tipografía ──────────────────────────────────────────────────
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[utf8]{inputenc}
+  \usepackage[T1]{fontenc}
+  \usepackage{lmodern}
+  \usepackage{textcomp}
+\else
+  \usepackage{fontspec}
+\fi
+\usepackage[spanish,es-noshorthands,es-tabla,es-nodecimaldot]{babel}
+\usepackage{microtype}
+\usepackage{csquotes}
+
+% ── Página ──────────────────────────────────────────────────────────────
+\usepackage[a4paper,top=2.5cm,bottom=2.5cm,inner=3cm,outer=2.5cm,headheight=14pt]{geometry}
+\usepackage{fancyhdr}
+\usepackage{emptypage}
+\usepackage{titlesec}
+\usepackage{setspace}
+\setstretch{1.15}
+\raggedbottom
+
+% ── Matemáticas, unidades, tablas, figuras ──────────────────────────────
+\usepackage{amsmath,amssymb}
+\usepackage{siunitx}
+\sisetup{output-decimal-marker={,}, group-separator={.}, per-mode=symbol,
+         range-phrase={ a }, list-final-separator={ y }}
+\usepackage{graphicx}
+\graphicspath{{figuras/}}
+\usepackage{booktabs,tabularx,multirow,longtable,array}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\usepackage{float}
+\usepackage[font=small,labelfont=bf]{caption}
+\usepackage{subcaption}
+\usepackage{enumitem}
+\setlist{itemsep=2pt,topsep=4pt}
+\usepackage{xcolor}
+\usepackage{bytefield}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,shapes.misc,fit,calc,backgrounds,decorations.pathreplacing,babel}
+\usepackage{pgfgantt}
+
+% ── Código ──────────────────────────────────────────────────────────────
+\usepackage{listings}
+\definecolor{codebg}{RGB}{247,247,247}
+\definecolor{codecom}{RGB}{96,120,96}
+\definecolor{codekw}{RGB}{30,60,150}
+\definecolor{codestr}{RGB}{160,60,40}
+\lstset{
+  basicstyle=\ttfamily\footnotesize, backgroundcolor=\color{codebg},
+  keywordstyle=\color{codekw}\bfseries, commentstyle=\color{codecom}\itshape,
+  stringstyle=\color{codestr}, frame=single, rulecolor=\color{black!20},
+  breaklines=true, columns=fullflexible, keepspaces=true, showstringspaces=false,
+  numbers=left, numberstyle=\tiny\color{black!50}, xleftmargin=1.6em, framexleftmargin=1.4em,
+  captionpos=b,
+  literate={á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
+           {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
+           {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {ü}{{\"u}}1 {·}{{$\cdot$}}1 {→}{{$\rightarrow$}}1
+           {←}{{$\leftarrow$}}1 {µ}{{$\mu$}}1 {°}{{$^\circ$}}1 {≤}{{$\le$}}1 {×}{{$\times$}}1
+           {─}{{-}}1 {═}{{=}}1 {↔}{{$\leftrightarrow$}}1 {¿}{{?`}}1 {¡}{{!`}}1
+}
+\renewcommand{\lstlistingname}{Listado}
+\renewcommand{\lstlistlistingname}{Índice de listados}
+
+% ── Enlaces ─────────────────────────────────────────────────────────────
+\usepackage{xurl}
+\usepackage[hidelinks,unicode,pdfusetitle]{hyperref}
+
+% ── Macros del documento ────────────────────────────────────────────────
+\DeclareRobustCommand{\completar}[1]{\textcolor{red!75!black}{\textbf{[COMPLETAR:} #1\textbf{]}}}
+\DeclareRobustCommand{\verificar}[1]{\textcolor{orange!80!black}{\textbf{[VERIFICAR:} #1\textbf{]}}}
+\newcommand{\codigo}[1]{\texttt{#1}}
+\newcommand{\fichero}[1]{\texttt{#1}}
+\newcommand{\registro}[1]{\texttt{#1}}
+\newcommand{\ua}{u.\,a.}          % unidades del accionamiento
+\DeclareSIUnit{\uacc}{u.a.}
+
+% Datos de portada
+\newcommand{\titulotfg}{Caracola de radio variable accionada por servomotor paso a paso:\\
+  diseño del sistema electrónico de control y adquisición\\ y validación experimental de la compensación de par}
+\newcommand{\titulocorto}{Caracola de radio variable accionada por servo}
+\newcommand{\autortfg}{Javier López \completar{segundo apellido}}
+\newcommand{\tutortfg}{\completar{nombre del tutor o tutora}}
+\newcommand{\gradotfg}{\completar{Grado en Ingeniería \ldots}}
+\newcommand{\escuelatfg}{\completar{Escuela Técnica Superior de \ldots}}
+\newcommand{\universidadtfg}{Universidad Politécnica de Madrid}
+\newcommand{\fechatfg}{\completar{mes} de 2026}
+
+% ── Cabeceras ───────────────────────────────────────────────────────────
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[LE]{\small\nouppercase{\leftmark}}
+\fancyhead[RO]{\small\nouppercase{\rightmark}}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\fancypagestyle{plain}{\fancyhf{}\fancyfoot[C]{\thepage}\renewcommand{\headrulewidth}{0pt}}
+\titleformat{\chapter}[display]{\normalfont\huge\bfseries\raggedright}{\chaptertitlename\ \thechapter}{16pt}{\Huge}
+\titlespacing*{\chapter}{0pt}{20pt}{30pt}
+
+\hypersetup{pdftitle={\titulocorto}, pdfauthor={Javier López}}
+
+\begin{document}
+
+% ════════════════════════════ PORTADA ═══════════════════════════════════
+\begin{titlepage}
+  \centering
+  {\large \universidadtfg\par}
+  \vspace{2mm}
+  {\large \escuelatfg\par}
+  \vspace{2cm}
+  {\Large \gradotfg\par}
+  \vspace{1.2cm}
+  {\Large\bfseries TRABAJO FIN DE GRADO\par}
+  \vspace{1.5cm}
+  \rule{\linewidth}{0.8pt}\par\vspace{4mm}
+  {\LARGE\bfseries Caracola de radio variable\\[1mm] accionada por servomotor paso a paso\par}
+  \vspace{5mm}
+  {\large Diseño del sistema electrónico de control y adquisición\\ y validación experimental de la compensación de par\par}
+  \vspace{4mm}\rule{\linewidth}{0.8pt}\par
+  \vfill
+  \begin{tabular}{rl}
+    \textbf{Autoría:} & \autortfg \\[2mm]
+    \textbf{Tutoría:} & \tutortfg \\[2mm]
+    \textbf{Fecha:}   & \fechatfg \\
+  \end{tabular}
+  \vspace{2cm}
+\end{titlepage}
+\cleardoublepage
+
+% ════════════════════════ PÁGINAS PRELIMINARES ══════════════════════════
+\pagenumbering{roman}
+\input{capitulos/00_preliminares}
+
+\tableofcontents
+\cleardoublepage
+\listoffigures
+\cleardoublepage
+\listoftables
+\cleardoublepage
+\input{capitulos/00_acronimos}
+
+% ════════════════════════════ CUERPO ════════════════════════════════════
+\cleardoublepage
+\pagenumbering{arabic}
+\input{capitulos/01_introduccion}
+\input{capitulos/02_estado_arte}
+\input{capitulos/03_modelo}
+\input{capitulos/04_arquitectura}
+\input{capitulos/05_hardware}
+\input{capitulos/06_firmware}
+\input{capitulos/07_comunicaciones}
+\input{capitulos/08_software}
+\input{capitulos/09_problemas}
+\input{capitulos/10_resultados}
+\input{capitulos/11_gestion}
+\input{capitulos/12_conclusiones}
+
+% ════════════════════════════ BIBLIOGRAFÍA ══════════════════════════════
+\cleardoublepage
+\phantomsection
+\addcontentsline{toc}{chapter}{Bibliografía}
+\input{capitulos/bibliografia}
+
+% ════════════════════════════ ANEXOS ════════════════════════════════════
+\appendix
+\input{anexos/A_pines}
+\input{anexos/B_protocolo}
+\input{anexos/C_modbus}
+\input{anexos/D_csv}
+\input{anexos/E_manual}
+\input{anexos/F_repositorio}
+
+\end{document}

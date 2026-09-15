@@ -5,234 +5,95 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Monitor Caracola — Pico 2</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="/fui/css/fanuc-ui.css">
+  <link rel="stylesheet" href="/tema.css">
+  <script src="/tema.js"></script>
   <style>
-    :root {
-      --bg:     #0d1117;
-      --card:   #161b22;
-      --border: #30363d;
-      --text:   #c9d1d9;
-      --muted:  #8b949e;
-      --green:  #3fb950;
-      --yellow: #d29922;
-      --red:    #f85149;
-      --blue:   #58a6ff;
-      --cyan:   #79c0ff;
-      --purple: #bc8cff;
-    }
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: 'Courier New', monospace;
-      font-size: 13px;
-      min-height: 100vh;
-    }
-
-    /* ── Layout ── */
-    .wrap  { max-width: 1440px; margin: 0 auto; padding: 12px 16px; }
-    header {
-      display: flex; justify-content: space-between; align-items: center;
-      padding-bottom: 10px; border-bottom: 1px solid var(--border); margin-bottom: 14px;
-    }
-    header h1 { font-size: 15px; color: var(--blue); display: flex; align-items: center; gap: 8px; }
-    .meta-bar  { color: var(--muted); font-size: 11px; }
-
-    .row  { display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
-    .col  { flex: 1; min-width: 180px; }
+    /* Sólo maquetación. Colores, tipografía y componentes: fanuc-ui.css y tema.css. */
+    .row  { display: flex; gap: 10px; flex-wrap: wrap; }
+    .col  { flex: 1; min-width: 170px; }
     .col2 { flex: 2; min-width: 260px; }
     .col3 { flex: 3; min-width: 320px; }
+    .card, .force-card { padding: 8px 10px; height: 100%; }
+    .force-card { border-left: 4px solid var(--fui-title); }
+    .sub  { font: 11px/1.3 var(--fui-font-label); letter-spacing: .06em; margin-top: 3px; }
 
-    /* ── Cards ── */
-    .card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 12px 14px;
-      height: 100%;
-    }
-    .card-title {
-      color: var(--muted); font-size: 10px;
-      text-transform: uppercase; letter-spacing: .08em;
-      margin-bottom: 8px;
-    }
-    .big-value { font-size: 26px; font-weight: bold; line-height: 1; }
-    .sub       { font-size: 11px; color: var(--muted); margin-top: 4px; }
-
-    .metric { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid var(--border); }
+    .metric { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0;
+              border-bottom: 1px solid var(--fui-rule-soft); }
     .metric:last-child { border-bottom: none; }
-    .metric-label { color: var(--muted); }
-    .metric-value { font-weight: bold; }
+    .metric-label { color: var(--fui-ink-3); font: 500 11px/1.6 var(--fui-font-label);
+                    letter-spacing: .08em; text-transform: uppercase; }
+    .metric-value { font-variant-numeric: tabular-nums; }
 
-    /* ── Color helpers ── */
-    .ok   { color: var(--green); }
-    .warn { color: var(--yellow); }
-    .err  { color: var(--red); }
-    .info { color: var(--cyan); }
-    .dim  { color: var(--muted); }
-    .hi   { color: var(--purple); }
-
-    /* ── Force highlight card ── */
-    .force-card {
-      background: var(--card);
-      border: 1px solid var(--green);
-      border-radius: 6px;
-      padding: 12px 14px;
-    }
-    .force-card .big-value { color: var(--green); }
-
-    /* ── Controls ── */
-    .controls {
-      background: var(--card); border: 1px solid var(--border);
-      border-radius: 6px; padding: 10px 14px;
-      display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
-      margin-bottom: 12px;
-    }
-    .btn-group { display: flex; gap: 6px; }
-    button {
-      padding: 7px 14px; border: 1px solid var(--border);
-      border-radius: 4px; background: #21262d; color: var(--text);
-      cursor: pointer; font-family: inherit; font-size: 12px;
-      transition: background .1s, border-color .1s;
-    }
-    button:hover { background: #30363d; }
-    button:active { background: #444; }
-    button.b-init   { border-color: var(--blue);   color: var(--blue); }
-    button.b-stop   { border-color: var(--red);    color: var(--red); }
-    button.b-a      { border-color: var(--cyan);   color: var(--cyan); }
-    button.b-b      { border-color: var(--cyan);   color: var(--cyan); }
-    button.b-home   { border-color: var(--purple); color: var(--purple); }
-    button.b-reset  { border-color: var(--muted);  color: var(--muted); }
-    button.b-shut   { border-color: var(--yellow); color: var(--yellow); }
-
-    /* ── Pestañas: servo y célula, cada una con lo suyo ── */
-    [hidden] { display: none !important; }
-    .tabs { display: flex; gap: 4px; }
-    .tab {
-      padding: 7px 18px; border: 1px solid var(--border); border-bottom: none;
-      border-radius: 6px 6px 0 0; background: #161b22; color: var(--muted);
-      font-size: 12px; position: relative; top: 1px;
-    }
-    .tab:hover { background: #1c222b; color: var(--text); }
-    .tab.active { background: var(--card); color: var(--text); }
-
-    .panel {
-      background: var(--card); border: 1px solid var(--border);
-      border-radius: 0 6px 6px 6px; padding: 14px;
-      margin-bottom: 12px;
-    }
-    .group + .group { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+    .btn-group { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    .panel { padding: 10px; }
+    .group + .group { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--fui-rule); }
 
     /* Configuración avanzada: plegada, para no tener la palabra de configuración
        entera delante mientras se trabaja con la célula */
     details.group > summary {
       cursor: pointer; list-style: none; display: flex; gap: 8px; align-items: center;
-      font-size: 10px; text-transform: uppercase; letter-spacing: .09em; color: var(--muted);
+      color: var(--fui-ink-2); font: 600 11px/1.2 var(--fui-font-label);
+      letter-spacing: .12em; text-transform: uppercase;
     }
     details.group > summary::-webkit-details-marker { display: none; }
-    details.group > summary::before { content: '▸'; font-size: 11px; }
+    details.group > summary::before { content: '▸'; }
     details.group[open] > summary::before { content: '▾'; }
-    details.group > summary:hover { color: var(--text); }
-    details.group[open] > summary { margin-bottom: 11px; }
-    details.group > summary .sum { text-transform: none; letter-spacing: 0; }
-    .group-title {
-      font-size: 10px; text-transform: uppercase; letter-spacing: .09em;
-      color: var(--muted); margin-bottom: 9px;
-    }
+    details.group > summary:hover { color: var(--fui-ink); }
+    details.group[open] > summary { margin-bottom: 10px; }
+    details.group > summary .sum { font: 12px var(--fui-font-data); letter-spacing: 0; text-transform: none; }
+
     /* Etiqueta encima del campo: en una sola fila los nombres largos se pisaban */
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px 16px; }
-    .param  { display: flex; flex-direction: column; gap: 4px; }
-    .param label { color: var(--muted); font-size: 11px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px 14px; }
+    .param  { display: flex; flex-direction: column; gap: 3px; }
+    .param label { color: var(--fui-ink-3); font: 500 11px/1.2 var(--fui-font-label);
+                   letter-spacing: .08em; text-transform: uppercase; }
     .param .field { display: flex; align-items: center; gap: 5px; }
-    .param input[type=number] { width: 100%; }
+    .param input[type=number], .param select { width: 100%; }
     /* Un solo botón por pestaña: nada de un ✓ por campo */
-    .group-actions { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
-    .hint { font-size: 11px; color: var(--muted); }
+    .group-actions { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+    .hint { font-size: 12px; }
 
     /* Lectura del chip: una zona, no cuatro líneas sueltas apiladas */
-    .readout { margin-top: 10px; display: flex; flex-direction: column; gap: 7px; }
-    .readout .line { font-size: 11px; line-height: 1.45; }
-    .chips { display: flex; flex-wrap: wrap; gap: 5px; }
-    .chip {
-      background: #0d1117; border: 1px solid var(--border); border-radius: 4px;
-      padding: 2px 7px; font-size: 10px; color: var(--muted); white-space: nowrap;
-    }
-    .chip b { color: var(--text); font-weight: 400; }
-    a.chip { text-decoration: none; }
-    a.chip:hover { border-color: var(--blue); color: var(--blue); }
-    .chip.bad { border-color: var(--red); color: var(--red); }
-    .chip.bad b { color: var(--red); }
-    input[type=number] {
-      width: 72px; padding: 5px 6px;
-      background: #0d1117; border: 1px solid var(--border);
-      color: var(--text); border-radius: 4px;
-      font-family: inherit; font-size: 12px;
-    }
-    select {
-      width: 100%; padding: 5px 6px;
-      background: #0d1117; border: 1px solid var(--border);
-      color: var(--text); border-radius: 4px;
-      font-family: inherit; font-size: 12px;
-    }
-    input[type=number]:focus, select:focus { outline: none; border-color: var(--blue); }
-    .btn-apply { padding: 5px 10px; font-size: 11px; }
+    .readout { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
 
-    /* ── Charts ── */
-    .chart-card {
-      background: var(--card); border: 1px solid var(--border);
-      border-radius: 6px; padding: 12px 14px;
-    }
-    .chart-header {
-      display: flex; justify-content: space-between; align-items: center;
-      margin-bottom: 10px;
-    }
-    .chart-title-text { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
-    .chart-badge { font-size: 12px; font-weight: bold; }
+    .chart-card { padding: 8px 10px; }
+    .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .chart-header .chart-title-text { margin: 0; }
+    .chart-badge { font: 15px/1 var(--fui-font-readout); font-variant-numeric: tabular-nums; }
     .chart-wrap  { position: relative; height: 230px; }
 
-    /* ── WS dot ── */
-    .dot {
-      width: 9px; height: 9px; border-radius: 50%;
-      display: inline-block; flex-shrink: 0;
-    }
-    .dot.ok  { background: var(--green); box-shadow: 0 0 6px var(--green); }
-    .dot.err { background: var(--red); }
-    .dot.warn { background: var(--yellow); }
-
-    /* ── Endstops ── */
+    /* Finales de carrera: pilotos cuadrados como .fui-lamp, rojo cuando pisan */
     .limits { display: flex; gap: 18px; margin-top: 4px; }
-    .limit  { display: flex; align-items: center; gap: 7px; font-size: 14px; }
-    .limit .led {
-      width: 15px; height: 15px; border-radius: 50%;
-      background: #21262d; border: 1px solid var(--border); flex-shrink: 0;
-      transition: background .1s, box-shadow .1s;
-    }
-    .limit .lbl { color: var(--muted); font-weight: bold; }
-    .limit.on .led { background: var(--red); box-shadow: 0 0 9px var(--red); }
-    .limit.on .lbl { color: var(--red); }
+    .limit  { display: flex; align-items: center; gap: 7px; }
+    .limit .led { width: 14px; height: 14px; border-radius: 1px; flex-shrink: 0;
+                  background: var(--fui-off); box-shadow: inset 0 0 0 1px rgb(0 0 0 / .35); }
+    .limit .lbl { color: var(--fui-ink-3); font: 20px/1 var(--fui-font-readout); }
+    .limit.on .led { background: var(--fui-fail);
+                     box-shadow: inset 0 0 0 1px rgb(0 0 0 / .3), 0 0 7px rgb(192 37 28 / .65); }
+    .limit.on .lbl { color: var(--fui-fail); }
 
-    /* ── Mini bar ── */
     .bar-wrap { display: flex; align-items: center; gap: 6px; }
-    .bar-outer { flex: 1; height: 4px; background: #21262d; border-radius: 2px; overflow: hidden; }
-    .bar-inner { height: 100%; border-radius: 2px; transition: width .2s; }
+    .bar-outer { flex: 1; height: 5px; background: var(--fui-rule-soft); overflow: hidden; }
+    .bar-inner { height: 100%; transition: width .2s; }
 
     @media (max-width: 800px) {
       .col, .col2, .col3 { min-width: 100%; }
       .grid { grid-template-columns: 1fr 1fr; }
     }
   </style>
+  <script src="/nav.js" defer></script>
 </head>
-<body>
-<div class="wrap">
-
-  <!-- Header -->
-  <header>
-    <h1>
-      <span class="dot err" id="ws-dot"></span>
-      Monitor Caracola — Pico 2
-    </h1>
-    <div class="meta-bar" id="meta-bar">Conectando al servidor...</div>
-  </header>
-
+<body class="fui-page">
+<div class="fui-bezel tema-marco">
+  <div class="fui-plate">
+    <span class="fui-brand">CARACOLA</span>
+    <span>Banco de ensayos · Pico 2</span>
+    <span class="fui-plate-item"><span class="dot err" id="ws-dot"></span>Servidor</span>
+  </div>
+  <main class="fui-screen">
+    <div class="fui-titlebar"><span>MONITOR  TIEMPO REAL</span><span class="fui-titlebar-end" id="meta-bar">Conectando al servidor...</span></div>
+    <section class="fui-view">
   <!-- Status cards row -->
   <div class="row">
     <div class="col">
@@ -317,10 +178,9 @@
     <button class="tab active" data-tab="servo" onclick="showTab('servo')">Servo</button>
     <button class="tab"        data-tab="lc1"   onclick="showTab('lc1')">Célula 1 · ZSC31014</button>
     <button class="tab"        data-tab="ciclo" onclick="showTab('ciclo')">Ciclo A↔B</button>
-    <button class="tab"        data-tab="teo"   onclick="showTab('teo')">Cálculo teórico</button>
+    <button class="tab"        data-tab="rec"   onclick="showTab('rec')">Ensayos grabados</button>
     <button class="btn-apply" style="align-self:center;margin-left:10px" onclick="tareLc1()"
             title="Pone la célula a cero con su lectura actual. La tara vive en el firmware.">⌀ Tara</button>
-    <span id="v-cmd-ack" class="hint" style="font-size:11px;align-self:center;margin-left:10px"></span>
   </div>
 
   <!-- ── Servo ── -->
@@ -329,7 +189,7 @@
       <div class="group-title">Control del eje</div>
       <div class="btn-group">
         <input type="number" id="p-addr" value="1" min="1" max="247" title="Dirección Modbus del drive"
-               style="width:52px;padding:5px 6px;background:#0d1117;border:1px solid var(--border);color:var(--text);border-radius:4px;font-family:inherit;font-size:12px">
+               style="width:60px">
         <button class="b-init"  onclick="sendInit()">⟳ Init</button>
         <button class="b-a"     onclick="cmd('move_a')">◄ Mov A</button>
         <button class="b-b"     onclick="cmd('move_b')">Mov B ►</button>
@@ -513,90 +373,18 @@
       </div>
     </div>
 
+  </div>
+
+  <!-- ── Ensayos grabados: aparte del ciclo, que es control y no archivo ── -->
+  <div class="panel" data-panel="rec" hidden>
     <div class="group">
       <div class="group-title">Ensayos grabados — un CSV por ciclo, con cuentas crudas</div>
       <div class="group-actions">
         <button class="btn-apply" onclick="loadCycles()">⟲ Actualizar lista</button>
-        <a class="btn-apply" href="/ensayos" target="_blank"
-           style="text-decoration:none;display:inline-block">📈 Ver ensayos</a>
+        <a class="btn-apply" href="/ensayos">📈 Ver ensayos</a>
         <span id="v-rec" class="hint">—</span>
       </div>
       <div class="readout"><div class="chips" id="v-cyc-files" hidden></div></div>
-    </div>
-  </div>
-
-  <!-- ── Cálculo teórico del par motor ── -->
-  <div class="panel" data-panel="teo" hidden>
-    <div class="group">
-      <div class="group-title">Geometría — así he entendido el montaje</div>
-      <svg viewBox="0 0 470 210" style="width:100%;max-width:470px;height:auto;display:block">
-        <!-- barra, mástil y cable -->
-        <line x1="45" y1="160" x2="415" y2="160" stroke="#c9d1d9" stroke-width="4"/>
-        <line x1="45" y1="160" x2="45"  y2="45"  stroke="#30363d" stroke-width="3"
-              stroke-dasharray="4 3"/>
-        <line x1="45" y1="45"  x2="235" y2="160" stroke="#58a6ff" stroke-width="2"/>
-        <!-- espiral del servo -->
-        <circle cx="45" cy="45" r="13" fill="none" stroke="#bc8cff" stroke-width="2"/>
-        <circle cx="45" cy="45" r="4"  fill="#bc8cff"/>
-        <!-- articulación -->
-        <circle cx="45" cy="160" r="5" fill="#8b949e"/>
-        <!-- punto donde tira el cable -->
-        <circle cx="235" cy="160" r="4" fill="#58a6ff"/>
-        <!-- pesa -->
-        <line x1="380" y1="160" x2="380" y2="185" stroke="#8b949e" stroke-width="1.5"/>
-        <rect x="366" y="185" width="28" height="18" fill="#d29922"/>
-        <!-- ángulo alpha -->
-        <path d="M 265 160 A 30 30 0 0 0 253 142" fill="none" stroke="#3fb950" stroke-width="1.5"/>
-        <!-- cotas -->
-        <text x="60"  y="40"  fill="#bc8cff" font-size="12" font-family="monospace">L1 (radio espiral)</text>
-        <text x="8"   y="105" fill="#8b949e" font-size="12" font-family="monospace">L2</text>
-        <text x="130" y="178" fill="#8b949e" font-size="12" font-family="monospace">L3</text>
-        <text x="295" y="178" fill="#8b949e" font-size="12" font-family="monospace">L4</text>
-        <text x="272" y="150" fill="#3fb950" font-size="12" font-family="monospace">α</text>
-        <text x="30"  y="180" fill="#8b949e" font-size="11" font-family="monospace">O</text>
-        <text x="352" y="203" fill="#d29922" font-size="11" font-family="monospace">m·g</text>
-        <text x="120" y="88"  fill="#58a6ff" font-size="11" font-family="monospace">cable (hipotenusa)</text>
-      </svg>
-      <div class="group-actions">
-        <span class="hint">Barra articulada en O. El cable sale de la espiral, baja por el
-        mástil de altura L2 y tira de la barra en un punto a L3 de O. La pesa cuelga a
-        L3+L4. Catetos L2 y L3, cable = hipotenusa, α entre cable y barra.</span>
-      </div>
-    </div>
-
-    <div class="group">
-      <div class="group-title">Datos</div>
-      <div class="grid">
-        <div class="param"><label>L1 · radio de la espiral (mm)</label>
-          <input type="number" id="t-l1" value="25" step="0.1" min="0.1" oninput="calcTeo()"></div>
-        <div class="param"><label>L2 · cateto vertical (mm)</label>
-          <input type="number" id="t-l2" value="290" step="1" min="0" oninput="calcTeo()"></div>
-        <div class="param"><label>L3 · cateto hasta el cable (mm)</label>
-          <input type="number" id="t-l3" value="95" step="1" min="0.1" oninput="calcTeo()"></div>
-        <div class="param"><label>L4 · resto de barra hasta la pesa (mm)</label>
-          <input type="number" id="t-l4" value="110" step="1" min="0" oninput="calcTeo()"></div>
-        <div class="param"><label>Masa colgada (kg)</label>
-          <input type="number" id="t-m" value="2" step="0.01" min="0" oninput="calcTeo()"></div>
-        <div class="param"><label>g (m/s²)</label>
-          <input type="number" id="t-g" value="9.81" step="0.01" min="0" oninput="calcTeo()"></div>
-      </div>
-    </div>
-
-    <div class="group">
-      <div class="group-title">Curva teórica frente al giro del servo</div>
-      <canvas id="gTeo" style="max-height:300px"></canvas>
-      <div class="group-actions">
-        <span class="hint" id="t-rango"></span>
-      </div>
-    </div>
-
-    <div class="group">
-      <div class="group-title">Resultado en la posición de partida (barra horizontal)</div>
-      <div class="chips" id="t-chips"></div>
-      <div class="readout">
-        <div class="line hint" id="t-formulas"></div>
-        <div class="line" id="t-comp"></div>
-      </div>
     </div>
   </div>
 
@@ -618,27 +406,35 @@
       <div class="chart-card">
         <div class="chart-header">
           <span class="chart-title-text">Fuerza vs Tiempo</span>
-          <span class="chart-badge" id="ft-now" style="color:var(--cyan)">—</span>
+          <span class="chart-badge" id="ft-now">—</span>
         </div>
         <div class="chart-wrap"><canvas id="chart-ft"></canvas></div>
       </div>
     </div>
   </div>
 
+    </section>
+    <div class="fui-msg"><b>&gt;</b> <span id="v-cmd-ack" class="hint"></span></div>
+    <div class="fui-statusline"><span>MON</span><span>****  ***  ***</span><span class="fui-statusline-end" data-reloj>--:--:--</span></div>
+  </main>
+  <nav id="nav" data-actual="monitor"></nav>
 </div>
 
 <script>
+// Colores del tema FANUC (tema.css), leídos una vez: Chart.js y el canvas no leen CSS.
+const TEMA = coloresTema();
+temaGraficas();
 // ── Chart.js setup ──────────────────────────────────────
-const darkGrid = { color: '#21262d' };
-const tickStyle = { color: '#8b949e', font: { size: 10, family: 'Courier New' } };
+const darkGrid = { color: TEMA.rejilla };
+const tickStyle = { color: TEMA.tinta, font: { size: 10, family: TEMA.fuente } };
 
 // Diagnostic timeline: commanded vs actual speed + limit switches + command markers.
 // x-axis = device time (t_ms), so speed / io / commands share the firmware clock.
 const DIAG_WINDOW = 20;            // seconds visible
 const cmdEvents = [];              // {x, label, color}
 const CMD_COLORS = {
-  init:'#58a6ff', move_a:'#79c0ff', move_b:'#79c0ff', home:'#bc8cff',
-  stop:'#f85149', shutdown:'#d29922', reset_pos:'#8b949e', set_param:'#bc8cff'
+  init:TEMA.azul, move_a:TEMA.cian, move_b:TEMA.cian, home:TEMA.morado,
+  stop:TEMA.rojo, shutdown:TEMA.ambar, reset_pos:TEMA.tinta, set_param:TEMA.morado
 };
 
 // v2: colores de fase de homing
@@ -674,22 +470,22 @@ const cmdMarkerPlugin = {
 const chartDiag = new Chart(document.getElementById('chart-diag'), {
   type: 'line',
   data: { datasets: [
-    { label:'Vel. cmd',  data:[], borderColor:'#79c0ff', stepped:true, pointRadius:0, borderWidth:1.6, yAxisID:'y' },
-    { label:'Vel. real', data:[], borderColor:'#58a6ff', pointRadius:1.5, pointBackgroundColor:'#58a6ff', borderWidth:1.2, yAxisID:'y', tension:0.25 },
-    { label:'Limit A',   data:[], borderColor:'#f85149', stepped:true, pointRadius:0, borderWidth:1.5, yAxisID:'y1' },
-    { label:'Limit B',   data:[], borderColor:'#d29922', stepped:true, pointRadius:0, borderWidth:1.5, yAxisID:'y1' },
+    { label:'Vel. cmd',  data:[], borderColor:TEMA.cian, stepped:true, pointRadius:0, borderWidth:1.6, yAxisID:'y' },
+    { label:'Vel. real', data:[], borderColor:TEMA.azul, pointRadius:1.5, pointBackgroundColor:TEMA.azul, borderWidth:1.2, yAxisID:'y', tension:0.25 },
+    { label:'Limit A',   data:[], borderColor:TEMA.rojo, stepped:true, pointRadius:0, borderWidth:1.5, yAxisID:'y1' },
+    { label:'Limit B',   data:[], borderColor:TEMA.ambar, stepped:true, pointRadius:0, borderWidth:1.5, yAxisID:'y1' },
   ] },
   options: {
     animation: false, responsive: true, maintainAspectRatio: false, parsing: false,
-    plugins: { legend: { display: true, labels: { color:'#8b949e', font:{ size:10, family:'Courier New' }, boxWidth:12, padding:8 } } },
+    plugins: { legend: { display: true, labels: { color:TEMA.tinta, font:{ size:10, family:TEMA.fuente }, boxWidth:12, padding:8 } } },
     scales: {
       x:  { type:'linear', grid: darkGrid, ticks: { ...tickStyle, callback: v => v.toFixed(1) },
-            title: { display:true, text:'Tiempo dispositivo (s)', color:'#8b949e', font:{ size:10 } } },
+            title: { display:true, text:'Tiempo dispositivo (s)', color:TEMA.tinta, font:{ size:10 } } },
       y:  { position:'left', grid: darkGrid, ticks: tickStyle,
-            title: { display:true, text:'RPM', color:'#8b949e', font:{ size:10 } } },
+            title: { display:true, text:'RPM', color:TEMA.tinta, font:{ size:10 } } },
       y1: { position:'right', min:-0.1, max:1.15, grid:{ drawOnChartArea:false },
             ticks: { ...tickStyle, stepSize:1, callback: v => v>=1 ? 'ON' : (v<=0 ? 'OFF' : '') },
-            title: { display:true, text:'Limit', color:'#8b949e', font:{ size:10 } } },
+            title: { display:true, text:'Limit', color:TEMA.tinta, font:{ size:10 } } },
     }
   },
   plugins: [cmdMarkerPlugin]
@@ -715,7 +511,7 @@ const chartFT = new Chart(document.getElementById('chart-ft'), {
     datasets: [{
       label: 'LC1',
       data: [],
-      borderColor: '#79c0ff',
+      borderColor: TEMA.cian,
       borderWidth: 1.5,
       pointRadius: 0,
       tension: 0.25,
@@ -727,7 +523,7 @@ const chartFT = new Chart(document.getElementById('chart-ft'), {
     animation: false,
     responsive: true,
     maintainAspectRatio: false,
-    plugins: { legend: { display: true, labels: { color: '#8b949e', boxWidth: 12, font: { size: 10 } } } },
+    plugins: { legend: { display: true, labels: { color: TEMA.tinta, boxWidth: 12, font: { size: 10 } } } },
     scales: {
       x:  { grid: darkGrid, ticks: { ...tickStyle, maxTicksLimit: 6 } },
       y:  { grid: darkGrid, ticks: tickStyle, position: 'left' },
@@ -902,7 +698,6 @@ function updateUI(d) {
   const rpm = d.rpm || 0;
   el('v-rpm').innerHTML = `<span class="${rpm!==0?'info':'dim'}">${rpm>0?'+':''}${rpm} RPM</span>`;
   const cur = (d.current_x10 || 0) / 10.0;
-  ultimoPar = cur;
   el('v-current').innerHTML = `<span class="${cur!==0?'ok':'dim'}">${cur.toFixed(1)} A</span>`;
   el('v-speedcmd').textContent = `${d.ref_cmd || 0} RPM`;
   const pos = d.pos_rev || 0;
@@ -936,142 +731,6 @@ function updateUI(d) {
   chartDiag.options.scales.x.max = tsec;
   chartDiag.update('none');
   el('diag-now').textContent = `cmd ${d.ref_cmd || 0} / real ${rpm} RPM`;
-}
-
-// ── Cálculo teórico del par motor ────────────────────────
-// Estática de la barra articulada en O, en equilibrio:
-//
-//   El peso hace momento respecto a O:        M = m·g·(L3+L4)
-//   El cable lo equilibra tirando a L3 de O:  M = T·L3·sen(α)
-//   con α el ángulo entre cable y barra:      α = atan(L2/L3),  sen(α) = L2/√(L2²+L3²)
-//   de donde                                  T = m·g·(L3+L4) / (L3·sen α)
-//   y en el eje del servo, con la espiral:    τ = T·L1
-//
-// Ojo con lo que NO entra: se desprecia el peso propio de la barra, el rozamiento de la
-// articulación y el rendimiento del reductor, y se supone la barra horizontal y el peso
-// vertical. El par real será algo mayor que este.
-let ultimoPar = null;    // último par medido, para comparar
-
-// ── Curva teórica: par frente al giro del servo ──────────
-// Cinemática: la barra gira θ sobre O, el punto P donde tira el cable está a L3 de O y
-// el anclaje A a L2 sobre O, así que la longitud de cable sale del teorema del coseno:
-//
-//   c(θ)² = L3² + L2² − 2·L2·L3·sen θ
-//   brazo del cable respecto a O:  d = L2·L3·cos θ / c
-//   momento del peso:              M = m·g·(L3+L4)·cos θ
-//
-// Al plantear T·d = M el cos θ SE CANCELA en los dos lados, y queda
-//
-//   T(θ) = m·g·(L3+L4)·c(θ) / (L2·L3)
-//
-// es decir: la tensión es proporcional a la longitud de cable que queda. Y como enrollar
-// es lineal (c = c0 − L1·φ), el par τ = T·L1 resulta LINEAL con el giro del servo.
-// Verificado numéricamente: la media de los extremos coincide con el punto medio.
-//
-// El recorrido útil termina cuando la barra llega a la vertical (θ = 90°), que es cuando
-// el cable ha bajado a |L2 − L3|; más allá la geometría ya no tiene solución.
-let gTeo = null;
-
-function curvaTeo(L1, L2, L3, L4, m, g) {
-  const c0 = Math.hypot(L2, L3), cmin = Math.abs(L2 - L3);
-  const phimax = (c0 - cmin) / L1;               // rad de giro del servo
-  const pts = [];
-  const N = 120;
-  for (let i = 0; i <= N; i++) {
-    const phi = phimax * i / N;
-    const c   = c0 - L1 * phi;
-    let sth   = (L2*L2 + L3*L3 - c*c) / (2*L2*L3);
-    sth = Math.max(-1, Math.min(1, sth));
-    const th  = Math.asin(sth) * 180 / Math.PI;
-    const T   = m * g * (L3 + L4) * c / (L2 * L3);
-    pts.push({ gradosServo: phi * 180 / Math.PI, c, theta: th, T, tau: T * L1 / 1000 });
-  }
-  return { pts, phimax, c0, cmin };
-}
-
-function pintarTeo(L1, L2, L3, L4, m, g) {
-  const { pts, phimax, c0, cmin } = curvaTeo(L1, L2, L3, L4, m, g);
-  el('t-rango').textContent =
-      `Recorrido útil: ${(phimax * 180 / Math.PI).toFixed(0)}° de servo`
-    + ` (${(phimax / (2 * Math.PI)).toFixed(2)} rev), con el cable pasando de`
-    + ` ${c0.toFixed(1)} a ${cmin.toFixed(0)} mm y la barra de 0° a 90°.`
-    + ` El par cae de forma lineal porque la tensión es proporcional al cable que queda.`;
-
-  const ds = [
-    { label: 'par del motor (N·m)', showLine: true, pointRadius: 0, borderWidth: 2,
-      borderColor: '#d29922', yAxisID: 'y',
-      data: pts.map(p => ({ x: p.gradosServo, y: p.tau })) },
-    { label: 'tensión del cable (N)', showLine: true, pointRadius: 0, borderWidth: 1.4,
-      borderColor: '#58a6ff', yAxisID: 'y1',
-      data: pts.map(p => ({ x: p.gradosServo, y: p.T })) },
-    { label: 'ángulo de la barra (°)', showLine: true, pointRadius: 0, borderWidth: 1.2,
-      borderColor: '#3fb950', borderDash: [5, 3], yAxisID: 'y2',
-      data: pts.map(p => ({ x: p.gradosServo, y: p.theta })) }
-  ];
-  const ejes = {
-    responsive: true, animation: false,
-    plugins: { legend: { labels: { color: '#8b949e', boxWidth: 10, font: { size: 10 } } } },
-    scales: {
-      x:  { type: 'linear', title: { display: true, text: 'giro del servo (°)', color: '#8b949e' },
-            ticks: { color: '#8b949e' }, grid: { color: '#21262d' } },
-      y:  { position: 'left',  title: { display: true, text: 'par (N·m)', color: '#d29922' },
-            ticks: { color: '#d29922' }, grid: { color: '#21262d' } },
-      y1: { position: 'right', title: { display: true, text: 'tensión (N)', color: '#58a6ff' },
-            ticks: { color: '#58a6ff' }, grid: { drawOnChartArea: false } },
-      y2: { position: 'right', min: 0, max: 90, display: false }
-    }
-  };
-  if (gTeo) gTeo.destroy();
-  gTeo = new Chart(el('gTeo'), { type: 'scatter', data: { datasets: ds }, options: ejes });
-}
-
-function calcTeo() {
-  const v = id => parseFloat(el(id).value);
-  const L1 = v('t-l1'), L2 = v('t-l2'), L3 = v('t-l3'), L4 = v('t-l4');
-  const m  = v('t-m'),  g  = v('t-g');
-  const chip = (k, x) => `<span class="chip">${k} <b>${x}</b></span>`;
-
-  if ([L1, L2, L3, L4, m, g].some(isNaN) || L3 <= 0 || L1 <= 0) {
-    el('t-chips').innerHTML = chip('aviso', 'faltan datos (L1 y L3 no pueden ser 0)');
-    el('t-formulas').textContent = ''; el('t-comp').textContent = '';
-    return;
-  }
-
-  const hip   = Math.hypot(L2, L3);
-  const alpha = Math.atan2(L2, L3);              // rad
-  const sen   = L2 / hip;                        // = sen(alpha)
-  const W     = m * g;                           // N
-  const M     = W * (L3 + L4) / 1000;            // N·m
-  const T     = W * (L3 + L4) / (L3 * sen);      // N
-  const tau   = T * L1 / 1000;                   // N·m
-
-  pintarTeo(L1, L2, L3, L4, m, g);
-
-  el('t-chips').innerHTML =
-      chip('hipotenusa', hip.toFixed(1) + ' mm')
-    + chip('α', (alpha * 180 / Math.PI).toFixed(2) + '°')
-    + chip('barra L3+L4', (L3 + L4).toFixed(1) + ' mm')
-    + chip('peso', W.toFixed(2) + ' N')
-    + chip('momento en O', M.toFixed(3) + ' N·m')
-    + chip('tensión del cable', T.toFixed(2) + ' N')
-    + chip('par del motor', tau.toFixed(4) + ' N·m');
-
-  el('t-formulas').innerHTML =
-      `T = m·g·(L3+L4) / (L3·sen α) = ${m}·${g}·${(L3+L4).toFixed(0)} / (${L3.toFixed(0)}·${sen.toFixed(4)}) = <b>${T.toFixed(2)} N</b>`
-    + ` &nbsp;·&nbsp; τ = T·L1 = ${T.toFixed(2)}·${(L1/1000).toFixed(4)} = <b>${tau.toFixed(4)} N·m</b>`;
-
-  // Comparación con lo medido, si hay algo medido
-  const c = el('t-comp');
-  if (ultimoPar === null) {
-    c.className = 'line hint';
-    c.textContent = 'sin par medido todavía (conecta y habilita el servo para comparar)';
-  } else {
-    const rel = tau !== 0 ? (Math.abs(ultimoPar) / tau) : 0;
-    c.className = 'line hint';
-    c.textContent = `par medido ahora: ${ultimoPar.toFixed(1)} (unidades del drive)`
-      + ` · teórico ${tau.toFixed(4)} N·m · cociente ${rel.toFixed(2)}`
-      + ' — no son las mismas unidades hasta saber qué escala usa el registro 16387';
-  }
 }
 
 // ── Ciclo A↔B ────────────────────────────────────────────
@@ -1304,7 +963,7 @@ function cmd(action, extra) {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
   ws.send(JSON.stringify({ cmd: action, ...extra }));
   if (lastTsec !== null)
-    cmdEvents.push({ x: lastTsec, label: action, color: CMD_COLORS[action] || '#8b949e' });
+    cmdEvents.push({ x: lastTsec, label: action, color: CMD_COLORS[action] || TEMA.tinta });
   if (action === 'init' || action === 'reset_pos') {
     clearDiag();
     t0 = null;
@@ -1331,14 +990,16 @@ function showTab(name) {
   document.querySelectorAll('.panel').forEach(p => { p.hidden = (p.dataset.panel !== name); });
   try { localStorage.setItem('tfg-tab', name); } catch (e) {}
   if (name === 'lc1' && !lc1Read && lcReady) { lc1Read = true; cmd('lc_query'); }
+  if (name === 'rec') loadCycles();   // la lista al día cada vez que se abre la pestaña
 }
 
 try {
   const saved = localStorage.getItem('tfg-tab');
-  if (saved) showTab(saved);
+  // El tab guardado puede ser uno que ya no existe (el teórico se fue a /sim): en ese
+  // caso se queda el de por defecto en vez de esconder todos los paneles.
+  if (saved && document.querySelector(`.tab[data-tab="${saved}"]`)) showTab(saved);
 } catch (e) {}
 cycModeChanged();   // el campo de posición arranca oculto si B es el final de carrera
-calcTeo();          // el cálculo teórico ya sale hecho con los valores por defecto
 loadCycles();
 
 // Un solo envío por pestaña: se manda todo el bloque y se dice qué ha salido.

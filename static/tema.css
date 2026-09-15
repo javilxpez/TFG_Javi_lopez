@@ -1,0 +1,146 @@
+/*
+ * Tema del banco sobre el Fanuc Control UI Kit (/fui/css/fanuc-ui.css).
+ *
+ * El kit trae sus componentes fui-*, pero las páginas ya tenían sus clases (card, chip,
+ * tab, metric, dot, line…) y mucho JS que las asigna en caliente. En vez de reescribir ese
+ * JS, aquí se les da el aspecto del kit con sus mismos tokens. El criterio es el del kit
+ * (ISA-101): pantalla neutra y el color reservado para los estados.
+ */
+
+:root {
+  /* Nombres antiguos: los siguen usando estilos en línea y el JS (barra de fuerza…). */
+  --bg: var(--fui-screen);
+  --card: var(--fui-panel);
+  --border: var(--fui-rule);
+  --text: var(--fui-ink);
+  --muted: var(--fui-ink-3);
+  --green: var(--fui-ok);
+  --yellow: var(--fui-warn);
+  --red: var(--fui-fail);
+  --blue: var(--fui-title);
+  --cyan: #2B7A8C;
+  --purple: #6B4C8C;
+
+  /* Gráficas y canvas. Chart.js no lee CSS: tema.js los recoge con getComputedStyle. */
+  --graf-texto: var(--fui-ink);
+  --graf-tinta: var(--fui-ink-3);
+  --graf-rejilla: #C6CAC0;
+  --serie-azul: #2F6394;
+  --serie-cian: #2B7A8C;
+  --serie-morado: #6B4C8C;
+  --serie-verde: var(--fui-ok);
+  --serie-ambar: var(--fui-warn);
+  --serie-rojo: var(--fui-fail);
+  --serie-tinta2: var(--fui-ink-2);
+  --serie-regla: var(--fui-rule);
+  --serie-regla-suave: var(--fui-rule-soft);
+
+  /* Botón de operación, los mismos valores que .fui-op */
+  --op: #CDD1C8;
+  --op-hover: #BFC4B9;
+}
+
+/* ── Marco ─────────────────────────────────────────────── */
+.fui-page { padding-block: 12px 0; }
+.tema-marco { max-width: 1500px; }                 /* el kit es de 64rem: no caben las gráficas */
+.tema-marco .fui-screen { min-height: 0; }
+.fui-titlebar { white-space: normal; }
+.fui-titlebar > span:first-child { white-space: pre; }
+
+/* Navegación entre páginas como teclas programables, fijas al pie para tenerlas siempre a mano. */
+.tema-teclas { position: sticky; bottom: 0; z-index: 10; padding: 8px 0 10px; background: var(--fui-bezel); }
+.tema-teclas .fui-softkey { display: block; text-align: center; text-decoration: none; }
+.fui-softkey[aria-current="page"] { background: var(--fui-accent); color: var(--fui-accent-ink);
+  box-shadow: inset 0 1px 0 #FFE066, 0 2px 0 var(--fui-bezel-lo); }
+.fui-softkey[aria-current="page"] .fui-legend { color: #5C4A00; }
+
+.fui-msg .hint { color: var(--fui-ink-2); }
+
+/* ── Enlaces ── */
+.fui-screen a { color: var(--fui-title); text-decoration: underline; text-underline-offset: 2px; }
+.fui-screen a.chip, .fui-screen a.btn-apply { text-decoration: none; }
+
+/* ── Estados: el único sitio con color ── */
+.ok   { color: var(--fui-ok); }
+.warn { color: var(--fui-warn); }
+.err  { color: var(--fui-fail); }
+.info, .hi { color: var(--fui-ink); }
+.dim, .muted { color: var(--fui-ink-3); }
+
+/* Piloto de conexión: el JS pone "dot ok|warn|err". Mismo aspecto que .fui-lamp. */
+.dot { display: inline-block; flex: none; width: 10px; height: 10px; border-radius: 1px;
+  background: var(--fui-off); box-shadow: inset 0 0 0 1px rgb(0 0 0 / .35); }
+.dot.ok   { background: var(--fui-ok);   box-shadow: inset 0 0 0 1px rgb(0 0 0 / .3), 0 0 6px rgb(46 122 56 / .55); }
+.dot.warn { background: var(--fui-warn); box-shadow: inset 0 0 0 1px rgb(0 0 0 / .3), 0 0 6px rgb(184 111 0 / .6); }
+.dot.err  { background: var(--fui-fail); box-shadow: inset 0 0 0 1px rgb(0 0 0 / .3), 0 0 7px rgb(192 37 28 / .65); }
+@media (prefers-reduced-motion: no-preference) {
+  .dot.warn { animation: fui-blink .5s steps(1) infinite; }
+}
+
+/* ── Tarjetas y paneles ── */
+.card, .chart-card, .force-card, .panel {
+  background: var(--fui-panel); border: 1px solid var(--fui-rule); border-radius: 0; }
+.card-title, .title, .chart-title-text, .group-title {
+  margin: 0 0 7px; color: var(--fui-ink-2);
+  font: 600 11px/1.2 var(--fui-font-label); letter-spacing: .12em; text-transform: uppercase; }
+.big-value { font: 28px/1.05 var(--fui-font-readout); letter-spacing: .02em; font-variant-numeric: tabular-nums; }
+.sub, .hint { color: var(--fui-ink-3); }
+
+/* ── Botones de operación ── */
+.fui-screen button, .fui-screen .btn-apply {
+  display: inline-block; padding: 5px 10px; background: var(--op); border: 1px solid var(--fui-rule);
+  border-radius: 0; color: var(--fui-ink); cursor: pointer;
+  font: 600 11px/1.3 var(--fui-font-label); letter-spacing: .1em; text-transform: uppercase; }
+.fui-screen button:hover, .fui-screen .btn-apply:hover { background: var(--op-hover); }
+.fui-screen button:disabled { opacity: .5; cursor: default; }
+/* Las que paran el eje o graban algo, en rojo como .fui-op--danger */
+.fui-screen button.b-stop, .fui-screen button.b-shut { color: var(--fui-fail); }
+.fui-screen button.primario { background: var(--fui-title); border-color: var(--fui-title); color: var(--fui-title-ink); }
+.fui-screen button.primario:hover { background: #2A4E6C; }
+.fui-screen button.primario:disabled { background: var(--op); border-color: var(--fui-rule); color: var(--fui-ink); }
+
+/* Pestañas dentro de una página: teclas programables pequeñas, la activa en amarillo. */
+.tabs { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.fui-screen button.tab {
+  padding: 7px 14px 6px; background: linear-gradient(#4A4F4B, #353936); color: #E6EAE3;
+  border: 1px solid var(--fui-bezel-lo); border-radius: 3px;
+  box-shadow: inset 0 1px 0 #5B615C, 0 2px 0 var(--fui-bezel-lo);
+  font: 14px/1 var(--fui-font-readout); letter-spacing: .08em; text-transform: uppercase; }
+.fui-screen button.tab:hover { background: linear-gradient(#555A56, #3D413E); }
+.fui-screen button.tab.active { background: var(--fui-accent); color: var(--fui-accent-ink);
+  box-shadow: inset 0 1px 0 #FFE066, 0 2px 0 var(--fui-bezel-lo); }
+
+/* ── Campos ── */
+.fui-screen input[type=number], .fui-screen input[type=text], .fui-screen select {
+  padding: 4px 6px; background: var(--fui-field); border: 1px solid var(--fui-rule); border-radius: 0;
+  color: var(--fui-ink); font: 13px var(--fui-font-data); letter-spacing: 0; text-transform: none; }
+.fui-screen input:focus, .fui-screen select:focus { border-color: var(--fui-title); }
+.fui-screen input[type=range], .fui-screen input[type=checkbox] { accent-color: var(--fui-title); }
+
+/* ── Chips de datos: "clave valor" ── */
+.chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip { background: var(--fui-field); border: 1px solid var(--fui-rule-soft); border-radius: 0;
+  padding: 2px 6px; color: var(--fui-ink-3); font: 11px/1.35 var(--fui-font-data); white-space: nowrap; }
+.chip b { color: var(--fui-ink); font-weight: 500; }
+a.chip:hover { border-color: var(--fui-title); color: var(--fui-title); }
+.chip.bad, .chip.bad b { color: var(--fui-fail); border-color: var(--fui-fail); }
+.chip:empty { display: none; }           /* un chip sin texto es una caja vacía, no un dato */
+
+/* ── Líneas de diagnóstico ── */
+.line { font: 12px/1.5 var(--fui-font-data); }
+.line.hint, .line.dim { color: var(--fui-ink-3); }
+.line.ok   { color: var(--fui-ok); }
+.line.warn { color: var(--fui-warn); }
+.line.err  { color: var(--fui-fail); }
+.line b { color: var(--fui-ink); font-weight: 600; }
+.line.ok b, .line.warn b, .line.err b { color: inherit; }
+
+/* ── Tablas, con el aspecto de .fui-table ── */
+.fui-screen table { width: 100%; border-collapse: collapse; background: var(--fui-panel); font-size: 12px; }
+.fui-screen th, .fui-screen td { padding: 4px 8px; border-bottom: 1px solid var(--fui-rule-soft);
+  text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.fui-screen th { background: var(--fui-head); border-bottom-color: var(--fui-rule); color: var(--fui-ink-2);
+  font: 600 11px/1.2 var(--fui-font-label); letter-spacing: .1em; text-transform: uppercase; }
+.fui-screen td:first-child, .fui-screen th:first-child { text-align: left; }
+
+.fui-screen details > summary { color: var(--fui-ink-2); }

@@ -1,0 +1,160 @@
+\chapter{Estado del arte y fundamentos}
+\label{chap:estado}
+
+Este capítulo resume el contexto técnico del trabajo: primero los mecanismos de transmisión de
+radio variable, que son el objeto de estudio, y después las tecnologías con las que se ha
+construido el sistema de ensayo (accionamiento, medida de fuerza, microcontrolador, buses de
+comunicación y supervisión).
+
+\section{Mecanismos de transmisión con radio variable}
+
+\subsection{Del \emph{fusee} a los tambores de radio variable}
+
+El problema de convertir una fuerza variable en un par constante es antiguo. En los relojes de
+muelle, el par del muelle real disminuye a medida que se desenrolla, y eso altera la marcha. El
+\emph{fusee} lo resolvió con un cono de perfil curvo y una ranura helicoidal por la que se enrolla
+una cadena: cuando el muelle está tenso, la cadena tira del radio pequeño del cono, y cuando se
+debilita, del radio grande, de manera que el par entregado al tren de engranajes se mantiene
+aproximadamente constante \cite{landes1983}. La condición de diseño es simplemente que el producto
+fuerza por radio se conserve a lo largo del recorrido.
+
+La misma idea se ha formalizado en la robótica bajo el nombre de tambores de radio variable
+(\emph{Variable Radius Drums}, VRD). Seriani y Gallina \cite{seriani2016} plantean la síntesis del
+perfil de un tambor para que una carga siga una ley de fuerza prescrita, y obtienen soluciones
+analíticas cerradas para varios casos. En los robots paralelos accionados por cables, Bieber
+\emph{et al.} \cite{bieber2023} diseñan el perfil del tambor a partir del perfil de carga máxima en
+el espacio de trabajo, de manera que el par del motor no supere un valor dado para ninguna longitud
+de cable. La fabricación aditiva ha abaratado mucho la producción de estos perfiles, lo que explica
+el interés reciente.
+
+\subsection{Compensación de gravedad con poleas no circulares}
+
+Un segundo campo de aplicación es la compensación estática de peso. Herder \cite{herder2001}
+estudia de forma sistemática los mecanismos estáticamente equilibrados, en los que la energía
+potencial total se mantiene constante y el actuador sólo tiene que vencer las pérdidas. Endo
+\emph{et al.} \cite{endo2010} proponen una polea no circular combinada con un muelle para
+compensar el par gravitatorio de un brazo, y deducen numéricamente la forma de la polea. Shen y
+Yano \cite{shen2022} refinan el cálculo de una polea en espiral teniendo en cuenta la variación de
+la tensión del cable, y mejoran así la calidad de la compensación.
+
+El mecanismo de este trabajo comparte el principio con todos ellos, pero con una diferencia: aquí
+no hay un muelle que almacene energía, sino un motor que aporta todo el trabajo de elevación. La
+caracola no reduce la energía necesaria para subir la masa; lo que hace es repartirla de forma
+uniforme a lo largo del giro, para que el par de pico sea el menor posible. El
+capítulo~\ref{chap:modelo} demuestra que ese reparto uniforme es precisamente el óptimo.
+
+\section{Accionamiento: servomotores paso a paso de lazo cerrado}
+
+Un motor paso a paso convencional funciona en lazo abierto: el controlador impone la secuencia de
+fases y se da por hecho que el rotor la sigue. Es sencillo y tiene buen par a baja velocidad, pero
+si la carga supera el par disponible se pierden pasos sin que el sistema lo detecte
+\cite{kenjo1994}. Los servomotores paso a paso de lazo cerrado añaden un codificador al motor y un
+accionamiento que regula la corriente en función del error de posición. Conservan el par a baja
+velocidad del paso a paso, no pierden pasos y ofrecen varios modos de control (posición, velocidad
+o par), además de magnitudes de supervisión como la velocidad real o el par entregado.
+
+El accionamiento usado en este trabajo pertenece a esta familia
+\completar{marca y modelo del motor y del accionamiento, par nominal, tensión de alimentación,
+resolución del codificador}. Integra una interfaz RS-485 con protocolo Modbus RTU, a través de la
+cual se configura (modo de control, rigidez, rampas, resistencia de frenado), se habilita, se le
+envía la consigna de velocidad y se leen la velocidad y el par. Tener todo en un único bus de dos
+hilos simplifica mucho el cableado frente a la alternativa de señales de paso y dirección más
+entradas analógicas.
+
+\section{Medida de fuerza con células de carga}
+
+\subsection{Galgas extensométricas y puente de Wheatstone}
+
+Una célula de carga convierte la fuerza en una deformación elástica, que se mide con galgas
+extensométricas dispuestas en un puente de Wheatstone \cite{hoffmann2012}. La salida del puente es
+una tensión diferencial de unos pocos milivoltios por voltio de excitación a plena escala, que hay
+que amplificar con alta ganancia y bajo ruido antes de digitalizarla. Además hay que compensar el
+desequilibrio de cero del puente y su deriva con la temperatura \cite{pallas2001}.
+
+\subsection{Acondicionadores integrados}
+
+Existen circuitos integrados que agrupan en un solo chip la excitación, la amplificación, la
+conversión A/D y la corrección digital. En este trabajo se han evaluado dos:
+
+\begin{itemize}
+  \item \textbf{ZSC31014} de Renesas \cite{zsc31014}. Acondicionador con salida digital
+        I\textsuperscript{2}C o SPI, preamplificador de ganancia programable, conversor de 14 bits y
+        corrección de ganancia y cero almacenada en EEPROM. Cada lectura incluye dos bits de
+        estado que indican si el dato es nuevo o ya se había leído. Su configuración sólo puede
+        modificarse en un \emph{modo comando} al que se accede durante una ventana corta tras el
+        encendido, lo que ha condicionado mucho el diseño (sección~\ref{sec:prob-zsc}). Se ha usado
+        integrado en la placa \emph{Load Cell 2 Click} de MikroElektronika \cite{mikroelc2}.
+  \item \textbf{NAU7802} de Nuvoton \cite{nau7802}. Conversor sigma-delta de 24 bits con
+        amplificador programable de hasta 128 y regulador interno. Se probó como segunda célula
+        (programa \fichero{test\_loadcell\_dual\_v2}) y se retiró del firmware final, que trabaja con
+        una sola célula.
+\end{itemize}
+
+\section{Microcontrolador}
+
+El proyecto empezó con una placa basada en ESP32-S3 (Seeed XIAO) y se migró a una Raspberry Pi
+Pico~2. La tabla~\ref{tab:mcu} resume las características relevantes del RP2350 \cite{rp2350}. La
+razón principal del cambio, y sus consecuencias, se explican en la sección~\ref{sec:prob-uart}:
+el RP2350 no tiene UART hardware en los pines que usa la placa, pero sí periféricos PIO que pueden
+implementar una UART en cualquier pin.
+
+\begin{table}[H]
+\centering
+\caption{Características del microcontrolador RP2350 en la Raspberry Pi Pico 2 \cite{rp2350}.}
+\label{tab:mcu}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Característica & Raspberry Pi Pico 2 (RP2350) \\
+\midrule
+Núcleos & 2 × Arm Cortex-M33 o 2 × RISC-V Hazard3, a \SI{150}{\mega\hertz} \\
+Memoria & \SI{520}{\kilo\byte} SRAM, \SI{4}{\mega\byte} flash QSPI \\
+Periféricos serie & 2 × UART, 2 × SPI, 2 × I\textsuperscript{2}C \\
+E/S programable & 12 máquinas de estado PIO \\
+Entradas analógicas & 3 canales ADC \\
+Entorno usado & Arduino-Pico \cite{arduinopico} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Buses de comunicación}
+
+\subsection{RS-485 y Modbus RTU}
+
+RS-485 \cite{tia485} es un estándar de capa física diferencial y multipunto, muy extendido en la
+industria por su inmunidad al ruido, su alcance y la posibilidad de conectar varios equipos a un
+mismo par trenzado. En modo semidúplex, cada nodo activa su emisor sólo mientras transmite; el
+control de esa dirección (líneas DE/RE del transceptor) es responsabilidad del maestro.
+
+Modbus \cite{modbusapp} es un protocolo maestro-esclavo de petición y respuesta que modela los
+datos del esclavo como registros de 16 bits. En su variante RTU sobre línea serie
+\cite{modbusserial}, cada trama lleva la dirección del esclavo, el código de función, los datos y
+un CRC-16. Las tramas se delimitan por silencios en la línea de al menos 3,5 caracteres. En este
+trabajo se usan la función 0x03 (lectura de registros) y la 0x06 (escritura de un registro), a
+través de la biblioteca ModbusMaster \cite{modbusmaster}.
+
+\subsection{I\textsuperscript{2}C}
+
+I\textsuperscript{2}C \cite{i2cspec} es un bus síncrono de dos hilos con resistencias de
+\emph{pull-up}, pensado para comunicar circuitos dentro de una misma placa. Es el bus que usan los
+acondicionadores de célula de carga. Las placas Click siguen el estándar mikroBUS \cite{mikrobus},
+que define un zócalo de 16 pines con I\textsuperscript{2}C, SPI, UART, alimentación y señales
+auxiliares.
+
+\section{Supervisión y adquisición en el ordenador}
+
+La supervisión de máquinas se ha hecho tradicionalmente con paneles HMI o paquetes SCADA
+comerciales. Para un banco de ensayo de laboratorio, una aplicación web local es una alternativa
+ligera: no requiere licencias, funciona en cualquier navegador y permite a varios clientes ver la
+máquina a la vez. En este trabajo se ha usado FastAPI \cite{fastapi} sobre el servidor ASGI Uvicorn
+\cite{uvicorn}, pySerial \cite{pyserial} para el puerto USB, WebSocket \cite{rfc6455} para el envío
+continuo de datos al navegador y Chart.js \cite{chartjs} para las gráficas.
+
+\section{Conclusiones del estado del arte}
+
+Los tambores de radio variable están bien estudiados como principio, y en la literatura se
+encuentran métodos de síntesis de su perfil. Lo que motiva este trabajo es disponer de una
+plataforma de bajo coste, construida con componentes comerciales, que permita medir en un
+prototipo real cuánto aplana el par una caracola y comparar la medida con el modelo. Para ello
+hay que integrar un accionamiento industrial por Modbus, un acondicionador de célula de carga con
+reglas de configuración estrictas y una cadena de adquisición con marcas de tiempo fiables, que
+es lo que desarrollan los capítulos siguientes.

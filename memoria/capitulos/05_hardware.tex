@@ -1,0 +1,213 @@
+\chapter{Diseño hardware}
+\label{chap:hardware}
+
+\section{Placa adaptadora: objetivos}
+
+El módulo Raspberry Pi Pico~2 trabaja a \SI{3.3}{\volt} y no puede conectarse directamente al
+entorno de la máquina. La placa adaptadora (proyecto KiCad \fichero{tfg\_adaptador}) resuelve esa
+adaptación y reúne en un solo circuito:
+
+\begin{itemize}
+  \item un transceptor RS-485 semidúplex para el bus Modbus del accionamiento;
+  \item cuatro entradas digitales protegidas para finales de carrera y otros contactos;
+  \item entradas analógicas de \SIrange{0}{5}{\volt} acondicionadas para el ADC del microcontrolador;
+  \item cuatro salidas de potencia de lado alto con diagnóstico;
+  \item dos zócalos mikroBUS para placas Click de célula de carga;
+  \item bornas de tornillo para todo el cableado de campo y taladros de fijación M3.
+\end{itemize}
+
+\section{Revisiones del diseño}
+
+El repositorio contiene dos estados del diseño, que conviene distinguir:
+
+\begin{itemize}
+  \item \textbf{Revisión A}: los ficheros \fichero{tfg\_adaptador.kicad\_sch} y
+        \fichero{.kicad\_pcb}, creados entre el 12 y el 17 de marzo de 2026. Tienen el esquema, la
+        colocación de los componentes y los planos de cobre (figuras~\ref{fig:pcb-2d}
+        y~\ref{fig:pcb-3d}).
+  \item \textbf{Revisión B}: el esquema de la figura~\ref{fig:esquema-revB}, incorporado al
+        repositorio como imagen. Es la asignación de pines que usan todos los programas de prueba
+        de la placa y el firmware final \verificar{añadir al repositorio los ficheros KiCad de la
+        revisión B, que no están versionados, y regenerar las figuras de la PCB}.
+\end{itemize}
+
+El análisis de la lista de conexiones de la revisión A, extraída con \codigo{kicad-cli}, muestra una
+serie de problemas que la revisión B corrige (tabla~\ref{tab:erratas}). Documentarlos es útil,
+porque son errores típicos de un primer diseño.
+
+\begin{longtable}{@{}L{0.18\textwidth}L{0.35\textwidth}L{0.34\textwidth}@{}}
+\caption{Problemas detectados en la revisión A y corrección en la revisión B.}\label{tab:erratas}\\
+\toprule
+\textbf{Bloque} & \textbf{Revisión A (lista de conexiones)} & \textbf{Revisión B} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Bloque} & \textbf{Revisión A} & \textbf{Revisión B} \\
+\midrule
+\endhead
+RS-485 & La salida RO del transceptor está en la misma red que \SI{3.3}{\volt} y GPIO13. DI, DE y $\overline{\text{RE}}$ están unidas entre sí y a GPIO14 y GPIO15. El transceptor no puede funcionar en semidúplex. & DE y $\overline{\text{RE}}$ a GPIO12 con \emph{pull-down} de \SI{10}{\kilo\ohm}; RO a GPIO13 con \emph{pull-up} de \SI{10}{\kilo\ohm}; DI a GPIO14. \\
+Entradas analógicas & Las salidas de los seguidores llegan a GPIO16--19, que no tienen ADC. & Salidas a GPIO26--28 (ADC0--2). \\
+Amplificadores & Cuatro MCP6001 sin alimentación: pines V+ y V$-$ sin conectar. & Un MCP6294 cuádruple alimentado a \SI{5}{\volt} con desacoplo de \SI{100}{\nano\farad}. \\
+Salidas de potencia & El TPS4H000 se alimenta de VBUS (\SI{5}{\volt} del USB); diagnóstico ($\overline{\text{ST}}$), DIAG\_EN, CL y THER sin conectar; entradas directas. & Alimentación desde la borna VS\_IN; $\overline{\text{ST1}}$--$\overline{\text{ST4}}$ unidas a DST con \emph{pull-up}; DIAG\_EN controlado; resistencias de \SI{10}{\kilo\ohm} en serie con las entradas. \\
+Células de carga & Cada zócalo en un bus I\textsuperscript{2}C distinto (GPIO0/1 y GPIO2/3), sin control de EN ni lectura de INT. & Ambos zócalos en I\textsuperscript{2}C1 (GPIO2/3), habilitación EN1 (GPIO1) e interrupciones INT1 (GPIO0) e INT2 (GPIO4). \\
+Entradas digitales & Llegan a GPIO4--7. & Llegan a GPIO16--19. \\
+Rutado & El fichero de PCB no contiene pistas (0 segmentos): sólo colocación, 23 vías y planos. & \completar{indicar cómo se fabricó la placa definitiva: PCB de revisión B, placa perforada o cableado manual} \\
+\bottomrule
+\end{longtable}
+
+\begin{figure}[p]
+\centering
+\includegraphics[width=\textwidth]{esquema_revB.png}
+\caption{Esquema de la placa adaptadora, revisión B.}
+\label{fig:esquema-revB}
+\end{figure}
+
+\section{Microcontrolador}
+
+La placa aloja el módulo Raspberry Pi Pico~2 en sus dos filas de 20 pines, de modo que puede
+sustituirse sin desoldar. El módulo se alimenta y comunica por USB. De él se toman
+\SI{5}{\volt} (VBUS) para los amplificadores y \SI{3.3}{\volt} (salida 3V3 del regulador del
+módulo) para el transceptor y las placas Click. La asignación completa de pines está en el
+anexo~\ref{anx:pines}.
+
+\section{Interfaz RS-485}
+
+Se usa el transceptor THVD1400 de Texas Instruments \cite{thvd1400}: semidúplex, alimentación de
+\SIrange{3}{5.5}{\volt}, hasta \SI{500}{\kilo\bit\per\second}, 1/8 de carga unitaria (hasta 256
+nodos), protección ESD de \SI{\pm 16}{\kilo\volt} HBM y \SI{\pm 12}{\kilo\volt} IEC 61000-4-2 por
+contacto, y protección ante fallos de bus de \SI{\pm 16}{\volt}. Esta robustez es adecuada para un
+cable que convive con los de potencia del motor.
+
+Las señales DE y $\overline{\text{RE}}$ están unidas y se controlan desde GPIO12. Una resistencia
+de \SI{10}{\kilo\ohm} a masa deja el transceptor en recepción durante el arranque, cuando el pin aún
+no está configurado, para que no ocupe el bus. La salida RO lleva una \emph{pull-up} de
+\SI{10}{\kilo\ohm} para que la línea de recepción no quede flotando. El bus sale por la borna de tres
+polos J5 (A, B y masa). El firmware activa el emisor antes de cada trama y lo desactiva
+\SI{200}{\micro\second} después del último byte (sección~\ref{sec:prob-uart}). No hay terminación en
+la placa: el enlace es punto a punto y corto \verificar{longitud del cable y si el accionamiento
+incorpora terminación de \SI{120}{\ohm}}.
+
+\section{Entradas digitales}
+
+Cada entrada digital (DI1--DI4) pasa por una resistencia serie de \SI{1}{\kilo\ohm} y un diodo zéner
+BZX384 a masa \cite{bzx384} antes de llegar al GPIO (figura~\ref{fig:esquema-revB}). La resistencia
+limita la corriente y el zéner recorta las sobretensiones y las descargas que entran por el cable.
+Los finales de carrera, de contacto normalmente cerrado, se conectan entre la borna y masa, y el
+firmware activa la \emph{pull-up} interna del GPIO.
+
+La tensión que admite la entrada de forma continua está limitada por la potencia de la resistencia.
+Con un zéner de tensión $V_Z$ y una resistencia de \SI{0.125}{\watt} (encapsulado 0805), la tensión
+de entrada máxima es
+\begin{equation}
+  V_{\text{in,max}} = V_Z + \sqrt{P_R\,R} \approx V_Z + \sqrt{0{,}125 \cdot 1000} \approx V_Z + \SI{11.2}{\volt}.
+\end{equation}
+Para contactos secos es más que suficiente. Si se quisieran conectar sensores de \SI{24}{\volt},
+habría que subir la resistencia a unos \SI{10}{\kilo\ohm}
+\completar{tensión nominal del zéner BZX384 montado}.
+
+\section{Entradas analógicas}
+
+Las entradas AIN1--AIN3 admiten \SIrange{0}{5}{\volt}. Cada canal tiene un divisor resistivo de
+\SI{17}{\kilo\ohm} y \SI{33}{\kilo\ohm}, con relación $33/50 = 0{,}66$, que lleva \SI{5}{\volt} a
+\SI{3.3}{\volt}, seguido de un amplificador operacional en seguidor de tensión. El seguidor presenta
+al ADC una impedancia de fuente baja, necesaria para cargar el condensador de muestreo en cada
+conversión sin error, y aísla el divisor del ADC. Se usa el MCP6294 \cite{mcp629x}, cuádruple,
+\emph{rail-to-rail} en entrada y salida y alimentado a \SI{5}{\volt}.
+
+Con el ADC de 12 bits del RP2350 y referencia de \SI{3.3}{\volt}, la resolución referida a la
+entrada es
+\begin{equation}
+  \Delta V_{\text{in}} = \frac{\SI{3.3}{\volt}}{4095 \cdot 0{,}66} \approx \SI{1.22}{\milli\volt}.
+\end{equation}
+El cuarto amplificador se usa como comparador con un umbral de \SI{2.5}{\volt}, obtenido de
+\SI{5}{\volt} con un divisor de dos resistencias de \SI{10}{\kilo\ohm}. Su salida se adapta a
+\SI{3.3}{\volt} con otro divisor 17/33 y llega a una entrada digital (COMP).
+
+El valor de \SI{17}{\kilo\ohm} no pertenece a la serie E24. Para la fabricación conviene usar
+\SI{17.4}{\kilo\ohm} (E96), con relación 0,655, o recalibrar el factor en el firmware.
+
+\section{Salidas de potencia}
+
+Las cuatro salidas usan el interruptor inteligente de lado alto TPS4H000-Q1 \cite{tps4h000}: cuatro
+canales, alimentación de \SIrange{3.4}{40}{\volt}, \SI{1000}{\milli\ohm} de resistencia en
+conducción, límite de corriente ajustable entre \num{0.1} y \SI{1.3}{\ampere}, detección de
+sobrecorriente, cortocircuito y carga abierta, protección térmica y capacidad para cargas
+inductivas. Las entradas IN1--IN4 se gobiernan desde GPIO7--10 a través de resistencias de
+\SI{10}{\kilo\ohm}. Las salidas de estado, en drenador abierto, se unen en una línea común de fallo
+(DST) con \emph{pull-up}, y la habilitación del diagnóstico se controla con DIAG\_EN. El firmware
+final no usa todavía estas salidas; su funcionamiento se verificó con el programa
+\fichero{pcbtest/test\_digital\_outputs} \completar{uso previsto de las salidas y resistencia de
+límite de corriente elegida}.
+
+\section{Célula de carga}
+
+La célula de carga se conecta a una placa \emph{Load Cell 2 Click} de MikroElektronika
+\cite{mikroelc2}, basada en el acondicionador ZSC31014 \cite{zsc31014}, que se inserta en el zócalo
+mikroBUS MD1. El chip responde en la dirección I\textsuperscript{2}C \codigo{0x28}, admite
+alimentación de \SIrange{2.7}{5.5}{\volt} y ofrece ocho ganancias de preamplificador (×1,5 a
+×192). Su señal EN, controlada desde GPIO1 con la corriente de salida del pin configurada a
+\SI{12}{\milli\ampere}, permite apagarlo y encenderlo para forzar un reinicio y abrir la ventana del
+modo comando. Esta posibilidad resultó imprescindible, y también problemática
+(sección~\ref{sec:prob-zsc}).
+
+El segundo zócalo (MD2) comparte el bus y se usó para evaluar una \emph{Load Cell 4 Click} con
+NAU7802 \cite{nau7802} \completar{modelo, capacidad nominal y sensibilidad (mV/V) de la célula de
+carga, y forma de montaje en el cable}.
+
+\section{Alimentación}
+
+La lógica se alimenta del USB del ordenador a través del módulo Pico. Las salidas de potencia toman
+su tensión de la borna VS\_IN y el accionamiento tiene su propia fuente
+\completar{tensión y potencia de la fuente del accionamiento}. Las masas se unen en la placa, y la
+masa del bus RS-485 se lleva también a la borna J5 para dar al transceptor una referencia común con
+el accionamiento.
+
+\section{Placa de circuito impreso}
+
+La PCB de la revisión A es de dos capas, mide \qtyproduct{123 x 75}{\milli\metre} y tiene cuatro taladros M3
+en las esquinas. Los componentes pasivos son SMD 0805, los diodos SOD-323, los amplificadores
+SOT-23-5, el transceptor SOIC-8 y el interruptor de potencia HTSSOP-20 con almohadilla térmica.
+Las bornas de campo están agrupadas en el lado izquierdo, el módulo Pico en el lado derecho con el
+conector USB hacia el borde, y los dos zócalos mikroBUS arriba a la derecha, de modo que las placas
+Click quedan accesibles.
+
+\begin{figure}[tbp]
+\centering
+\includegraphics[width=0.92\textwidth]{pcb_revA_2d.png}
+\caption{PCB de la revisión A: capas de cobre, máscara y serigrafía superiores.}
+\label{fig:pcb-2d}
+\end{figure}
+
+\begin{figure}[tbp]
+\centering
+\includegraphics[width=0.85\textwidth]{pcb_revA_3d.png}
+\caption{Vista 3D de la PCB de la revisión A generada con KiCad.}
+\label{fig:pcb-3d}
+\end{figure}
+
+\section{Validación de la placa}
+\label{sec:hw-validacion}
+
+Cada bloque se validó con un programa de prueba independiente antes de la integración
+(tabla~\ref{tab:pruebas-hw}).
+
+\begin{longtable}{@{}L{0.35\textwidth}L{0.34\textwidth}L{0.19\textwidth}@{}}
+\caption{Pruebas de la placa adaptadora.}\label{tab:pruebas-hw}\\
+\toprule
+\textbf{Programa} & \textbf{Procedimiento y criterio} & \textbf{Resultado} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Programa} & \textbf{Procedimiento y criterio} & \textbf{Resultado} \\
+\midrule
+\endhead
+\fichero{pcbtest/test\_analog} & Llevar AIN a GND, \SI{3.3}{\volt} y \SI{5}{\volt}; la tensión reconstruida debe ser \num{0}, \num{3.3} y \SI{5.0}{\volt}. & \completar{lecturas} \\
+\fichero{pcbtest/test\_din} & Cambiar el estado de DIN1--4 y comprobar que se detecta cada flanco. & \completar{} \\
+\fichero{pcbtest/test\_digital\_outputs} & Conmutar SIN1 cada segundo y medir la salida. & \completar{} \\
+\fichero{test\_limit\_switches} & Pulsar cada final de carrera: nivel bajo en reposo y alto activado. & Correcto (usado en todos los ensayos) \\
+\fichero{test\_rs485\_loopback} & Puente GP14--GP13 sin transceptor: debe recibirse la trama enviada a 9600 y 115200 baudios. & Correcto \\
+\fichero{test\_rs485\_tx/rx} & Transmisión y recepción a través del transceptor. & Correcto \\
+\fichero{test\_modbus\_scan} & Lectura periódica del registro 0 del esclavo 1 a 115200 baudios. & Correcto (código 0x00) \\
+\fichero{test\_loadcell} & Detección del ZSC31014 en 0x28 y lectura del puente con estado. & Correcto \\
+\bottomrule
+\end{longtable}

@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Configuración del mecanismo</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="/fui/css/fanuc-ui.css">
+  <link rel="stylesheet" href="/tema.css">
+  <script src="/tema.js"></script>
+  <script src="/mecanismo.js"></script>
+  <script src="/nav.js" defer></script>
+  <style>
+    /* Sólo maquetación. Colores, tipografía y componentes: fanuc-ui.css y tema.css. */
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-start; }
+    .card { padding: 8px 10px; }
+    .col-cfg { flex: 0 0 360px; display: flex; flex-direction: column; gap: 10px; }
+    .col-main { flex: 1; min-width: 420px; display: flex; flex-direction: column; gap: 10px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .grid label { color: var(--fui-ink-3); font: 500 11px/1.25 var(--fui-font-label);
+                  letter-spacing: .08em; text-transform: uppercase; }
+    .grid .ancho { grid-column: 1 / -1; }
+    .sub { grid-column: 1 / -1; margin-top: 4px; padding-bottom: 3px; border-bottom: 1px solid var(--fui-rule);
+           color: var(--fui-ink-2); font: 600 11px/1 var(--fui-font-label); letter-spacing: .14em; text-transform: uppercase; }
+    .fui-screen .grid input[type=number], .fui-screen .grid select { width: 100%; margin-top: 3px; }
+    .acciones { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+    .ctl { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+    .ctl input[type=range] { flex: 1; min-width: 160px; }
+    .chips { margin-top: 8px; }
+    .line { margin-top: 6px; }
+    #mec { width: 100%; height: 560px; display: block; background: var(--fui-field); border: 1px solid var(--fui-rule); }
+    canvas.graf { max-height: 240px; }
+  </style>
+</head>
+<body class="fui-page">
+<div class="fui-bezel tema-marco">
+  <div class="fui-plate">
+    <span class="fui-brand">CARACOLA</span>
+    <span>Banco de ensayos · Pico 2</span>
+  </div>
+  <main class="fui-screen">
+    <div class="fui-titlebar"><span>MECANISMO  CONFIGURACIÓN</span><span class="fui-titlebar-end">mecanismo.json</span></div>
+    <section class="fui-view">
+  <div class="row">
+    <div class="col-cfg">
+      <div class="card">
+        <div class="title">Parámetros — los usa Ensayos para la curva teórica</div>
+        <div class="grid">
+          <div class="sub">Tambor</div>
+          <label class="ancho">tipo
+            <select id="f-tipo" onchange="editado()">
+              <option value="car">caracola (radio variable)</option>
+              <option value="cil">cilindro (radio fijo)</option>
+            </select></label>
+          <label id="w-L1" class="ancho">radio del cilindro (mm)
+            <input type="number" id="f-L1" step="0.1" min="0.1" oninput="editado()"></label>
+          <label id="w-r0">radio al empezar r0 (mm)
+            <input type="number" id="f-r0" step="0.1" min="0.1" oninput="editado()"></label>
+          <label id="w-r1">radio al acabar r1 (mm)
+            <input type="number" id="f-r1" step="0.1" min="0.1" oninput="editado()"></label>
+          <label id="w-barr" class="ancho">la espiral dura (rev de tambor)
+            <input type="number" id="f-barr" step="0.01" min="0.01" oninput="editado()"></label>
+
+          <div class="sub">Transmisión</div>
+          <label>reducción (rev motor / rev tambor)
+            <input type="number" id="f-red" step="0.01" min="0.01" oninput="editado()"
+                   title="Vueltas del eje del motor por cada vuelta del tambor de salida."></label>
+          <label>giro positivo del motor
+            <select id="f-sentido" onchange="editado()">
+              <option value="-1">desenrolla (cable más largo)</option>
+              <option value="1">enrolla (cable más corto)</option>
+            </select></label>
+
+          <div class="sub">Barra y mástil</div>
+          <label>L2 mástil vertical (mm)
+            <input type="number" id="f-L2" step="1" min="0.1" oninput="editado()"
+                   title="De la articulación O, en vertical, hasta la salida del cable D."></label>
+          <label>L3 de O al cable (mm)
+            <input type="number" id="f-L3" step="1" min="0.1" oninput="editado()"></label>
+          <label>L4 del cable a la pesa (mm)
+            <input type="number" id="f-L4" step="1" min="0" oninput="editado()"></label>
+          <label>barra en el home θ0 (°)
+            <input type="number" id="f-th0" step="1" min="-90" max="90" oninput="editado()"
+                   title="Desde la horizontal: +90 barra vertical hacia arriba por el mástil, 0 horizontal, −90 colgando."></label>
+
+          <div class="sub">Carga y ciclo</div>
+          <label>masa (kg)
+            <input type="number" id="f-m" step="0.01" min="0" oninput="editado()"></label>
+          <label>g (m/s²)
+            <input type="number" id="f-g" step="0.01" min="0" oninput="editado()"></label>
+          <label class="ancho">recorrido A→B del motor (rev)
+            <input type="number" id="f-cicloRev" step="0.01" oninput="editado()"
+                   title="Sólo para simular sin un ensayo cargado. Con un ensayo se usa su posición real."></label>
+        </div>
+        <div class="acciones">
+          <button id="b-guardar" class="primario" onclick="guardar()" disabled>Guardar y propagar</button>
+          <button id="b-descartar" onclick="descartar()" disabled>Descartar cambios</button>
+          <button onclick="porDefecto()">Valores por defecto</button>
+        </div>
+        <div class="line hint" id="s-guardado">cargando…</div>
+      </div>
+
+      <div class="card">
+        <div class="title">Comprobación del recorrido</div>
+        <div class="line hint" id="s-comprob" style="margin-top:0"></div>
+        <div class="grid" style="margin-top:9px">
+          <label class="ancho">¿cuánto motor hace falta para llevar la barra a…? (°)
+            <input type="number" id="s-obj" value="10" step="1" min="-90" max="90" oninput="pintarTodo()"></label>
+        </div>
+        <div class="line hint" id="s-inv"></div>
+      </div>
+    </div>
+
+    <div class="col-main">
+      <div class="card">
+        <div class="title">Mecanismo — dibujado con las mismas fórmulas que la curva teórica</div>
+        <div class="ctl">
+          <button id="b-play" onclick="play()" title="Reproducir el ciclo">▶</button>
+          <input type="range" id="s-cursor" min="0" max="1000" value="250" step="1" oninput="moverCursor()">
+          <select id="s-ensayo" onchange="cargarEnsayo()">
+            <option value="">sin ensayo: barrido A→B→A</option>
+          </select>
+        </div>
+        <canvas id="mec"></canvas>
+        <div class="chips" id="s-chips"></div>
+      </div>
+      <div class="card">
+        <div class="title">Tensión del cable y par en el tambor frente al giro del motor</div>
+        <canvas id="gTau" class="graf"></canvas>
+      </div>
+      <div class="card">
+        <div class="title">Ángulo de la barra frente al giro del motor</div>
+        <canvas id="gAng" class="graf"></canvas>
+      </div>
+    </div>
+  </div>
+    </section>
+    <div class="fui-msg"><b>&gt;</b> <span id="estado"></span></div>
+    <div class="fui-statusline"><span>CFG</span><span>****  ***  ***</span><span class="fui-statusline-end" data-reloj>--:--:--</span></div>
+  </main>
+  <nav id="nav" data-actual="sim"></nav>
+</div>
+
+<script>
+// Colores del tema FANUC (tema.css), leídos una vez: Chart.js y el canvas no leen CSS.
+const TEMA = coloresTema();
+temaGraficas();
+const el = id => document.getElementById(id);
+const NUM = ['L1', 'r0', 'r1', 'barr', 'L2', 'L3', 'L4', 'm', 'g', 'th0', 'red', 'cicloRev'];
+const GRAD = Math.PI / 180;
+
+let guardado = null;   // lo que hay ahora mismo en el servidor
+let ensayo = null;     // { nombre, t[], rel[], par[], lc1[] } si se ha elegido uno
+let anim = null;       // requestAnimationFrame en curso
+let gTau = null, gAng = null;
+
+// ── Formulario ────────────────────────────────────────────────────────────
+function leerForm() {
+  const q = { tipo: el('f-tipo').value, sentido: parseInt(el('f-sentido').value) };
+  for (const k of NUM) q[k] = parseFloat(el('f-' + k).value);
+  return q;
+}
+function escribirForm(q) {
+  el('f-tipo').value = q.tipo;
+  el('f-sentido').value = String(q.sentido);
+  for (const k of NUM) el('f-' + k).value = q[k];
+  visibilidad();
+}
+function visibilidad() {
+  const car = el('f-tipo').value === 'car';
+  el('w-L1').hidden = car;
+  el('w-r0').hidden = el('w-r1').hidden = el('w-barr').hidden = !car;
+}
+const normal = q => Object.fromEntries(Object.keys(MEC_DEFAULTS).map(k => [k, q[k]]));
+const sucio = () => guardado && JSON.stringify(normal(leerForm())) !== JSON.stringify(normal(guardado));
+
+function editado() {
+  visibilidad();
+  estadoGuardado();
+  pintarTodo();
+}
+
+function estadoGuardado(msg, cls) {
+  const s = el('s-guardado'), err = Mec.validar(leerForm());
+  const hay = sucio();
+  el('b-guardar').disabled = !hay || !!err;
+  el('b-descartar').disabled = !hay;
+  if (msg)       { s.className = 'line ' + cls; s.textContent = msg; }
+  else if (err)  { s.className = 'line err';  s.textContent = err; }
+  else if (hay)  { s.className = 'line warn'; s.textContent = 'cambios sin guardar: Ensayos sigue con los anteriores'; }
+  else           { s.className = 'line hint'; s.textContent = 'guardado: es lo que usa Ensayos'; }
+}
+
+async function guardar() {
+  const q = leerForm(), err = Mec.validar(q);
+  if (err) { estadoGuardado(err, 'err'); return; }
+  try {
+    guardado = await Mec.guardar(q);
+    escribirForm(guardado);
+    estadoGuardado();
+    estadoGuardado('guardado y propagado: las pestañas de Ensayos abiertas ya se han repintado', 'ok');
+  } catch (e) {
+    estadoGuardado('no se pudo guardar: ' + e.message, 'err');
+  }
+}
+function descartar() { if (guardado) { escribirForm(guardado); editado(); } }
+function porDefecto() { escribirForm(MEC_DEFAULTS); editado(); }
+
+window.addEventListener('beforeunload', e => { if (sucio()) { e.preventDefault(); e.returnValue = ''; } });
+
+// ── Cursor: dónde está el motor ───────────────────────────────────────────
+// Sin ensayo, el cursor recorre A→B→A sobre el recorrido configurado. Con un ensayo,
+// recorre sus muestras y usa la posición medida, contada desde la primera (el home).
+function posCursor(q) {
+  const f = parseInt(el('s-cursor').value) / 1000;
+  if (ensayo) {
+    const i = Math.round(f * (ensayo.rel.length - 1));
+    return { rel: ensayo.rel[i], i, t: ensayo.t[i] };
+  }
+  return { rel: q.cicloRev * (f < 0.5 ? 2 * f : 2 - 2 * f), tramo: f < 0.5 ? 'ida A→B' : 'vuelta B→A' };
+}
+
+// Rango de giro que se dibuja y se grafica: el del ensayo si lo hay, si no 0..cicloRev.
+function rangoRev(q) {
+  if (ensayo) return [Math.min(...ensayo.rel), Math.max(...ensayo.rel)];
+  return [Math.min(0, q.cicloRev), Math.max(0, q.cicloRev)];
+}
+
+function moverCursor() {
+  const q = leerForm();
+  if (Mec.validar(q)) return;
+  const p = posCursor(q), st = Mec.estado(q, p.rel);
+  dibujar(q, st, p);
+  chipsEstado(q, st, p);
+  for (const g of [gTau, gAng]) if (g) { g.$cursorX = p.rel; g.draw(); }
+}
+
+function play() {
+  if (anim) { cancelAnimationFrame(anim); anim = null; el('b-play').textContent = '▶'; return; }
+  el('b-play').textContent = '❚❚';
+  // Con ensayo va a tiempo real; sin él, un ciclo completo en 6 s.
+  const dur = ensayo ? (ensayo.t[ensayo.t.length - 1] - ensayo.t[0]) * 1000 : 6000;
+  const f0 = parseInt(el('s-cursor').value) / 1000;
+  const t0 = performance.now() - f0 * dur;
+  const paso = ahora => {
+    el('s-cursor').value = Math.round((((ahora - t0) % dur) / dur) * 1000);
+    moverCursor();
+    anim = requestAnimationFrame(paso);
+  };
+  anim = requestAnimationFrame(paso);
+}
+
+// ── Dibujo del mecanismo ──────────────────────────────────────────────────
+// Coordenadas del mundo en mm con O en el origen, y fijas mientras no cambie la
+// geometría: el encuadre cubre todo lo que la barra PODRÍA hacer (de −90 a +90°),
+// no sólo lo que hace en el ciclo, para que la escala no salte al mover el cursor.
+function dibujar(q, st, p) {
+  const cv = el('mec'), dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth, H = cv.clientHeight;
+  if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) {
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  }
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+
+  const R = q.L3 + q.L4;
+  const rmax = q.tipo === 'car' ? Math.max(q.r0, q.r1) : q.L1;
+  const xmin = -Math.max(rmax * 1.6, 70), xmax = R + 30;
+  const ymin = -R - 80, ymax = Math.max(q.L2 + rmax + 30, R + 20);
+  const k = Math.min((W - 30) / (xmax - xmin), (H - 30) / (ymax - ymin));
+  const ox = 15 + (W - 30 - (xmax - xmin) * k) / 2 - xmin * k;
+  const oy = H - 15 - (H - 30 - (ymax - ymin) * k) / 2 + ymin * k;
+  const X = x => ox + x * k, Y = y => oy - y * k;
+
+  const linea = (x1, y1, x2, y2, color, ancho, raya) => {
+    ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = ancho; ctx.setLineDash(raya || []);
+    ctx.beginPath(); ctx.moveTo(X(x1), Y(y1)); ctx.lineTo(X(x2), Y(y2)); ctx.stroke(); ctx.restore();
+  };
+  const texto = (s, x, y, color, alin, px) => {
+    ctx.fillStyle = color; ctx.font = `${px || 11}px ${TEMA.fuente}`;
+    ctx.textAlign = alin || 'left'; ctx.textBaseline = 'middle'; ctx.fillText(s, x, y);
+  };
+  const punto = (x, y, r, color) => {
+    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(X(x), Y(y), r, 0, 2 * Math.PI); ctx.fill();
+  };
+  // Arco entre dos ángulos del mundo (grados, antihorario desde +x).
+  const arco = (cx, cy, rpx, a1, a2, color) => {
+    ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.beginPath();
+    ctx.arc(X(cx), Y(cy), rpx, -a1 * GRAD, -a2 * GRAD, a2 > a1); ctx.stroke(); ctx.restore();
+  };
+  const flecha = (x, y, dx, dy, color, etiqueta) => {
+    const x2 = X(x) + dx, y2 = Y(y) + dy, a = Math.atan2(dy, dx);
+    ctx.save(); ctx.strokeStyle = ctx.fillStyle = color; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(X(x), Y(y)); ctx.lineTo(x2, y2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - 8 * Math.cos(a - 0.4), y2 - 8 * Math.sin(a - 0.4));
+    ctx.lineTo(x2 - 8 * Math.cos(a + 0.4), y2 - 8 * Math.sin(a + 0.4));
+    ctx.closePath(); ctx.fill(); ctx.restore();
+    if (etiqueta) texto(etiqueta, x2 + 6 * Math.cos(a), y2 + 10 * Math.sin(a) + (dy > 0 ? 8 : -8), color, dx < 0 ? 'right' : 'left');
+  };
+
+  // Referencias: horizontal por O y la zona que la barra puede barrer (±90°).
+  linea(xmin + 10, 0, xmax - 5, 0, TEMA.rejilla, 1, [5, 4]);
+  ctx.save(); ctx.strokeStyle = TEMA.reglaSuave; ctx.lineWidth = 1; ctx.setLineDash([3, 4]);
+  ctx.beginPath(); ctx.arc(X(0), Y(0), R * k, Math.PI / 2, -Math.PI / 2, true); ctx.stroke(); ctx.restore();
+
+  // Lo que barre la barra en el ciclo (o en el ensayo), con sus dos extremos en fantasma.
+  const [ra, rb] = rangoRev(q);
+  const ea = Mec.estado(q, ra), eb = Mec.estado(q, rb);
+  const angs = [ea, eb].filter(e => !e.fuera).map(e => e.th);
+  if (angs.length === 2) {
+    const lo = Math.min(...angs), hi = Math.max(...angs);
+    ctx.save(); ctx.fillStyle = conAlfa(TEMA.azul, 0.10); ctx.beginPath(); ctx.moveTo(X(0), Y(0));
+    ctx.arc(X(0), Y(0), R * k, -hi * GRAD, -lo * GRAD); ctx.closePath(); ctx.fill(); ctx.restore();
+    for (const a of angs)
+      linea(0, 0, R * Math.cos(a * GRAD), R * Math.sin(a * GRAD), TEMA.regla, 3, [6, 4]);
+  }
+
+  // Mástil vertical O→D y base.
+  const D = { x: 0, y: q.L2 };
+  linea(0, 0, 0, q.L2, TEMA.tinta2, 4);
+  ctx.save(); ctx.fillStyle = TEMA.rejilla; ctx.fillRect(X(0) - 16, Y(0) + 6, 32, 7); ctx.restore();
+  texto('L2 = ' + q.L2 + ' mm', X(0) - 10, Y(q.L2 / 2), TEMA.tinta, 'right');
+  texto('(vertical)', X(0) - 10, Y(q.L2 / 2) + 13, TEMA.tinta2, 'right', 10);
+
+  // Tambor en D, girando con φ. La espiral se dibuja entera, y el radio que trabaja
+  // ahora mismo se marca: es el brazo del par.
+  const phitot = q.tipo === 'car' ? q.barr * 2 * Math.PI : 2 * Math.PI;
+  ctx.save(); ctx.strokeStyle = TEMA.morado; ctx.lineWidth = 1.5; ctx.beginPath();
+  const N = 90;
+  for (let i = 0; i <= N; i++) {
+    const psi = phitot * i / N;
+    const rr = q.tipo === 'car' ? q.r0 + (q.r1 - q.r0) * psi / phitot : q.L1;
+    const a = Math.PI / 2 + psi - st.phi;
+    const px = X(D.x + rr * Math.cos(a)), py = Y(D.y + rr * Math.sin(a));
+    i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+  }
+  ctx.stroke(); ctx.restore();
+  // El modelo toma el cable saliendo del punto D: el radio sólo cuenta como brazo del
+  // par, no mueve la salida del cable. Se marca en vertical como referencia.
+  linea(D.x, D.y, D.x, D.y + st.r, TEMA.morado, 1, [2, 2]);
+  punto(D.x, D.y, 4, TEMA.morado);
+  texto(`r = ${st.r.toFixed(1)} mm`, X(D.x) + st.r * k + 10, Y(D.y) - 10, TEMA.morado);
+  texto(`φ tambor ${(st.phi / (2 * Math.PI)).toFixed(3)} rev`, X(D.x) + st.r * k + 10, Y(D.y) + 5, TEMA.tinta, 'left', 10);
+  texto('D', X(D.x) - 10, Y(D.y) - 10, TEMA.tinta, 'right');
+  texto('O', X(0) - 10, Y(0) + 10, TEMA.tinta, 'right');
+
+  if (st.fuera) {
+    const { cmin, cmax } = Mec.limites(q);
+    texto(`Fuera del mecanismo: el tambor pide c = ${st.c.toFixed(0)} mm de cable`,
+          W / 2, 22, TEMA.rojo, 'center', 12);
+    texto(`y sólo caben entre ${cmin.toFixed(0)} (barra a +90°) y ${cmax.toFixed(0)} mm (barra a −90°)`,
+          W / 2, 38, TEMA.rojo, 'center', 12);
+    return;
+  }
+
+  // Barra, cable, pesa.
+  const t = st.th * GRAD, cs = Math.cos(t), sn = Math.sin(t);
+  const A = { x: q.L3 * cs, y: q.L3 * sn }, P = { x: R * cs, y: R * sn };
+  linea(D.x, D.y, A.x, A.y, TEMA.azul, 2);
+  linea(0, 0, P.x, P.y, TEMA.texto, 5);
+  const hilo = 45;
+  linea(P.x, P.y, P.x, P.y - hilo, TEMA.tinta, 1.2);
+  ctx.save(); ctx.fillStyle = TEMA.ambar;
+  ctx.fillRect(X(P.x) - 14, Y(P.y - hilo), 28, 20); ctx.restore();
+  punto(0, 0, 6, TEMA.tinta);
+  punto(A.x, A.y, 4.5, TEMA.azul);
+  punto(P.x, P.y, 3.5, TEMA.ambar);
+  texto('A', X(A.x) + 8, Y(A.y) + 12, TEMA.azul);
+  texto(`c = ${st.c.toFixed(1)} mm`, X((D.x + A.x) / 2) + 8, Y((D.y + A.y) / 2), TEMA.azul);
+  texto(`${q.m} kg`, X(P.x) + 18, Y(P.y - hilo) + 10, TEMA.ambar);
+
+  // Ángulos. θ desde la horizontal (el que se configura), α entre mástil y barra, y β
+  // entre barra y cable en A: son los tres "90°" que se pueden estar diciendo.
+  arco(0, 0, 38, 0, st.th, TEMA.verde);
+  texto(`θ = ${st.th.toFixed(1)}°`, X(0) + 44 * Math.cos(-t / 2), Y(0) + 44 * Math.sin(-t / 2) + (st.th >= 0 ? -2 : 10), TEMA.verde);
+  arco(0, 0, 24, 90, st.th, TEMA.morado);
+  const aMid = (90 + st.th) / 2 * GRAD;
+  texto(`α = ${(90 - st.th).toFixed(1)}°`, X(0) + 30 * Math.cos(-aMid) - 4, Y(0) + 30 * Math.sin(-aMid) - 10, TEMA.morado, 'right');
+  const aAO = Math.atan2(-A.y, -A.x) / GRAD, aAD = Math.atan2(D.y - A.y, D.x - A.x) / GRAD;
+  let beta = Math.abs(aAD - aAO); if (beta > 180) beta = 360 - beta;
+  let a1 = aAO, a2 = aAD; if (Math.abs(a2 - a1) > 180) { if (a2 < a1) a2 += 360; else a1 += 360; }
+  arco(A.x, A.y, 20, a1, a2, TEMA.cian);
+  const bMid = (a1 + a2) / 2 * GRAD;
+  texto(`β = ${beta.toFixed(1)}°`, X(A.x) + 34 * Math.cos(-bMid), Y(A.y) + 34 * Math.sin(-bMid), TEMA.cian, 'center');
+
+  // Fuerzas a escala entre sí: la tensión en A hacia D y el peso en la pesa.
+  const peso = q.m * q.g, escN = 70 / Math.max(st.T, peso, 1e-9);
+  const ux = (D.x - A.x) / st.c, uy = (D.y - A.y) / st.c;
+  flecha(A.x, A.y, ux * st.T * escN, -uy * st.T * escN, TEMA.rojo, `T = ${st.T.toFixed(1)} N`);
+  flecha(P.x, P.y - hilo - 20 / k, 0, peso * escN, TEMA.ambar, `m·g = ${peso.toFixed(1)} N`);
+
+  texto(p.t != null ? `t = ${p.t.toFixed(2)} s` : p.tramo, 12, 16, TEMA.tinta);
+  texto(`motor ${p.rel >= 0 ? '+' : ''}${p.rel.toFixed(3)} rev desde el home`, 12, 31, TEMA.texto);
+  texto(`τ = T·r = ${st.tau.toFixed(3)} N·m`, 12, 46, TEMA.rojo);
+}
+
+function chipsEstado(q, st, p) {
+  const c = (k, v) => `<span class="chip">${k} <b>${v}</b></span>`;
+  let h = c('motor', (p.rel >= 0 ? '+' : '') + p.rel.toFixed(3) + ' rev')
+        + c('tambor', (st.phi / (2 * Math.PI)).toFixed(3) + ' rev')
+        + c('r', st.r.toFixed(1) + ' mm') + c('cable pagado', st.s.toFixed(1) + ' mm')
+        + c('c', st.c.toFixed(1) + ' mm');
+  if (!st.fuera)
+    h += c('θ', st.th.toFixed(1) + '°') + c('α', (90 - st.th).toFixed(1) + '°')
+       + c('T', st.T.toFixed(2) + ' N') + c('τ', st.tau.toFixed(3) + ' N·m');
+  else h += '<span class="chip" style="color:var(--red)">fuera del mecanismo</span>';
+  if (ensayo && p.i != null)
+    h += c('t', p.t.toFixed(2) + ' s') + c('LC1', ensayo.lc1[p.i] + ' cuentas')
+       + c('par medido', (ensayo.par[p.i] / 10).toFixed(1) + ' (drive)');
+  el('s-chips').innerHTML = h;
+}
+
+// ── Comprobación: lo que el modelo dice del recorrido ─────────────────────
+function comprobar(q) {
+  const cmp = el('s-comprob');
+  const home = Mec.estado(q, 0);
+  const [ra, rb] = rangoRev(q);
+  const extremo = Math.abs(rb) >= Math.abs(ra) ? rb : ra;
+  const eB = Mec.estado(q, extremo);
+  const { cmin, cmax } = Mec.limites(q);
+  // Topes: cuánto motor hay hasta que la barra llega a la vertical por cada lado.
+  const aTop = Mec.revParaAngulo(q, 90), aBot = Mec.revParaAngulo(q, -90);
+  // Redondeo antes del signo: la bisección deja −1e-12 en el home y saldría "-0.00".
+  const fmt = v => { if (v == null) return '—'; const r = Math.round(v * 100) / 100 || 0;
+                     return (r >= 0 ? '+' : '') + r.toFixed(2); };
+  let h = `Home: barra a <b>${home.th.toFixed(1)}°</b> desde la horizontal, cable <b>${home.c.toFixed(1)} mm</b>`
+        + ` (entre ${cmin.toFixed(0)} y ${cmax.toFixed(0)}).<br>`;
+  if (eB.fuera) {
+    cmp.className = 'line err';
+    h += `En ${fmt(extremo)} rev de motor el tambor pide <b>${eB.c.toFixed(0)} mm</b> de cable: la barra`
+       + ` tendría que pasar de la vertical. El recorrido no cabe en el mecanismo.<br>`;
+  } else {
+    cmp.className = 'line hint';
+    h += `${ensayo ? 'Extremo del ensayo' : 'En B'} (${fmt(extremo)} rev de motor, ${(extremo / q.red).toFixed(3)} rev de tambor):`
+       + ` barra a <b>${eB.th.toFixed(1)}°</b>, cable ${eB.c.toFixed(1)} mm,`
+       + ` recorrido de <b>${Math.abs(eB.th - home.th).toFixed(1)}°</b>.<br>`;
+  }
+  h += `Topes: barra vertical arriba (+90°) a ${fmt(aTop)} rev de motor, colgando (−90°) a ${fmt(aBot)} rev.`;
+  if (ensayo) {
+    const eF = Mec.estado(q, ensayo.rel[ensayo.rel.length - 1]);
+    if (!eF.fuera)
+      h += `<br>Final del ensayo: barra a <b>${eF.th.toFixed(1)}°</b>`
+         + ` (${(eF.th - home.th >= 0 ? '+' : '')}${(eF.th - home.th).toFixed(1)}° respecto del home,`
+         + ` con ${fmt(ensayo.rel[ensayo.rel.length - 1])} rev de motor sin devolver).`;
+  }
+  cmp.innerHTML = h;
+
+  const obj = parseFloat(el('s-obj').value), inv = el('s-inv');
+  const rv = Number.isFinite(obj) ? Mec.revParaAngulo(q, obj) : null;
+  inv.innerHTML = rv == null
+    ? 'ese ángulo no se alcanza con esta geometría'
+    : `Barra a ${obj}°: <b>${fmt(rv)} rev de motor</b> desde el home (${(rv / q.red).toFixed(3)} rev de tambor).`
+      + ` Es la posición B que habría que poner en el ciclo.`;
+}
+
+// ── Gráficas contra el giro del motor ─────────────────────────────────────
+Chart.register({
+  id: 'cursor',
+  afterDatasetsDraw(ch) {
+    const x = ch.$cursorX, sx = ch.scales.x;
+    if (x == null || x < sx.min || x > sx.max) return;
+    const px = sx.getPixelForValue(x), { top, bottom } = ch.chartArea, c = ch.ctx;
+    c.save(); c.strokeStyle = TEMA.azul; c.setLineDash([4, 3]); c.lineWidth = 1;
+    c.beginPath(); c.moveTo(px, top); c.lineTo(px, bottom); c.stroke(); c.restore();
+  }
+});
+const eje = (txt, color, pos) => ({
+  position: pos || 'left', title: { display: true, text: txt, color: color || TEMA.tinta },
+  ticks: { color: color || TEMA.tinta }, grid: { color: TEMA.rejilla, drawOnChartArea: pos !== 'right' }
+});
+function graficas(q) {
+  const [ra, rb] = rangoRev(q), span = (rb - ra) || 1;
+  const a = ra - 0.05 * span, b = rb + 0.05 * span, n = 240;
+  const T = [], tau = [], ang = [];
+  for (let i = 0; i <= n; i++) {
+    const rv = a + (b - a) * i / n, st = Mec.estado(q, rv);
+    T.push({ x: rv, y: st.fuera ? null : st.T });
+    tau.push({ x: rv, y: st.fuera ? null : st.tau });
+    ang.push({ x: rv, y: st.fuera ? null : st.th });
+  }
+  const base = { responsive: true, animation: false,
+    plugins: { legend: { labels: { color: TEMA.tinta, boxWidth: 10, font: { size: 10 } } } } };
+  const ejeX = { type: 'linear', min: a, max: b, title: { display: true, text: 'giro del motor desde el home (rev)', color: TEMA.tinta },
+                 ticks: { color: TEMA.tinta }, grid: { color: TEMA.rejilla } };
+  const lin = (label, color, data, yAxisID) =>
+    ({ label, data, yAxisID, showLine: true, pointRadius: 0, borderWidth: 1.8, borderColor: color, spanGaps: false });
+  if (!gTau) {
+    gTau = new Chart(el('gTau'), { type: 'scatter', data: { datasets: [] }, options: { ...base,
+      scales: { x: ejeX, y: eje('tensión (N)', TEMA.azul), y2: eje('par (N·m)', TEMA.rojo, 'right') } } });
+    gAng = new Chart(el('gAng'), { type: 'scatter', data: { datasets: [] }, options: { ...base,
+      scales: { x: { ...ejeX }, y: { ...eje('θ desde la horizontal (°)', TEMA.verde), min: -90, max: 90 } } } });
+  }
+  gTau.options.scales.x.min = gAng.options.scales.x.min = a;
+  gTau.options.scales.x.max = gAng.options.scales.x.max = b;
+  gTau.data.datasets = [lin('tensión T', TEMA.azul, T, 'y'), lin('par τ = T·r', TEMA.rojo, tau, 'y2')];
+  gAng.data.datasets = [lin('ángulo θ', TEMA.verde, ang, 'y')];
+  gTau.update('none'); gAng.update('none');
+}
+
+function pintarTodo() {
+  const q = leerForm();
+  if (Mec.validar(q)) return;     // el aviso ya lo pone estadoGuardado
+  graficas(q);
+  comprobar(q);
+  moverCursor();
+}
+
+// ── Ensayos para superponer ───────────────────────────────────────────────
+async function listarEnsayos() {
+  try {
+    const lista = await (await fetch('/cycles')).json();
+    const s = el('s-ensayo');
+    for (const f of lista) {
+      const o = document.createElement('option');
+      o.value = f.name; o.textContent = f.name;
+      s.appendChild(o);
+    }
+  } catch (e) { /* sin ensayos: se simula con el recorrido configurado */ }
+}
+
+async function cargarEnsayo() {
+  const nombre = el('s-ensayo').value;
+  if (!nombre) { ensayo = null; el('estado').textContent = ''; pintarTodo(); return; }
+  el('estado').textContent = 'leyendo ' + nombre + '…';
+  const texto = await (await fetch('/cycles/' + encodeURIComponent(nombre))).text();
+  let cols = null;
+  const e = { nombre, t: [], rel: [], par: [], lc1: [] };
+  let p0 = null;
+  for (const linea of texto.split('\n')) {
+    if (!linea.trim() || linea.startsWith('#')) continue;
+    const v = linea.split(',');
+    if (!cols) { cols = v.map(x => x.trim()); continue; }
+    const f = Object.fromEntries(cols.map((c, i) => [c, parseFloat(v[i])]));
+    if (p0 === null) p0 = f.pos_rev || 0;
+    e.t.push(f.t_rel_s); e.rel.push((f.pos_rev || 0) - p0);
+    e.par.push(f.par_x10 || 0); e.lc1.push(f.lc1_base || 0);
+  }
+  if (!e.t.length) { el('estado').textContent = nombre + ' está vacío'; return; }
+  ensayo = e;
+  el('estado').textContent = `${nombre} · ${e.t.length} muestras · posición contada desde la primera`;
+  // Con un ensayo se arranca en su extremo, que es donde más se ve si la geometría cuadra.
+  const iExt = e.rel.reduce((b, v, i) => Math.abs(v) > Math.abs(e.rel[b]) ? i : b, 0);
+  el('s-cursor').value = Math.round(iExt / Math.max(1, e.rel.length - 1) * 1000);
+  pintarTodo();
+}
+
+// ── Arranque ──────────────────────────────────────────────────────────────
+window.addEventListener('resize', moverCursor);
+Mec.alCambiar(q => {
+  // Si alguien guarda desde otra pestaña, no se pisa lo que se está editando aquí.
+  const tenia = sucio();
+  guardado = q;
+  if (tenia) { estadoGuardado('la configuración ha cambiado desde otra pestaña; tus cambios siguen sin guardar', 'warn'); return; }
+  escribirForm(q); estadoGuardado(); pintarTodo();
+});
+(async () => {
+  guardado = await Mec.cargar();
+  escribirForm(guardado);
+  estadoGuardado();
+  pintarTodo();
+  listarEnsayos();
+  if (document.fonts) document.fonts.ready.then(moverCursor);
+})();
+</script>
+</body>
+</html>

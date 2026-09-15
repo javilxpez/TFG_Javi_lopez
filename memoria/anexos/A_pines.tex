@@ -1,0 +1,68 @@
+\chapter{Asignación de pines}
+\label{anx:pines}
+
+\section{Raspberry Pi Pico 2 (revisión B de la placa)}
+
+\begin{longtable}{@{}lllL{0.44\textwidth}@{}}
+\caption{Asignación de GPIO según el esquema de la revisión B y el firmware.}\label{tab:pines}\\
+\toprule
+GPIO & Pin & Señal & Función \\
+\midrule
+\endfirsthead
+\toprule
+GPIO & Pin & Señal & Función \\
+\midrule
+\endhead
+GP0  & 1  & INT1    & Interrupción de la célula 1 (MD1) \\
+GP1  & 2  & EN1     & Habilitación / reinicio de las placas Click (\codigo{LC1\_EN\_GPIO}) \\
+GP2  & 4  & SDA1    & I\textsuperscript{2}C1 SDA (\codigo{LC\_SDA\_PIN}) \\
+GP3  & 5  & SCL1    & I\textsuperscript{2}C1 SCL (\codigo{LC\_SCL\_PIN}) \\
+GP4  & 6  & INT2    & Interrupción de la célula 2 (MD2) \\
+GP5, GP6 & 7, 9 & -- & Libres \\
+GP7  & 10 & SIN4    & Entrada del canal 4 del TPS4H000 \\
+GP8  & 11 & SIN3    & Entrada del canal 3 \\
+GP9  & 12 & SIN2    & Entrada del canal 2 \\
+GP10 & 14 & SIN1    & Entrada del canal 1 \\
+GP11 & 15 & DST     & Fallo global del TPS4H000 (drenador abierto, \emph{pull-up}) \\
+GP12 & 16 & DE      & Dirección del transceptor RS-485 (\codigo{MB\_EN\_GPIO}) \\
+GP13 & 17 & RO      & Recepción RS-485, UART PIO (\codigo{MB\_RX\_GPIO}) \\
+GP14 & 19 & DI      & Transmisión RS-485, UART PIO (\codigo{MB\_TX\_GPIO}) \\
+GP15 & 20 & DIAG\_EN & Habilitación del diagnóstico del TPS4H000 \\
+GP16 & 21 & DIN1    & Final de carrera A (\codigo{PIN\_LIMIT\_A}) \\
+GP17 & 22 & DIN2    & Final de carrera B (\codigo{PIN\_LIMIT\_B}) \\
+GP18 & 24 & DIN3    & Entrada digital libre \\
+GP19 & 25 & DIN4    & Entrada digital libre \\
+GP20 & 26 & COMP    & Salida del comparador (umbral \SI{2.5}{\volt}) \\
+GP21, GP22 & 27, 29 & -- & Libres \\
+GP26 & 31 & AOUT3   & ADC0: entrada analógica AIN3 \\
+GP27 & 32 & AOUT1   & ADC1: entrada analógica AIN1 \\
+GP28 & 34 & AOUT2   & ADC2: entrada analógica AIN2 \\
+VBUS & 40 & +5V     & Alimentación de los amplificadores \\
+3V3  & 36 & +3.3V   & Transceptor RS-485 y placas Click \\
+\bottomrule
+\end{longtable}
+
+\noindent\textbf{Nota.} El firmware define \codigo{LC1\_INT\_GPIO = 4}, mientras que en el esquema de
+la revisión B la interrupción de la célula 1 llega a GP0 y GP4 corresponde a la célula 2. El firmware
+sólo usa ese pin para llevarlo a nivel bajo durante el apagado de la célula
+(sección~\ref{sec:prob-zsc}) \verificar{comprobar a qué GPIO está conectado INT en la placa montada}.
+
+\section{Bornas de campo}
+
+\begin{table}[H]
+\centering
+\caption{Bornas de la placa (revisión B).}
+\label{tab:bornas}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Borna & Pin & Señal \\
+\midrule
+J5 (RS-485) & 1 / 2 / 3 & A / B / GND \\
+Terminal de salidas & 1--8 & SOUT4, SOUT3, --, VS\_IN, SOUT2, SOUT1, AIN2, AIN1 \\
+Terminal de entradas & 1--8 & AIN3, AIN4, VS\_IN, --, DI1, DI2, DI3, DI4 \\
+Filas de masa & 1--8 & GND \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\verificar{comprobar el orden de las bornas sobre la placa fabricada}

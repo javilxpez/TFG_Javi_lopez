@@ -1,0 +1,93 @@
+% ════════════════════════ Agradecimientos ═══════════════════════════════
+\chapter*{Agradecimientos}
+\addcontentsline{toc}{chapter}{Agradecimientos}
+\thispagestyle{plain}
+
+\completar{Texto de agradecimientos: tutoría, laboratorio o departamento que ha prestado
+el material, familia, compañeros y compañeras.}
+
+\cleardoublepage
+% ════════════════════════════ Resumen ═══════════════════════════════════
+\chapter*{Resumen}
+\addcontentsline{toc}{chapter}{Resumen}
+\thispagestyle{plain}
+
+Este Trabajo Fin de Grado aborda el diseño, la construcción y la validación experimental del
+sistema electrónico de accionamiento, control y adquisición de un mecanismo de elevación basado
+en una \emph{caracola}: un tambor de radio variable que, movido por un servomotor paso a paso de
+lazo cerrado, enrolla un cable que levanta una barra articulada con una masa de \SI{2}{\kilo\gram}.
+La finalidad de la caracola es modificar la relación de transmisión a lo largo del recorrido para
+que el par que debe aportar el motor se mantenga aproximadamente constante, aunque la tensión del
+cable varíe con la geometría del mecanismo.
+
+En primer lugar se desarrolla un modelo analítico del mecanismo. Se demuestra que la tensión del
+cable es proporcional a la longitud libre de cable, $T = mg(L_3+L_4)\,c/(L_2L_3)$, y se deduce el
+perfil de radio que hace el par exactamente constante, $r(\varphi)=C/\sqrt{c_0^2+2C\varphi}$. Se
+prueba además que ese par constante, igual al trabajo total dividido por el giro del tambor, es el
+mínimo par de pico alcanzable con cualquier perfil. Con la geometría nominal del prototipo, el
+perfil ideal reduce el par de pico un \SI{24.7}{\percent} respecto a un tambor cilíndrico que haga
+el mismo recorrido, y una espiral de radio lineal optimizada lo reduce un \SI{21.1}{\percent}.
+
+Para verificarlo experimentalmente se ha construido una plataforma completa: una placa adaptadora
+diseñada en KiCad alrededor de una Raspberry Pi Pico~2 (bus RS-485, entradas digitales protegidas,
+entradas analógicas acondicionadas, salidas de potencia y dos zócalos mikroBUS para células de
+carga); un firmware en C++ que gobierna el servo mediante Modbus RTU, lee la célula de carga a
+través del acondicionador ZSC31014, realiza el \emph{homing} con dos finales de carrera y ejecuta
+ciclos automáticos; un protocolo binario propio con CRC-8; y una aplicación web (FastAPI y
+WebSocket) para la supervisión en tiempo real, el registro de ensayos y su comparación con el
+modelo.
+
+En los ensayos, el sistema muestrea a \SI{20.0}{\hertz} con una dispersión del periodo de
+\SI{0.07}{\milli\second}, alcanza el final de carrera con una desviación típica de
+\SI{13}{mrev} y vuelve al origen con un error máximo de \SI{17}{mrev}. Separando
+en el par medido la componente gravitatoria y la de pérdidas mediante recorridos en ambos
+sentidos, se observa que en el tramo central del recorrido la tensión del cable crece un
+\SI{17}{\percent} mientras que el par gravitatorio del motor varía sólo un \SI{6.4}{\percent}, lo
+que confirma experimentalmente el efecto compensador de la caracola.
+
+\vspace{1em}
+\noindent\textbf{Palabras clave:} tambor de radio variable, caracola, compensación de par,
+servomotor paso a paso, Modbus RTU, RS-485, célula de carga, ZSC31014, Raspberry Pi Pico~2,
+adquisición de datos, FastAPI.
+
+\cleardoublepage
+% ════════════════════════════ Abstract ══════════════════════════════════
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+\thispagestyle{plain}
+
+This Bachelor's Thesis covers the design, construction and experimental validation of the
+electronic drive, control and data-acquisition system for a lifting mechanism based on a
+\emph{fusee-like spiral drum} (``caracola''): a variable-radius drum, driven by a closed-loop
+stepper servomotor, winds a cable that lifts a hinged bar carrying a \SI{2}{\kilo\gram} mass. The
+purpose of the spiral drum is to change the transmission ratio along the stroke so that the motor
+torque remains approximately constant while the cable tension changes with the geometry.
+
+An analytical model of the mechanism is first derived. The cable tension is shown to be
+proportional to the free cable length, $T = mg(L_3+L_4)\,c/(L_2L_3)$, and the radius profile that
+makes the torque exactly constant, $r(\varphi)=C/\sqrt{c_0^2+2C\varphi}$, is obtained. This constant
+torque, equal to the total work divided by the drum rotation, is proven to be the lowest peak
+torque achievable by any profile. With the nominal geometry, the ideal profile lowers the peak
+torque by \SI{24.7}{\percent} compared with a cylindrical drum covering the same stroke, and an
+optimised linear spiral lowers it by \SI{21.1}{\percent}.
+
+To verify this experimentally, a complete platform was built: a KiCad-designed adapter board
+around a Raspberry Pi Pico~2 (RS-485 bus, protected digital inputs, conditioned analogue inputs,
+high-side outputs and two mikroBUS sockets for load cells); C++ firmware that commands the servo
+over Modbus RTU, reads the load cell through a ZSC31014 conditioner, performs homing with two limit
+switches and runs automatic cycles; a custom binary protocol with CRC-8; and a web application
+(FastAPI and WebSocket) for real-time monitoring, test logging and comparison with the model.
+
+In the tests, the system samples at \SI{20.0}{\hertz} with a period spread of
+\SI{0.07}{\milli\second}, reaches the limit switch with a standard deviation of
+\SI{13}{mrev} and returns home with a maximum error of \SI{17}{mrev}. By
+separating the gravitational and loss components of the measured torque using strokes in both
+directions, it is observed that over the central part of the stroke the cable tension rises by
+\SI{17}{\percent} while the gravitational motor torque varies by only \SI{6.4}{\percent},
+experimentally confirming the compensating effect of the spiral drum.
+
+\vspace{1em}
+\noindent\textbf{Keywords:} variable radius drum, fusee, torque compensation, closed-loop stepper
+servo, Modbus RTU, RS-485, load cell, ZSC31014, Raspberry Pi Pico~2, data acquisition, FastAPI.
+
+\cleardoublepage

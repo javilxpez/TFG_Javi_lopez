@@ -25,6 +25,7 @@ import serial
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 # ── Logging (console + file) ──────────────────────────────
 LOG_FILE = str(Path(__file__).parent / "web_monitor.log")
@@ -432,6 +433,118 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(lifespan=lifespan)
+# Fanuc Control UI Kit: estilos y fuentes, tal cual vienen. El CSS carga sus fuentes con
+# rutas relativas (../fonts/), por eso se publica la carpeta entera y no fichero a fichero.
+app.mount("/fui", StaticFiles(directory=Path(__file__).parent / "static" / "fui"), name="fui")
+
+# ── Configuración del mecanismo ──────────────────────────
+# Geometría del banco para el modelo teórico. Se edita desde /sim y la lee /ensayos,
+# para que el simulador y la curva teórica calculen con los mismos números. Las claves y
+# los rangos tienen que coincidir con MEC_DEFAULTS y Mec.validar en static/mecanismo.js.
+MECH_FILE = Path(__file__).parent / "mecanismo.json"
+MECH_DEFAULTS = {
+    "tipo": "car", "L1": 25.0, "r0": 25.0, "r1": 45.0, "barr": 0.5,
+    "L2": 290.0, "L3": 95.0, "L4": 110.0, "m": 2.0, "g": 9.81,
+    "th0": 90.0, "red": 4.0, "sentido": -1, "cicloRev": 1.78,
+}
+# (mínimo, máximo, mínimo excluido). th0 fuera de ±90 no es un error de tecleo inocente:
+# sen θ es simétrico y 100° daría en silencio el mismo cable que 80°.
+MECH_RANGOS = {
+    "L1": (0, 1e4, True), "r0": (0, 1e4, True), "r1": (0, 1e4, True), "barr": (0, 100, True),
+    "L2": (0, 1e4, True), "L3": (0, 1e4, True), "L4": (0, 1e4, False),
+    "m": (0, 1e4, False), "g": (0, 100, False), "th0": (-90, 90, False),
+    "red": (0, 1e4, True), "cicloRev": (-1e4, 1e4, False),
+}
+
+
+def mech_load() -> dict:
+    try:
+        data = json.loads(MECH_FILE.read_text())
+        return {**MECH_DEFAULTS, **{k: v for k, v in data.items() if k in MECH_DEFAULTS}}
+    except FileNotFoundError:
+        return dict(MECH_DEFAULTS)
+    except Exception as e:
+        log.warning("MECH  mecanismo.json ilegible (%s), uso los valores por defecto", e)
+        return dict(MECH_DEFAULTS)
+
+
+def mech_validate(body: dict):
+    """Devuelve (config, None) o (None, motivo). Rechaza en vez de recortar: un valor
+    recortado en silencio es justo el tipo de error que no se ve en la gráfica."""
+    out = mech_load()
+    for k, v in body.items():
+        if k not in MECH_DEFAULTS:
+            return None, f"clave desconocida: {k}"
+        if k == "tipo":
+            if v not in ("car", "cil"):
+                return None, "tipo tiene que ser 'car' o 'cil'"
+            out[k] = v
+        elif k == "sentido":
+            if v not in (-1, 1, "-1", "1"):
+                return None, "sentido tiene que ser -1 o 1"
+            out[k] = int(v)
+        else:
+            try:
+                f = float(v)
+            except (TypeError, ValueError):
+                return None, f"{k} no es un número"
+            lo, hi, excl = MECH_RANGOS[k]
+            if f != f or f > hi or f < lo or (excl and f == lo):
+                return None, f"{k} fuera de rango ({lo}{' excluido' if excl else ''} … {hi})"
+            out[k] = f
+    return out, None
+
+
+@app.get("/api/mecanismo")
+async def get_mech():
+    return JSONResponse(mech_load())
+
+
+@app.put("/api/mecanismo")
+async def put_mech(body: dict):
+    cfg, err = mech_validate(body)
+    if err:
+        return JSONResponse({"error": err}, status_code=400)
+    # Escritura atómica: un corte a medias no puede dejar un JSON truncado.
+    tmp = MECH_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(cfg, indent=2))
+    os.replace(tmp, MECH_FILE)
+    log.info("MECH  guardado %s", json.dumps(cfg))
+    return JSONResponse(cfg)
+
+
+@app.get("/sim")
+async def sim():
+    """Simulador del mecanismo: aquí se configura la geometría que usan las demás páginas."""
+    return HTMLResponse((Path(__file__).parent / "static" / "sim.html").read_text())
+
+
+@app.get("/mecanismo.js")
+async def mecanismo_js():
+    return FileResponse(Path(__file__).parent / "static" / "mecanismo.js",
+                        media_type="application/javascript",
+                        headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/tema.css")
+async def tema_css():
+    return FileResponse(Path(__file__).parent / "static" / "tema.css",
+                        media_type="text/css", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/tema.js")
+async def tema_js():
+    return FileResponse(Path(__file__).parent / "static" / "tema.js",
+                        media_type="application/javascript",
+                        headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/nav.js")
+async def nav_js():
+    return FileResponse(Path(__file__).parent / "static" / "nav.js",
+                        media_type="application/javascript",
+                        headers={"Cache-Control": "no-cache"})
+
 
 @app.get("/ensayos")
 async def ensayos():

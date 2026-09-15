@@ -1,0 +1,46 @@
+\chapter{Formato de los ficheros de ensayo}
+\label{anx:csv}
+
+Cada ciclo se graba en \fichero{cycles/AAAAMMDD-HHMMSS\_ciclo.csv}, codificado en UTF-8. Las líneas que
+empiezan por \codigo{\#} forman la cabecera, con las constantes en pares \codigo{clave=valor}; después
+viene una línea de nombres de columna y una fila por muestra.
+
+\begin{lstlisting}[numbers=none,caption={Comienzo del fichero \fichero{20260915-181346\_ciclo.csv}.}]
+# ensayo 2026-09-15 18:13:46
+# lc1_cuentas_por_N=0
+# repeticiones_pedidas=1  B=1.000 rev (posicion)
+# lc1_base ya lleva restada la tara del firmware; lc1_raw es cruda
+t_ms,t_rel_s,rep,fase,pos_rev,lc1_raw,lc1_base,rpm,par_x10,ref_rpm,lim_a,lim_b,estado,work_us
+\end{lstlisting}
+
+La versión actual del servidor escribe además \codigo{lc1\_cero\_N} (fuerza en el punto de tara) y
+\codigo{lc1\_int16} en la segunda línea.
+
+\begin{longtable}{@{}llL{0.58\textwidth}@{}}
+\caption{Columnas del fichero de ensayo.}\label{tab:csv}\\
+\toprule
+Columna & Unidad & Descripción \\
+\midrule
+\endfirsthead
+\toprule
+Columna & Unidad & Descripción \\
+\midrule
+\endhead
+t\_ms & ms & Reloj del microcontrolador \\
+t\_rel\_s & s & Tiempo desde la primera muestra del ensayo \\
+rep & -- & Repetición en curso (desde 1) \\
+fase & -- & \codigo{hacia\_B} o \codigo{volviendo\_a\_A} \\
+pos\_rev & rev & Posición del eje del motor integrada por el servidor \\
+lc1\_raw & cuentas & Lectura bruta del ZSC31014 (una por lote) \\
+lc1\_base & cuentas & Media móvil de 8 lecturas menos la tara del firmware \\
+rpm & rpm & Velocidad medida por el accionamiento \\
+par\_x10 & 0,1\,\ua & Par medido por el accionamiento \\
+ref\_rpm & rpm & Consigna de velocidad \\
+lim\_a, lim\_b & 0/1 & Estado de los finales de carrera \\
+estado & -- & Estado de la máquina (tabla~\ref{tab:estados}) \\
+work\_us & µs & Tiempo de trabajo de la vuelta del lazo \\
+\bottomrule
+\end{longtable}
+
+\noindent Conversión a fuerza: $F\,[\si{\newton}] = \text{lc1\_base}/k + F_0$, con $k$ =
+\codigo{lc1\_cuentas\_por\_N} y $F_0$ = \codigo{lc1\_cero\_N}.

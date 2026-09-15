@@ -1,0 +1,293 @@
+\chapter{Modelo del mecanismo}
+\label{chap:modelo}
+
+Este capítulo desarrolla el modelo estático del mecanismo. Relaciona el ángulo de la barra con la
+longitud del cable y la tensión, y a partir de ahí obtiene el par en el tambor para tres perfiles:
+cilíndrico, espiral lineal y perfil ideal de par constante. Termina con el método que se usará
+para separar, en el par medido, la parte debida a la gravedad de la debida a las pérdidas. Las
+mismas ecuaciones están implementadas en las páginas de supervisión
+(\fichero{static/index.html} y \fichero{static/ensayos.html}), lo que permite superponer la curva
+teórica a cada ensayo.
+
+\section{Descripción del mecanismo}
+
+La figura~\ref{fig:mecanismo} muestra el esquema. Una barra rígida está articulada en el punto O y
+lleva suspendida una masa $m$ a una distancia $L_3+L_4$ de la articulación. Un cable se ancla a la
+barra en el punto P, a una distancia $L_3$ de O, y sube hasta el punto de salida E, situado a una
+altura $L_2$ sobre la vertical de O. Desde E, el cable se enrolla en la caracola, que gira solidaria
+al eje de salida de la transmisión del servo, con una reducción $N$ motor:tambor. El ángulo
+$\theta$ de la barra se mide desde la horizontal, positivo hacia arriba; su recorrido físico va de
+$+90^\circ$ (masa arriba) a $-90^\circ$ (masa abajo).
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=1.8,>=Stealth]
+  \def\th{35}
+  \coordinate (O) at (0,0);
+  \coordinate (E) at (0,2.9);
+  \coordinate (P) at ({0.95*cos(\th)},{0.95*sin(\th)});
+  \coordinate (W) at ({2.05*cos(\th)},{2.05*sin(\th)});
+  \fill[gray!25] (-0.35,-0.12) rectangle (0.35,0);
+  \draw[gray!60,line width=2pt] (0,0) -- (0,2.68);
+  \draw[dashed,gray] (O) -- (1.15,0);
+  \draw[->] (0.42,0) arc (0:\th:0.42);
+  \node at ({0.64*cos(14)},{0.64*sin(14)}) {$\theta$};
+  \draw[line width=2.4pt] (O) -- (W);
+  \draw[blue!70!black,thick] (E) -- (P) node[pos=0.45,right] {$c$};
+  \draw[violet,thick] (E) circle (0.22);
+  \draw[violet] plot[domain=0:600,samples=90,smooth] ({(0.04+0.00028*\x)*cos(\x)},{2.9+(0.04+0.00028*\x)*sin(\x)});
+  \node[violet,right] at (0.3,2.98) {caracola $r(\varphi)$};
+  \node[right,font=\small] at (0.3,3.28) {servo + reducción $N$};
+  \fill (O) circle (1.6pt) node[below=3pt] {O};
+  \fill[blue!70!black] (P) circle (1.4pt) node[below right] {P};
+  \fill (E) circle (1.2pt);
+  \node[right] at (0.2,2.62) {E};
+  \draw (W) -- ++(0,-0.38);
+  \fill[orange!80!black] ($(W)+(-0.15,-0.66)$) rectangle ($(W)+(0.15,-0.38)$);
+  \draw[->,thick] ($(W)+(0,-0.7)$) -- ++(0,-0.4) node[right] {$mg$};
+  \draw[->,thick,red!75!black] (P) -- ($(P)!0.32!(E)$) node[left] {$T$};
+  \draw[<->] (-0.6,0) -- (-0.6,2.9) node[midway,left] {$L_2$};
+  \draw[dotted] (-0.66,2.9) -- (-0.05,2.9);
+  \node[above left=0pt] at ($(O)!0.55!(P)$) {$L_3$};
+  \node[above left=0pt] at ($(P)!0.5!(W)$) {$L_4$};
+\end{tikzpicture}
+\caption{Esquema del mecanismo de elevación con caracola.}
+\label{fig:mecanismo}
+\end{figure}
+
+El modelo parte de las siguientes hipótesis:
+\begin{enumerate}[label=H\arabic*.]
+  \item Régimen cuasiestático: a velocidad constante se desprecian las fuerzas de inercia.
+  \item Cable inextensible y sin masa; el punto de salida E es fijo (polea o tambor de dimensión
+        despreciable frente a $L_2$).
+  \item Se desprecia la masa de la barra frente a la masa suspendida
+        \completar{si la masa de la barra no es despreciable, añadir su momento $m_b g\,x_{G}\cos\theta$
+        en la ecuación~\eqref{eq:equilibrio}; la estructura del resultado no cambia}.
+  \item Las pérdidas por rozamiento no entran en el modelo estático; se tratan aparte en la
+        sección~\ref{sec:mod-separacion}.
+\end{enumerate}
+
+\section{Longitud del cable}
+
+Con O en el origen, E en $(0, L_2)$ y P en $(L_3\cos\theta,\ L_3\sin\theta)$, la longitud del cable
+es la distancia entre E y P:
+\begin{equation}
+  c(\theta)^2 = L_2^2 + L_3^2 - 2L_2L_3\sin\theta .
+  \label{eq:cable}
+\end{equation}
+La función es monótona decreciente en $\theta\in[-90^\circ,90^\circ]$, así que cada longitud de
+cable corresponde a un único ángulo. Los valores extremos son
+$c_{\min} = |L_2-L_3|$ con la barra vertical hacia arriba y $c_{\max} = L_2+L_3$ con la barra
+vertical hacia abajo. Despejando,
+\begin{equation}
+  \sin\theta = \frac{L_2^2 + L_3^2 - c^2}{2L_2L_3}.
+  \label{eq:angulo}
+\end{equation}
+
+\section{Tensión del cable}
+
+El momento del peso respecto a O es $mg(L_3+L_4)\cos\theta$. El brazo de la tensión respecto a O
+se obtiene del producto vectorial $\overrightarrow{OP}\times\hat{u}_{PE}$, con
+$\overrightarrow{PE}=(-L_3\cos\theta,\ L_2 - L_3\sin\theta)$:
+\begin{equation}
+  d = \frac{\left| L_3\cos\theta\,(L_2 - L_3\sin\theta) + L_3\sin\theta\, L_3\cos\theta \right|}{c}
+    = \frac{L_2 L_3 \cos\theta}{c}.
+\end{equation}
+Igualando momentos,
+\begin{equation}
+  T\,\frac{L_2L_3\cos\theta}{c} = mg\,(L_3+L_4)\cos\theta ,
+  \label{eq:equilibrio}
+\end{equation}
+el factor $\cos\theta$ se cancela y queda un resultado notablemente simple:
+\begin{equation}
+  \boxed{\,T = K\,c, \qquad K = \frac{mg\,(L_3+L_4)}{L_2L_3}\,}
+  \label{eq:tension}
+\end{equation}
+\emph{La tensión es proporcional a la longitud libre de cable.} En las posiciones verticales
+($\theta=\pm 90^\circ$) los dos brazos se anulan y el equilibrio queda indeterminado; la
+expresión~\eqref{eq:tension} da el límite por continuidad.
+
+Con la geometría nominal de la tabla~\ref{tab:geometria}, la tensión varía entre
+\SI{28.5}{\newton} con la masa arriba y \SI{56.2}{\newton} con la masa abajo, es decir, se
+duplica a lo largo del recorrido completo (figura~\ref{fig:modelo-perfiles}, izquierda).
+
+\begin{table}[H]
+\centering
+\caption{Geometría nominal empleada en el modelo. Son los valores por defecto de la interfaz de
+supervisión \verificar{sustituir por las cotas medidas en el prototipo y regenerar las figuras}.}
+\label{tab:geometria}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Parámetro & Valor & Comentario \\
+\midrule
+$L_2$ & \SI{290}{\milli\metre} & altura de la salida del cable \\
+$L_3$ & \SI{95}{\milli\metre} & anclaje del cable en la barra \\
+$L_4$ & \SI{110}{\milli\metre} & resto de barra hasta la masa \\
+$m$ & \SI{2}{\kilo\gram} & masa suspendida \\
+$K$ & \SI{0.1460}{\newton\per\milli\metre} & ecuación~\eqref{eq:tension} \\
+$c_{\min}$ -- $c_{\max}$ & \SIrange{195}{385}{\milli\metre} & recorrido de cable $\Delta c=\SI{190}{\milli\metre}$ \\
+$\varphi_{\text{tot}}$ & \SI{0.5}{rev} de tambor & barrido de la caracola \\
+$N$ & 4 & reducción motor:tambor \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Par en el tambor}
+
+Si el tambor tiene un radio de enrollamiento $r(\varphi)$ que depende de su giro $\varphi$, el
+cable pagado es $s(\varphi) = \int_0^{\varphi} r(u)\,\mathrm{d}u$, y la longitud libre, tomando como
+origen la masa arriba y el sentido en que el cable se desenrolla, es
+\begin{equation}
+  c(\varphi) = c_{\min} + s(\varphi), \qquad \frac{\mathrm{d}c}{\mathrm{d}\varphi} = r(\varphi).
+  \label{eq:cable-tambor}
+\end{equation}
+El par en el eje del tambor y en el eje del motor son
+\begin{equation}
+  \tau(\varphi) = T\,r(\varphi) = K\,c(\varphi)\,r(\varphi), \qquad
+  \tau_m = \frac{\tau}{N\,\eta},
+  \label{eq:par}
+\end{equation}
+donde $\eta$ es el rendimiento de la transmisión, y el giro del tambor se relaciona con la posición
+del motor $p$ (en revoluciones) mediante $\varphi = 2\pi p/N$.
+
+\subsection{Cota inferior del par de pico}
+
+Cualquiera que sea el perfil, el trabajo realizado sobre el tambor a lo largo del recorrido
+completo es igual al aumento de energía potencial de la masa:
+\begin{equation}
+  W = \int_0^{\varphi_{\text{tot}}} \tau\,\mathrm{d}\varphi = \int_{c_{\min}}^{c_{\max}} T\,\mathrm{d}c
+    = \frac{K}{2}\left(c_{\max}^2 - c_{\min}^2\right) = mg\,(L_3+L_4)\,(\sin\theta_1-\sin\theta_2).
+  \label{eq:trabajo}
+\end{equation}
+Para el recorrido completo ($\theta$ de $+90^\circ$ a $-90^\circ$), $W = 2mg(L_3+L_4) =
+\SI{8.044}{\joule}$. Como la integral del par sobre $[0,\varphi_{\text{tot}}]$ vale $W$, su valor
+máximo no puede ser menor que su valor medio:
+\begin{equation}
+  \max_{\varphi}\tau(\varphi) \;\geq\; \frac{W}{\varphi_{\text{tot}}}.
+  \label{eq:cota}
+\end{equation}
+La igualdad sólo se alcanza si el par es constante. \emph{El perfil de par constante es, por
+tanto, el que minimiza el par de pico para un recorrido y un giro de tambor dados.}
+
+\subsection{Tambor cilíndrico}
+
+Con $r=r_c$ constante, el cable se paga de forma lineal. Para cubrir el recorrido en el mismo giro
+hace falta $r_c = \Delta c/\varphi_{\text{tot}} = \SI{60.5}{\milli\metre}$, y el par
+$\tau = K c\, r_c$ crece linealmente con el giro, de \num{1.72} a \SI{3.40}{\newton\metre}. El
+cociente entre el par de pico del perfil ideal y el del cilindro tiene una expresión cerrada:
+\begin{equation}
+  \frac{\tau_{\text{ideal}}}{\tau_{\text{cil,max}}}
+    = \frac{K\,(c_{\max}^2 - c_{\min}^2)/(2\varphi_{\text{tot}})}{K\,c_{\max}\,\Delta c/\varphi_{\text{tot}}}
+    = \frac{c_{\max}+c_{\min}}{2\,c_{\max}},
+  \label{eq:reduccion}
+\end{equation}
+que sólo depende de la geometría. Con los valores nominales vale $580/770 = 0{,}753$: la caracola
+ideal reduce el par de pico un \SI{24.7}{\percent}.
+
+\subsection{Perfil ideal de par constante}
+
+Imponiendo $\tau = K c\,r = \text{cte}$ y usando~\eqref{eq:cable-tambor}, $c\,\mathrm{d}c/\mathrm{d}\varphi = C$
+con $C=\tau/K$. Integrando desde $c(0)=c_0$:
+\begin{equation}
+  \boxed{\,c(\varphi) = \sqrt{c_0^2 + 2C\varphi}, \qquad r(\varphi) = \frac{C}{\sqrt{c_0^2 + 2C\varphi}}\,}
+  \qquad\text{con}\quad C = \frac{c_{\max}^2 - c_{\min}^2}{2\,\varphi_{\text{tot}}}.
+  \label{eq:ideal}
+\end{equation}
+El radio ideal es inversamente proporcional a la longitud de cable, igual que el \emph{fusee}
+compensa un muelle cuya fuerza decrece. Con la geometría nominal, $C = \SI{17539}{\milli\metre\squared\per\radian}$,
+el radio pasa de \SI{89.9}{\milli\metre} a \SI{45.6}{\milli\metre} (una relación de 2 a 1) y el par
+es constante e igual a $W/\varphi_{\text{tot}} = \SI{2.56}{\newton\metre}$ en el tambor, o
+\SI{0.64}{\newton\metre} en el motor con $N=4$ y $\eta=1$.
+
+La consecuencia práctica es que el radio debe ser \emph{grande donde la tensión es pequeña} (masa
+arriba) y \emph{pequeño donde la tensión es grande} (masa abajo).
+
+\subsection{Espiral de radio lineal}
+
+Una espiral de Arquímedes, con radio lineal en el giro, es más sencilla de fabricar y es el perfil
+que modela la página de ensayos:
+\begin{equation}
+  r(\varphi) = r_0 + (r_1-r_0)\frac{\varphi}{\varphi_{\text{tot}}}, \qquad
+  s(\varphi) = r_0\varphi + \frac{(r_1-r_0)\,\varphi^2}{2\varphi_{\text{tot}}}.
+  \label{eq:espiral}
+\end{equation}
+Para compararla en igualdad de condiciones, se ha buscado numéricamente la relación $r_1/r_0$ que
+minimiza el par de pico con la restricción de pagar exactamente $\Delta c$ en $\varphi_{\text{tot}}$.
+El óptimo es $r_0 = \SI{77.2}{\milli\metre}$, $r_1 = \SI{43.7}{\milli\metre}$, con un par entre
+\num{2.20} y \SI{2.68}{\newton\metre}.
+
+\subsection{Comparación}
+
+La figura~\ref{fig:modelo-perfiles} y la tabla~\ref{tab:perfiles} resumen los tres perfiles. Los
+tres realizan el mismo trabajo ($\SI{8.044}{\joule}$, comprobado numéricamente), pero lo reparten
+de forma muy distinta. La espiral lineal consigue el \SI{85}{\percent} de la reducción de pico
+alcanzable y baja el rizado de par del \SI{66}{\percent} al \SI{19}{\percent}.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{modelo_perfiles.pdf}
+\caption{Modelo con la geometría nominal. Izquierda: tensión del cable frente al ángulo de la
+barra. Centro: radio de enrollamiento de los tres perfiles. Derecha: par en el tambor.}
+\label{fig:modelo-perfiles}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\caption{Comparación de perfiles de tambor con la geometría nominal (recorrido completo,
+$\varphi_{\text{tot}}=\SI{0.5}{rev}$).}
+\label{tab:perfiles}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+Perfil & $r$ inicial & $r$ final & $\tau$ mín. & $\tau$ máx. & Rizado \\
+       & (mm) & (mm) & (N·m) & (N·m) & $\frac{\max-\min}{\text{media}}$ \\
+\midrule
+Cilindro         & 60,5 & 60,5 & 1,72 & 3,40 & \SI{66}{\percent} \\
+Espiral lineal   & 77,2 & 43,7 & 2,20 & 2,68 & \SI{19}{\percent} \\
+Ideal            & 89,9 & 45,6 & 2,56 & 2,56 & \SI{0}{\percent} \\
+\midrule
+\multicolumn{6}{@{}l}{Reducción del par de pico frente al cilindro: lineal \SI{21.1}{\percent};
+ideal \SI{24.7}{\percent}.}\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Separación experimental de las componentes del par}
+\label{sec:mod-separacion}
+
+El accionamiento entrega el par en unidades internas cuya escala no se ha confirmado, y el par
+medido incluye además las pérdidas por rozamiento de la transmisión y del cable. Para comparar la
+medida con el modelo sin depender de esa escala se propone el siguiente método.
+
+Si se recorre el mismo punto $p$ subiendo la masa (sentido A en el prototipo) y bajándola (sentido
+B) a la misma velocidad constante, las pérdidas se oponen al movimiento en ambos casos, mientras que
+el par gravitatorio conserva el signo. Suponiendo pérdidas simétricas,
+\begin{equation}
+  |\tau_A(p)| = \tau_g(p) + \tau_f(p), \qquad |\tau_B(p)| = \tau_g(p) - \tau_f(p),
+\end{equation}
+de donde
+\begin{equation}
+  \tau_g = \frac{|\tau_A| + |\tau_B|}{2}, \qquad \tau_f = \frac{|\tau_A| - |\tau_B|}{2}.
+  \label{eq:separacion}
+\end{equation}
+El mismo promedio aplicado a la fuerza medida en ambos sentidos elimina en primera aproximación el
+retardo del filtro de la célula de carga, que desplaza la curva de subida y la de bajada en sentidos
+opuestos. Por último, la ecuación~\eqref{eq:par} permite estimar un \emph{radio efectivo relativo}
+\begin{equation}
+  r_{\text{ef}}(p) \propto \frac{\tau_g(p)}{T(p)},
+  \label{eq:radio-efectivo}
+\end{equation}
+cuya forma no depende de la escala del par ni de la reducción. En un tambor cilíndrico sería
+constante, y en una caracola compensadora debe decrecer a medida que aumenta la tensión.
+
+\section{Limitaciones del modelo}
+
+\begin{itemize}
+  \item El punto de salida del cable del tambor real se desplaza ligeramente con el radio, lo que
+        modifica $L_2$ en unos milímetros.
+  \item Se desprecian la elasticidad del cable y la masa de la barra.
+  \item El rendimiento de la transmisión y las pérdidas se suponen independientes del sentido de
+        giro, en valor absoluto, para aplicar~\eqref{eq:separacion}.
+  \item Las cotas de la tabla~\ref{tab:geometria} son nominales; con las cotas reales cambian los
+        valores numéricos, pero no las conclusiones cualitativas ni las
+        expresiones~\eqref{eq:cota}--\eqref{eq:ideal}.
+\end{itemize}

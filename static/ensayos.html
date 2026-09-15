@@ -5,81 +5,49 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Ensayos grabados</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="/fui/css/fanuc-ui.css">
+  <link rel="stylesheet" href="/tema.css">
+  <script src="/tema.js"></script>
+  <script src="/mecanismo.js"></script>
+  <script src="/nav.js" defer></script>
   <style>
-    :root {
-      --bg:#0d1117; --card:#161b22; --border:#30363d; --text:#c9d1d9; --muted:#8b949e;
-      --green:#3fb950; --yellow:#d29922; --red:#f85149; --blue:#58a6ff;
-      --cyan:#79c0ff; --purple:#bc8cff;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: var(--bg); color: var(--text); font-family: 'Courier New', monospace;
-           font-size: 13px; min-height: 100vh; }
-    .wrap { max-width: 1500px; margin: 0 auto; padding: 14px; }
-    .top { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
-    .top h1 { font-size: 15px; font-weight: 400; }
-    a { color: var(--blue); text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    button, select {
-      padding: 6px 12px; border: 1px solid var(--border); border-radius: 4px;
-      background: #21262d; color: var(--text); cursor: pointer;
-      font-family: inherit; font-size: 12px;
-    }
-    button:hover { background: #30363d; }
-    .row { display: flex; gap: 12px; flex-wrap: wrap; }
-    .card { background: var(--card); border: 1px solid var(--border);
-            border-radius: 6px; padding: 12px 14px; }
+    /* Sólo maquetación. Colores, tipografía y componentes: fanuc-ui.css y tema.css. */
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-start; }
+    .card { padding: 8px 10px; }
     .col-list { flex: 0 0 300px; }
-    .col-main { flex: 1; min-width: 420px; display: flex; flex-direction: column; gap: 12px; }
-    .title { font-size: 10px; text-transform: uppercase; letter-spacing: .09em;
-             color: var(--muted); margin-bottom: 9px; }
-    .files { display: flex; flex-direction: column; gap: 4px; max-height: 70vh; overflow-y: auto; }
-    .file {
-      padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px;
-      background: #0d1117; cursor: pointer; font-size: 11px; line-height: 1.5;
-    }
-    .file:hover { border-color: var(--blue); }
-    .file.sel { border-color: var(--blue); background: #10263f; }
-    .file .w { color: var(--muted); font-size: 10px; }
+    .col-main { flex: 1; min-width: 420px; display: flex; flex-direction: column; gap: 10px; }
+    .lista-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 7px; }
+    .lista-head .title { margin: 0; }
+    .files { display: flex; flex-direction: column; gap: 3px; max-height: 70vh; overflow-y: auto; }
+    .file { padding: 5px 7px; background: var(--fui-field); border: 1px solid var(--fui-rule-soft);
+            cursor: pointer; font-size: 12px; line-height: 1.45; }
+    .file:hover { border-color: var(--fui-title); }
+    .file.sel { background: var(--fui-select); border-color: var(--fui-rule); }
+    .file .w { color: var(--fui-ink-3); font-size: 11px; }
     .file .head { display: flex; align-items: center; gap: 6px; }
     .file .name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
-    .del {
-      padding: 1px 6px; font-size: 11px; line-height: 1.4;
-      border-color: transparent; background: transparent; color: var(--muted);
-    }
-    .del:hover { background: #2d1113; border-color: var(--red); color: var(--red); }
-    .chips { display: flex; flex-wrap: wrap; gap: 5px; }
-    .chip { background:#0d1117; border:1px solid var(--border); border-radius:4px;
-            padding:2px 7px; font-size:10px; color:var(--muted); white-space:nowrap; }
-    .chip b { color: var(--text); font-weight: 400; }
-    table { width: 100%; border-collapse: collapse; font-size: 11px; }
-    th, td { text-align: right; padding: 4px 8px; border-bottom: 1px solid var(--border); }
-    th { color: var(--muted); font-weight: 400; text-transform: uppercase;
-         font-size: 10px; letter-spacing: .06em; }
-    td:first-child, th:first-child { text-align: left; }
-    .muted { color: var(--muted); }
+    .fui-screen button.del { padding: 0 6px; background: transparent; border-color: transparent; color: var(--fui-ink-3); }
+    .fui-screen button.del:hover { background: transparent; border-color: var(--fui-fail); color: var(--fui-fail); }
     canvas { max-height: 300px; }
-    input[type=number], select {
-      padding: 4px 6px; background: #0d1117; border: 1px solid var(--border);
-      color: var(--text); border-radius: 4px; font-family: inherit; font-size: 11px;
-      width: 100%; margin-top: 3px;
-    }
-    input:focus, select:focus { outline: none; border-color: var(--blue); }
+    .fui-screen input[type=number], .fui-screen select { width: 100%; margin-top: 3px; }
     details > summary::-webkit-details-marker { display: none; }
-    [hidden] { display: none !important; }
   </style>
 </head>
-<body>
-<div class="wrap">
-  <div class="top">
-    <h1>Ensayos grabados</h1>
-    <a href="/">← volver al monitor</a>
-    <button onclick="cargarLista()">⟲ Actualizar</button>
-    <span id="estado" class="muted"></span>
+<body class="fui-page">
+<div class="fui-bezel tema-marco">
+  <div class="fui-plate">
+    <span class="fui-brand">CARACOLA</span>
+    <span>Banco de ensayos · Pico 2</span>
   </div>
-
+  <main class="fui-screen">
+    <div class="fui-titlebar"><span>ENSAYOS  GRABADOS</span><span class="fui-titlebar-end">cycles/</span></div>
+    <section class="fui-view">
   <div class="row">
     <div class="card col-list">
-      <div class="title">Ficheros en cycles/</div>
+      <div class="lista-head">
+        <div class="title">Ficheros en cycles/</div>
+        <button onclick="cargarLista()">⟲ Actualizar</button>
+      </div>
       <div class="files" id="lista"><span class="muted">cargando…</span></div>
     </div>
 
@@ -104,49 +72,15 @@
         <details style="margin-bottom:10px">
           <summary style="cursor:pointer;color:var(--muted);font-size:11px;list-style:none">
             ▸ superponer curva teórica</summary>
-          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:9px">
-            <label style="font-size:11px;color:var(--muted)">tambor
-              <select id="e-tipo" onchange="tipoTambor()">
-                <option value="car">caracola (radio variable)</option>
-                <option value="cil">cilindro (radio fijo)</option>
-              </select></label>
-            <label style="font-size:11px;color:var(--muted)" id="w-l1" hidden>radio del cilindro (mm)
-              <input type="number" id="e-l1" value="25" step="0.1" min="0.1" oninput="reTeo()"></label>
-            <label style="font-size:11px;color:var(--muted)" id="w-r0">radio inicial r0 (mm)
-              <input type="number" id="e-r0" value="25" step="0.1" min="0.1" oninput="reTeo()"></label>
-            <label style="font-size:11px;color:var(--muted)" id="w-r1">radio final r1 (mm)
-              <input type="number" id="e-r1" value="45" step="0.1" min="0.1" oninput="reTeo()"></label>
-            <label style="font-size:11px;color:var(--muted)" id="w-barr">barrido del tambor (rev)
-              <input type="number" id="e-barr" value="0.5" step="0.01" min="0.01" oninput="reTeo()"
-                     title="Vueltas que da la caracola en el recorrido completo."></label>
-            <label style="font-size:11px;color:var(--muted)">L2 cateto vertical (mm)
-              <input type="number" id="e-l2" value="290" step="1" min="0" oninput="reTeo()"></label>
-            <label style="font-size:11px;color:var(--muted)">L3 hasta el cable (mm)
-              <input type="number" id="e-l3" value="95" step="1" min="0.1" oninput="reTeo()"></label>
-            <label style="font-size:11px;color:var(--muted)">L4 resto barra (mm)
-              <input type="number" id="e-l4" value="110" step="1" min="0" oninput="reTeo()"></label>
-            <label style="font-size:11px;color:var(--muted)">masa (kg)
-              <input type="number" id="e-m" value="2" step="0.01" min="0" oninput="reTeo()"></label>
-            <label style="font-size:11px;color:var(--muted)">g (m/s²)
-              <input type="number" id="e-g" value="9.81" step="0.01" min="0" oninput="reTeo()"></label>
-            <label style="font-size:11px;color:var(--muted)">barra en el home (°)
-              <input type="number" id="e-th0" value="90" step="1" min="-90" max="90" oninput="reTeo()"
-                     title="Ángulo de la barra cuando pos_rev = 0. 0 = horizontal, +90 = pesa arriba, -90 = pesa abajo. Es el que fija la longitud de cable de partida."></label>
-            <label style="font-size:11px;color:var(--muted)">reducción motor:tambor
-              <input type="number" id="e-red" value="4.0" step="0.01" min="0.01" oninput="reTeo()"
-                     title="Vueltas de motor por vuelta de espiral. Si hay reductor, el cable enrollado es L1·φ/reducción."></label>
-            <label style="font-size:11px;color:var(--muted)">giro positivo
-              <select id="e-sentido" onchange="reTeo()">
-                <option value="-1">desenrolla (se alarga)</option>
-                <option value="1">enrolla (cable se acorta)</option>
-              </select></label>
-            <label style="font-size:11px;color:var(--muted)">mostrar
-              <select id="e-ver" onchange="reTeo()">
+          <!-- La geometría no se edita aquí: viene de Configuración del mecanismo (/sim),
+               que es la única fuente, y se repinta sola si cambia desde allí. -->
+          <div class="line hint" id="e-mec" style="margin-top:9px;font-size:11px">cargando la configuración…</div>
+          <div class="group-actions" style="margin-top:9px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <label style="font-size:11px;color:var(--muted);display:flex;gap:5px;align-items:center">mostrar
+              <select id="e-ver" onchange="reTeo()" style="width:auto;margin:0">
                 <option value="0">no</option>
                 <option value="1">sí</option>
               </select></label>
-          </div>
-          <div class="group-actions" style="margin-top:9px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <button onclick="ajustarNC()" style="font-size:11px;padding:4px 10px"
                     title="Mínimos cuadrados entre las cuentas de LC1 y la fuerza teórica, sobre las muestras donde la geometría tiene solución.">⇄ Ajustar N/cuenta</button>
             <label style="font-size:11px;color:var(--muted);display:flex;gap:5px;align-items:center">
@@ -158,6 +92,7 @@
             <span id="e-fit" class="chip" hidden></span>
           </div>
           <div class="line hint" id="e-escala" style="margin-top:7px;font-size:11px"></div>
+          <div class="line hint" id="e-angulo" style="margin-top:5px;font-size:11px"></div>
         </details>
         <canvas id="gT"></canvas>
       </div>
@@ -175,11 +110,19 @@
       </div>
     </div>
   </div>
+    </section>
+    <div class="fui-msg"><b>&gt;</b> <span id="estado"></span></div>
+    <div class="fui-statusline"><span>ENS</span><span>****  ***  ***</span><span class="fui-statusline-end" data-reloj>--:--:--</span></div>
+  </main>
+  <nav id="nav" data-actual="ensayos"></nav>
 </div>
 
 <script>
+// Colores del tema FANUC (tema.css), leídos una vez: Chart.js y el canvas no leen CSS.
+const TEMA = coloresTema();
+temaGraficas();
 const el = id => document.getElementById(id);
-const COLORES = ['#58a6ff','#3fb950','#d29922','#bc8cff','#79c0ff','#f85149','#8b949e'];
+const COLORES = [TEMA.azul,TEMA.verde,TEMA.ambar,TEMA.morado,TEMA.cian,TEMA.rojo,TEMA.tinta];
 let gPos = null, gT = null, gVel = null, gPar = null, gParT = null, sel = null;
 let actual = null;   // el ensayo cargado, para repintar al cambiar de célula
 
@@ -245,8 +188,7 @@ async function borrar(nombre) {
       sel = null;
       el('c-resumen').hidden = el('c-pos').hidden = el('c-t').hidden = el('c-vel').hidden = true;
     }
-    tipoTambor();
-cargarLista();
+    cargarLista();
   } catch (e) {
     el('estado').textContent = 'no se pudo borrar: ' + e;
   }
@@ -277,14 +219,17 @@ async function abrir(nombre) {
   actual = { filas, f1, f2, u1, u2, cal1, cal2, hayLc2 };
   el('sel-celula').parentElement.hidden = !hayLc2;
   if (!hayLc2) el('sel-celula').value = '1';
+  // Las tarjetas se muestran ANTES de pintar: Chart.js mide el contenedor al crear la
+  // gráfica, y dentro de una tarjeta oculta mide cero y la deja aplastada hasta el
+  // siguiente redimensionado de la ventana.
+  el('c-resumen').hidden = el('c-pos').hidden = el('c-t').hidden =
+    el('c-par').hidden = el('c-part').hidden = el('c-vel').hidden = false;
   resumen(consts, filas, f1, u1, cal1, f2, u2, cal2, hayLc2);
   repintar();
   pintarT(filas, f1, u1, f2, u2, hayLc2);
   pintarPar(filas);
   pintarParT(filas);
   pintarVel(filas);
-  el('c-resumen').hidden = el('c-pos').hidden = el('c-t').hidden =
-    el('c-par').hidden = el('c-part').hidden = el('c-vel').hidden = false;
 }
 
 // Repinta sólo la gráfica de posición, con la célula que se haya elegido.
@@ -331,12 +276,12 @@ function resumen(consts, filas, f1, u1, cal1, f2, u2, cal2, hayLc2) {
 
 const EJES = (xt, yt) => ({
   responsive: true, animation: false,
-  plugins: { legend: { labels: { color: '#8b949e', boxWidth: 10, font: { size: 10 } } } },
+  plugins: { legend: { labels: { color: TEMA.tinta, boxWidth: 10, font: { size: 10 } } } },
   scales: {
-    x: { type: 'linear', title: { display: true, text: xt, color: '#8b949e' },
-         ticks: { color: '#8b949e' }, grid: { color: '#21262d' } },
-    y: { title: { display: true, text: yt, color: '#8b949e' },
-         ticks: { color: '#8b949e' }, grid: { color: '#21262d' } }
+    x: { type: 'linear', title: { display: true, text: xt, color: TEMA.tinta },
+         ticks: { color: TEMA.tinta }, grid: { color: TEMA.rejilla } },
+    y: { title: { display: true, text: yt, color: TEMA.tinta },
+         ticks: { color: TEMA.tinta }, grid: { color: TEMA.rejilla } }
   }
 });
 
@@ -366,104 +311,147 @@ function pintarPos(filas, fx, ux, nombre) {
 // Fuera del rango en que la geometría tiene solución (c entre |L2−L3| y L2+L3) no se
 // pinta nada en vez de extrapolar: una recta que sigue bajando donde el mecanismo ya no
 // puede estar sería un dato inventado.
-function tipoTambor() {
-  const car = el('e-tipo').value === 'car';
-  el('w-l1').hidden = car;
-  el('w-r0').hidden = el('w-r1').hidden = el('w-barr').hidden = !car;
-  reTeo();
-}
-
 function teoParams() {
-  const v = id => parseFloat(el(id).value);
-  return { tipo: el('e-tipo').value,
-           L1: v('e-l1'), r0: v('e-r0'), r1: v('e-r1'), barr: v('e-barr'),
-           L2: v('e-l2'), L3: v('e-l3'), L4: v('e-l4'),
-           m: v('e-m'), g: v('e-g'), red: v('e-red') || 1, th0: v('e-th0') || 0,
-           sentido: parseInt(el('e-sentido').value), ver: el('e-ver').value === '1' };
+  return { ...Mec.q, ver: el('e-ver').value === '1' };
 }
 
-// ── Tambor: cuánto cable paga y con qué radio instantáneo ────────────────
-// En un cilindro el radio es fijo: el cable sale proporcional al giro y el par es
-// T·r constante. En una caracola el radio crece con el giro, así que:
-//
-//   r(φ) = r0 + (r1−r0)·φ/φtot          radio instantáneo
-//   s(φ) = r0·φ + (r1−r0)·φ²/(2·φtot)   cable pagado (la integral de r)
-//
-// y el par del motor pasa a ser τ = T·r(φ), que es justamente el sentido de poner una
-// caracola: cambiar la relación de transmisión a lo largo del recorrido. Pasado el
-// barrido el radio se queda en r1 en vez de seguir creciendo, que es lo que hace la
-// pieza real cuando el cable llega al final de la espiral.
-function tambor(q, phi) {
-  if (q.tipo === 'cil') return { r: q.L1, s: q.L1 * phi };
-  const phitot = q.barr * 2 * Math.PI;
-  if (phi <= phitot) {
-    const r = q.r0 + (q.r1 - q.r0) * phi / phitot;
-    return { r, s: q.r0 * phi + (q.r1 - q.r0) * phi * phi / (2 * phitot) };
-  }
-  const sTot = phitot * (q.r0 + q.r1) / 2;
-  return { r: q.r1, s: sTot + q.r1 * (phi - phitot) };
+// Resumen de la geometría con la que se está calculando, para que no haya que ir a
+// Configuración a mirar qué números hay puestos.
+function resumenMec() {
+  const q = Mec.q;
+  el('e-mec').innerHTML = `Geometría de <a href="/sim">Configuración del mecanismo</a>: `
+    + (q.tipo === 'car' ? `caracola ${q.r0}→${q.r1} mm en ${q.barr} rev de tambor` : `cilindro de ${q.L1} mm`)
+    + ` · L2 ${q.L2} · L3 ${q.L3} · L4 ${q.L4} mm · ${q.m} kg · home ${q.th0}°`
+    + ` · reducción ${q.red} · giro positivo ${q.sentido < 0 ? 'desenrolla' : 'enrolla'}`;
 }
 
 function teoSerie(filas) {
   const q = teoParams();
-  if (!q.ver) return null;
+  if (!q.ver) { el('e-angulo').textContent = ''; return null; }
   if ([q.L1, q.L2, q.L3, q.L4, q.m, q.g].some(isNaN) || q.L1 <= 0 || q.L3 <= 0) {
-    el('e-aviso').textContent = 'faltan datos'; return null;
+    el('e-aviso').textContent = 'faltan datos';
+    el('e-angulo').textContent = ''; return null;
   }
   // Longitud de cable en el home, que depende del ángulo en que arranca la barra:
   //   c² = L2² + L3² − 2·L2·L3·sen θ0
   // Suponer θ0 = 0 (barra horizontal) era lo que descuadraba el recorrido: si la pesa
   // arranca arriba, el cable de partida es mucho más corto y el margen para bajarla es
   // otro. Los límites cmin/cmax son los topes geométricos: barra vertical arriba y abajo.
-  const th0r = q.th0 * Math.PI / 180;
-  const cHome = Math.sqrt(q.L2*q.L2 + q.L3*q.L3 - 2*q.L2*q.L3*Math.sin(th0r));
+  const cHome = Mec.cHome(q);
   const cmin = Math.abs(q.L2 - q.L3), cmax = q.L2 + q.L3;
   let fuera = 0;
+  // pos_rev es la posición del EJE DEL MOTOR y es absoluta: arranca donde se quedó el
+  // encoder, no en cero. Lo que mueve el mecanismo es el giro del TAMBOR contado DESDE
+  // EL HOME, así que hay que restar la posición de la primera muestra del ensayo (que
+  // es el home, porque el ciclo arranca ahí) y dividir por la reducción:
+  //
+  //   φ_tambor = (pos_rev − pos_rev_home) · 2π / reducción
+  //
+  // Antes se usaba Math.abs(pos_rev), que es dos errores a la vez: tomaba la posición
+  // absoluta del motor como si fuese el giro del tambor, y al plegar el signo convertía
+  // cualquier paso por cero en un pliegue de la curva —el escalón imposible que se veía
+  // en la gráfica de par—. Con el signo conservado la teórica es una función del giro y
+  // el camino de vuelta recorre exactamente el de ida.
+  const pHome = filas.length ? (filas[0].pos_rev || 0) : 0;
   // Se guarda también el par teórico: τ = T·r(φ), con el radio instantáneo del tambor.
   teoPar = [];
+  teoAng = [];
   const data = filas.map(x => {
-    const phi = Math.abs(x.pos_rev || 0) * 2 * Math.PI / q.red;   // rad del tambor
-    const t   = tambor(q, phi);
+    const phi = ((x.pos_rev || 0) - pHome) * 2 * Math.PI / q.red;   // rad del tambor
+    const t   = Mec.tambor(q, phi);
     const c   = cHome - q.sentido * t.s;                 // mm de cable que quedan
     if (c < cmin || c > cmax) {
-      fuera++; teoPar.push({ x: x.t_rel_s, y: null }); return { x: x.t_rel_s, y: null };
+      fuera++; teoPar.push({ x: x.t_rel_s, y: null }); teoAng.push(null);
+      return { x: x.t_rel_s, y: null };
     }
     const T = q.m * q.g * (q.L3 + q.L4) * c / (q.L2 * q.L3);
     teoPar.push({ x: x.t_rel_s, y: T * t.r / 1000 });    // N·m
+    teoAng.push(Mec.barraAng(q, c));
     return { x: x.t_rel_s, y: T };
   });
   // Diagnóstico de escala: las dos cantidades que TIENEN que cuadrar. El cable que paga
   // el servo en todo el ensayo, y el que el mecanismo puede absorber entre la barra
   // horizontal y la vertical. Si no cuadran, no hay sentido de giro ni offset que salve
   // la curva: sobran o faltan milímetros, y es lo primero que hay que arreglar.
-  const posValidas = filas.map(x => x.pos_rev || 0);
-  const giro = Math.max(...posValidas) - Math.min(...posValidas);
-  const cableServo = tambor(q, giro * 2 * Math.PI / q.red).s;
+  const rel = filas.map(x => (x.pos_rev || 0) - pHome);
+  const giro = Math.max(...rel) - Math.min(...rel);
+  // Con la caracola el cable pagado no es proporcional al giro, así que el barrido real
+  // es la diferencia de cable entre los dos extremos del recorrido, no s(giro).
+  const cableServo = Math.abs(Mec.tambor(q, Math.max(...rel) * 2 * Math.PI / q.red).s
+                            - Mec.tambor(q, Math.min(...rel) * 2 * Math.PI / q.red).s);
   // El margen disponible depende del sentido: enrollando se va de cHome a cmin,
   // desenrollando de cHome a cmax. Antes se comparaba siempre contra el recorrido
   // completo, que es lo que hacía que el aviso no cuadrara con lo que se veía.
   const cableMec = q.sentido > 0 ? (cHome - cmin) : (cmax - cHome);
   const ratio = cableMec > 0 ? cableServo / cableMec : 0;
   const esc = el('e-escala');
-  if (ratio > 1.15 || ratio < 0.85) {
+  // Sólo es un error pasarse: pedir más cable del que cabe obliga a la barra a cruzar la
+  // vertical. Quedarse corto es lo normal —el ciclo no tiene por qué llegar a ±90°— y
+  // antes salía en rojo igual, contradiciendo al recorrido angular, que sí es correcto.
+  if (ratio > 1.02) {
     esc.className = 'line err';
-    esc.innerHTML = `Escala descuadrada: el servo mueve <b>${cableServo.toFixed(0)} mm</b> de cable`
+    esc.innerHTML = `El recorrido no cabe: el servo mueve <b>${cableServo.toFixed(0)} mm</b> de cable`
       + ` (${giro.toFixed(2)} rev de motor / reducción ${q.red}`
       + (q.tipo === 'car' ? `, caracola ${q.r0}→${q.r1} mm` : `, cilindro ${q.L1} mm`)
       + `) pero el mecanismo`
       + ` sólo admite <b>${cableMec.toFixed(0)} mm</b> en ese sentido`
       + ` (cable de ${cHome.toFixed(0)} a ${(q.sentido > 0 ? cmin : cmax).toFixed(0)} mm,`
       + ` barra desde ${q.th0}° hasta ${q.sentido > 0 ? '+90' : '−90'}°) → factor <b>${ratio.toFixed(2)}×</b>.`
-      + ` Prueba otro ángulo en el home o el otro sentido.`
+      + ` En <a href="/sim">Configuración</a>: prueba otro ángulo en el home o el otro sentido.`
       + ` Prueba reducción <b>${(q.red * ratio).toFixed(2)}</b>`
       + (q.tipo === 'car'
           ? ` o radios <b>${(q.r0/ratio).toFixed(1)}→${(q.r1/ratio).toFixed(1)} mm</b>.`
           : ` o radio <b>${(q.L1/ratio).toFixed(1)} mm</b>.`);
   } else {
     esc.className = 'line hint';
-    esc.textContent = `Escala coherente: el tambor paga ${cableServo.toFixed(0)} mm de cable`
-      + ` y el mecanismo admite ${cableMec.toFixed(0)} mm en ese sentido (factor ${ratio.toFixed(2)}×),`
-      + ` con la barra saliendo de ${q.th0}° y el cable de ${cHome.toFixed(0)} mm.`;
+    esc.textContent = `El recorrido cabe: el tambor paga ${cableServo.toFixed(0)} mm de cable`
+      + ` de los ${cableMec.toFixed(0)} mm que hay hasta la barra a ${q.sentido > 0 ? '+90' : '−90'}°`
+      + ` (usa el ${(ratio * 100).toFixed(0)}%), con la barra saliendo de ${q.th0}° y el cable de ${cHome.toFixed(0)} mm.`;
+  }
+
+  // ── Recorrido angular de la barra ──────────────────────────────────────
+  // El ángulo final no es un dato libre: sale del ángulo del home más el giro del
+  // tambor. Se muestran los tres que importan —arranque, extremo del ciclo y final— y
+  // el error de cierre, que es la comprobación directa contra el montaje real: si el
+  // ciclo vuelve al home en posición, la barra tiene que volver al ángulo de partida.
+  const ang = el('e-angulo');
+  const iExt = rel.reduce((b, v, i) => Math.abs(v) > Math.abs(rel[b]) ? i : b, 0);
+  const aIni = teoAng[0], aExt = teoAng[iExt], aFin = teoAng[teoAng.length - 1];
+  if (aIni == null || aFin == null) {
+    ang.className = 'line err';
+    ang.textContent = 'La barra tendría que pasar de ±90°: con estos datos el ángulo no existe'
+      + ' en algún punto del ensayo. El cable pedido no cabe en el mecanismo.';
+  } else {
+    const vistos = teoAng.filter(a => a != null);
+    const recorr = Math.max(...vistos) - Math.min(...vistos);
+    const cierre = aFin - aIni;
+    // El cierre no es un error del modelo: el motor no acaba exactamente donde empezó,
+    // y ese resto de giro se traduce en ángulo. Lo que sí avisa es la cercanía a la
+    // vertical, donde cos θ → 0 y un milímetro de cable vale muchos grados: ahí el
+    // ángulo de partida es el parámetro más delicado de todos.
+    const drift = rel[rel.length - 1];
+    const cerca = Math.max(Math.abs(aIni), Math.abs(aFin)) > 80;
+    ang.className = cerca ? 'line warn' : 'line hint';
+    ang.innerHTML = `Barra: home <b>${aIni.toFixed(1)}°</b>`
+      + ` → extremo <b>${aExt == null ? '—' : aExt.toFixed(1) + '°'}</b>`
+      + ` en t=${filas[iExt].t_rel_s.toFixed(2)} s (${rel[iExt].toFixed(2)} rev de motor,`
+      + ` ${(rel[iExt] / q.red).toFixed(3)} rev de tambor)`
+      + ` → final <b>${aFin.toFixed(1)}°</b>`
+      + `, recorrido <b>${recorr.toFixed(1)}°</b>.`
+      + ` El final lo predice el modelo: ${cierre >= 0 ? '+' : ''}${cierre.toFixed(1)}° respecto del home,`
+      + ` que es lo que dan los ${drift >= 0 ? '+' : ''}${drift.toFixed(3)} rev de motor que quedan sin devolver.`
+      + ` Compáralo con la barra real.`
+      + (giro > 0 && q.tipo === 'car'
+          ? ` · Si el ciclo barriera el tambor completo, la reducción saldría`
+            + ` <b>${(giro / q.barr).toFixed(2)}</b>.` : '')
+      + (cerca ? ` Ojo: a más de 80° el ángulo es muy sensible al cable (cos θ → 0).` : '')
+      // El cable sólo depende de sen θ0, y el seno es simétrico respecto de 90°: meter
+      // 100° da exactamente el mismo cable que 80°. El rango físico de la barra es
+      // ±90°, así que pasarse no da error, da otro ángulo en silencio. Se avisa.
+      + (Math.abs(aIni - q.th0) > 0.5
+          ? ` Has puesto ${q.th0}° en el home, pero el cable que sale de ahí corresponde`
+            + ` a <b>${aIni.toFixed(1)}°</b>: la barra sólo llega a ±90° y sen θ es simétrico`
+            + ` respecto de la vertical.` : '');
   }
 
   const validos = data.filter(d => d.y !== null).map(d => d.y);
@@ -484,6 +472,7 @@ function teoSerie(filas) {
 // Por eso se informa también de la cobertura, que es el dato que de verdad avisa.
 let ajuste = null;   // {a, b, r2, n} del último ajuste
 let teoPar = null;   // par teórico por muestra, que lo calcula teoSerie de paso
+let teoAng = null;   // ángulo de la barra por muestra, en grados
 
 function ajustarNC() {
   if (!actual) return;
@@ -529,10 +518,10 @@ function reTeo() {
 function pintarT(filas, f1, u1, f2, u2, hayLc2) {
   const ds = [
     { label: `LC1 (${u1})`, showLine: true, pointRadius: 0, borderWidth: 1.4,
-      borderColor: '#3fb950', yAxisID: 'y',
+      borderColor: TEMA.verde, yAxisID: 'y',
       data: filas.map(x => ({ x: x.t_rel_s, y: f1(x) })) },
     { label: 'posición (rev)', showLine: true, pointRadius: 0, borderWidth: 1.2,
-      borderColor: '#58a6ff', yAxisID: 'y2',
+      borderColor: TEMA.azul, yAxisID: 'y2',
       data: filas.map(x => ({ x: x.t_rel_s, y: x.pos_rev })) }
   ];
   // La teórica va en newtons. Si LC1 está calibrada también, comparten eje y se
@@ -548,26 +537,26 @@ function pintarT(filas, f1, u1, f2, u2, hayLc2) {
   }
   if (teo) ds.push({
     label: 'teórica (N)', showLine: true, pointRadius: 0, borderWidth: 1.6,
-    borderColor: '#f85149', borderDash: [6, 3], spanGaps: false,
+    borderColor: TEMA.rojo, borderDash: [6, 3], spanGaps: false,
     yAxisID: (u1 === 'N' || usar) ? 'y' : 'yteo', data: teo
   });
 
   if (hayLc2) ds.splice(1, 0,
     { label: `LC2 (${u2})`, showLine: true, pointRadius: 0, borderWidth: 1.4,
-      borderColor: '#d29922', yAxisID: 'y3',
+      borderColor: TEMA.ambar, yAxisID: 'y3',
       data: filas.map(x => ({ x: x.t_rel_s, y: f2(x) })) });
   const o = EJES('tiempo (s)', `LC1 (${u1})`);
-  o.scales.y2 = { position: 'right', title: { display: true, text: 'posición (rev)', color: '#58a6ff' },
-                  ticks: { color: '#58a6ff' }, grid: { drawOnChartArea: false } };
+  o.scales.y2 = { position: 'right', title: { display: true, text: 'posición (rev)', color: TEMA.azul },
+                  ticks: { color: TEMA.azul }, grid: { drawOnChartArea: false } };
   // LC2 en su propio eje: son cuentas de 24 bits contra 14 de LC1, y compartir escala
   // aplastaría una de las dos contra el cero.
   if (hayLc2)
-    o.scales.y3 = { position: 'right', title: { display: true, text: `LC2 (${u2})`, color: '#d29922' },
-                    ticks: { color: '#d29922' }, grid: { drawOnChartArea: false } };
-  if (usar) o.scales.y.title = { display: true, text: 'fuerza (N)', color: '#3fb950' };
+    o.scales.y3 = { position: 'right', title: { display: true, text: `LC2 (${u2})`, color: TEMA.ambar },
+                    ticks: { color: TEMA.ambar }, grid: { drawOnChartArea: false } };
+  if (usar) o.scales.y.title = { display: true, text: 'fuerza (N)', color: TEMA.verde };
   if (teo && u1 !== 'N' && !usar)
-    o.scales.yteo = { position: 'left', title: { display: true, text: 'teórica (N)', color: '#f85149' },
-                      ticks: { color: '#f85149' }, grid: { drawOnChartArea: false } };
+    o.scales.yteo = { position: 'left', title: { display: true, text: 'teórica (N)', color: TEMA.rojo },
+                      ticks: { color: TEMA.rojo }, grid: { drawOnChartArea: false } };
   if (gT) gT.destroy();
   gT = new Chart(el('gT'), { type: 'scatter', data: { datasets: ds }, options: o });
 }
@@ -599,20 +588,20 @@ function pintarPar(filas) {
 function pintarParT(filas) {
   const ds = [{
     label: 'par medido (unidades del drive)', showLine: true, pointRadius: 0, borderWidth: 1.4,
-    borderColor: '#d29922',
+    borderColor: TEMA.ambar,
     data: filas.map(x => ({ x: x.t_rel_s, y: x.par_x10 / 10 }))
   }];
   // Con la caracola el par teórico NO es plano: τ = T·r(φ), y el radio cambia. Es la
   // curva que justifica montarla, así que se superpone aquí si está activada.
   if (teoPar && teoParams().ver) ds.push({
     label: 'par teórico (N·m)', showLine: true, pointRadius: 0, borderWidth: 1.6,
-    borderColor: '#f85149', borderDash: [6, 3], spanGaps: false,
+    borderColor: TEMA.rojo, borderDash: [6, 3], spanGaps: false,
     yAxisID: 'ypar', data: teoPar
   });
   const o = EJES('tiempo (s)', 'par medido');
   if (teoPar && teoParams().ver)
-    o.scales.ypar = { position: 'right', title: { display: true, text: 'par teórico (N·m)', color: '#f85149' },
-                      ticks: { color: '#f85149' }, grid: { drawOnChartArea: false } };
+    o.scales.ypar = { position: 'right', title: { display: true, text: 'par teórico (N·m)', color: TEMA.rojo },
+                      ticks: { color: TEMA.rojo }, grid: { drawOnChartArea: false } };
   if (gParT) gParT.destroy();
   gParT = new Chart(el('gParT'), { type: 'scatter', data: { datasets: ds }, options: o });
 }
@@ -620,23 +609,23 @@ function pintarParT(filas) {
 function pintarVel(filas) {
   const ds = [
     { label: 'consigna (RPM)', showLine: true, pointRadius: 0, borderWidth: 1.2,
-      borderColor: '#d29922', stepped: true, yAxisID: 'y',
+      borderColor: TEMA.ambar, stepped: true, yAxisID: 'y',
       data: filas.map(x => ({ x: x.t_rel_s, y: x.ref_rpm })) },
     { label: 'real (RPM)', showLine: true, pointRadius: 0, borderWidth: 1.4,
-      borderColor: '#3fb950', yAxisID: 'y',
+      borderColor: TEMA.verde, yAxisID: 'y',
       data: filas.map(x => ({ x: x.t_rel_s, y: x.rpm })) },
     { label: 'final A', showLine: true, pointRadius: 0, borderWidth: 1.2,
-      borderColor: '#f85149', stepped: true, yAxisID: 'y2',
+      borderColor: TEMA.rojo, stepped: true, yAxisID: 'y2',
       data: filas.map(x => ({ x: x.t_rel_s, y: x.lim_a })) },
     { label: 'final B', showLine: true, pointRadius: 0, borderWidth: 1.2,
-      borderColor: '#bc8cff', stepped: true, yAxisID: 'y2',
+      borderColor: TEMA.morado, stepped: true, yAxisID: 'y2',
       data: filas.map(x => ({ x: x.t_rel_s, y: x.lim_b })) }
   ];
   const o = EJES('tiempo (s)', 'RPM');
   o.scales.y2 = {
     position: 'right', min: -0.05, max: 1.6,
-    title: { display: true, text: 'finales', color: '#8b949e' },
-    ticks: { color: '#8b949e', stepSize: 1, callback: v => (v === 0 || v === 1) ? v : '' },
+    title: { display: true, text: 'finales', color: TEMA.tinta },
+    ticks: { color: TEMA.tinta, stepSize: 1, callback: v => (v === 0 || v === 1) ? v : '' },
     grid: { drawOnChartArea: false }
   };
   if (gVel) gVel.destroy();
@@ -644,6 +633,8 @@ function pintarVel(filas) {
 }
 
 cargarLista();
+Mec.cargar().then(() => { resumenMec(); reTeo(); });
+Mec.alCambiar(() => { resumenMec(); reTeo(); });
 </script>
 </body>
 </html>

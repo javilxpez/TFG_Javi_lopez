@@ -1,0 +1,116 @@
+\chapter{Introducción}
+\label{chap:intro}
+
+\section{Contexto y motivación}
+
+Muchos mecanismos de elevación no presentan una carga constante al actuador. En una barra
+articulada que se levanta tirando de un cable, la tensión que hace falta para sostener la carga
+depende del ángulo que forman el cable y la barra; al girar la barra, esa geometría cambia y con
+ella la tensión. Si el cable se enrolla en un tambor cilíndrico, el par que el motor debe
+aportar, producto de la tensión por el radio, sigue fielmente esas variaciones. El actuador se
+tiene que dimensionar entonces para el peor punto del recorrido, aunque la mayor parte del tiempo
+trabaje muy por debajo de él.
+
+Una solución clásica es cambiar la relación de transmisión a lo largo del recorrido haciendo que
+el radio del tambor no sea constante. Es la idea del \emph{fusee} de la relojería del siglo XV,
+un cono con una ranura helicoidal que compensaba la pérdida de par del muelle real a medida que se
+desenrollaba \cite{landes1983}. La misma idea reaparece hoy en los tambores de radio variable de
+la robótica de cables \cite{seriani2016,bieber2023} y en los sistemas pasivos de compensación de
+gravedad \cite{shen2022,endo2010}. En este trabajo, al tambor en espiral se le llama
+\emph{caracola} por su forma.
+
+El proyecto en que se enmarca este TFG consiste en una caracola, accionada por un servomotor paso
+a paso de lazo cerrado, que enrolla un cable y levanta una barra articulada con una masa de
+\SI{2}{\kilo\gram}. Lo que se quiere demostrar es que el perfil de radio variable de la caracola
+aplana el par que ve el motor frente a la variación de la tensión en el cable. Demostrarlo exige
+dos cosas: un modelo que diga qué cabe esperar y un sistema de medida capaz de registrar a la vez
+la posición del eje, la tensión del cable y el par del motor en ensayos repetibles. Construir ese
+sistema ha sido la mayor parte del trabajo.
+
+\section{Objetivos}
+
+\subsection{Objetivo general}
+
+Diseñar, construir y validar un sistema electrónico de accionamiento, control y adquisición para
+un mecanismo de elevación con caracola de radio variable, y utilizarlo para comprobar
+experimentalmente que la caracola reduce la variación del par motor frente a la variación de la
+carga en el cable.
+
+\subsection{Objetivos específicos}
+
+\begin{enumerate}[label=\textbf{O\arabic*.}]
+  \item Desarrollar un modelo analítico del mecanismo que relacione la geometría, la tensión del
+        cable y el par en el tambor. A partir de él, deducir el perfil de radio que hace el par
+        constante y compararlo con un tambor cilíndrico y con una espiral lineal.
+  \item Diseñar una placa de circuito impreso que adapte el microcontrolador al entorno de la
+        máquina: bus RS-485, entradas digitales protegidas para los finales de carrera, entradas
+        analógicas acondicionadas, salidas de potencia y conexión de células de carga.
+  \item Desarrollar el firmware del microcontrolador, capaz de gobernar el servo por Modbus RTU,
+        leer la célula de carga, ejecutar el \emph{homing} y los ciclos automáticos, y vigilar los
+        límites de seguridad con una temporización determinista.
+  \item Definir un protocolo de comunicación robusto entre el microcontrolador y el ordenador,
+        que transporte la telemetría por lotes y las órdenes con detección de errores.
+  \item Desarrollar una aplicación de supervisión web para operar la máquina, visualizar los datos
+        en tiempo real, grabar cada ensayo en un fichero reproducible y compararlo con el modelo.
+  \item Caracterizar el sistema (temporización, repetibilidad de posición, comportamiento de la
+        medida) y analizar los ensayos para cuantificar el efecto compensador de la caracola.
+  \item Documentar los problemas técnicos encontrados y las soluciones adoptadas, así como la
+        planificación, el presupuesto y el impacto del trabajo.
+\end{enumerate}
+
+\section{Alcance y limitaciones}
+
+Entra en el alcance del trabajo todo el sistema electrónico y de software: la placa adaptadora, el
+firmware, el protocolo, la aplicación de supervisión y el análisis de datos, además del modelo del
+mecanismo y los ensayos. El diseño mecánico de la caracola y de la estructura se toma como dado
+\completar{indicar si la caracola y la estructura se han diseñado y fabricado dentro de este TFG o
+proceden de un trabajo previo}.
+
+El trabajo tiene las siguientes limitaciones conocidas, que se discuten en los capítulos
+correspondientes:
+\begin{itemize}
+  \item La posición del eje no se lee del codificador del accionamiento, sino que se obtiene
+        integrando la velocidad que devuelve el propio servo (sección~\ref{sec:fw-posicion}).
+  \item La célula de carga dispone sólo de una calibración provisional; sus valores en newtons se
+        presentan como orientativos (sección~\ref{sec:res-limitaciones}).
+  \item El par se obtiene en las unidades internas del accionamiento, cuya escala física no se ha
+        confirmado. Por eso los resultados se expresan en variaciones relativas, que no dependen de
+        esa escala.
+  \item Los finales de carrera y el límite de fuerza se implementan por software; no hay una
+        cadena de seguridad cableada (sección~\ref{sec:arq-seguridad}).
+\end{itemize}
+
+\section{Metodología}
+
+El desarrollo ha sido incremental y guiado por pruebas. Cada subsistema (bus RS-485, célula de
+carga, finales de carrera, entradas y salidas de la placa) se ha validado primero con un programa
+de prueba aislado, que se conserva en el repositorio (anexo~\ref{anx:repo}), antes de integrarlo
+en el firmware principal. El código se ha versionado con git desde el primer día; el historial de
+cambios ha servido también para reconstruir la planificación real del proyecto
+(capítulo~\ref{chap:gestion}). Los datos de todos los ensayos se guardan en crudo, con las
+constantes de conversión en la cabecera de cada fichero, de modo que cualquier resultado se puede
+recalcular sin repetir el ensayo. Las figuras de resultados de esta memoria se generan con un
+programa reproducible (\fichero{memoria/figuras/generar\_figuras.py}) directamente a partir de esos
+ficheros.
+
+\section{Estructura del documento}
+
+\begin{description}[style=nextline,leftmargin=2.2em]
+  \item[Capítulo~\ref{chap:estado}] repasa los mecanismos de radio variable y las tecnologías de
+        accionamiento, medida de fuerza, comunicación y supervisión relevantes.
+  \item[Capítulo~\ref{chap:modelo}] desarrolla el modelo del mecanismo, el perfil ideal de par
+        constante y el método experimental para separar las componentes del par.
+  \item[Capítulo~\ref{chap:arquitectura}] recoge los requisitos y la arquitectura del sistema.
+  \item[Capítulos~\ref{chap:hardware} a~\ref{chap:software}] describen, respectivamente, el hardware,
+        el firmware, el protocolo de comunicación y la aplicación de supervisión.
+  \item[Capítulo~\ref{chap:problemas}] reúne los problemas técnicos más relevantes y cómo se
+        resolvieron.
+  \item[Capítulo~\ref{chap:resultados}] presenta la caracterización del sistema y los resultados
+        experimentales sobre la compensación de par.
+  \item[Capítulo~\ref{chap:gestion}] trata la planificación, el presupuesto y el impacto.
+  \item[Capítulo~\ref{chap:conclusiones}] expone las conclusiones y las líneas de trabajo futuro.
+\end{description}
+
+Los anexos contienen la asignación de pines, la especificación completa del protocolo, los
+registros Modbus utilizados, el formato de los ficheros de ensayo, un manual de uso y la
+estructura del repositorio.

@@ -1,0 +1,37 @@
+\chapter{Estructura del repositorio}
+\label{anx:repo}
+
+\begin{longtable}{@{}L{0.38\textwidth}L{0.56\textwidth}@{}}
+\toprule
+Ruta & Contenido \\
+\midrule
+\endhead
+\multicolumn{2}{@{}l}{\textbf{Firmware principal}} \\
+\fichero{firmware\_posicion\_v2/} & Firmware final (Pico 2): Modbus, célula, \emph{homing}, ciclos, protocolo. \fichero{i2c\_bus.h}: árbitro del bus I\textsuperscript{2}C. \\
+\fichero{firmware\_posicion/} & Versión anterior en modo velocidad A$\rightarrow$B. \\
+\fichero{firmwarerasp/} & Primera versión para Pico 2, doble núcleo, modos par y velocidad. \\
+\fichero{firmware/} & Versión para XIAO ESP32-S3 con regulador de fuerza en modo par. \\
+\midrule
+\multicolumn{2}{@{}l}{\textbf{Programas de prueba}} \\
+\fichero{pcbtest/test\_analog, test\_din, test\_digital\_outputs} & Entradas analógicas, entradas digitales y salidas de potencia. \\
+\fichero{test\_limit\_switches/} & Finales de carrera. \\
+\fichero{test\_rs485*/}, \fichero{test\_modbus\_scan/} & Bucle local PIO, transmisión, recepción y comunicación Modbus. \\
+\fichero{test\_loadcell*/} & ZSC31014 y lectura dual con NAU7802. \\
+\fichero{test\_servo\_modbus.py} & Barrido Modbus desde el PC con adaptador USB-RS485. \\
+\midrule
+\multicolumn{2}{@{}l}{\textbf{Ordenador}} \\
+\fichero{web\_monitor.py} & Servidor FastAPI, puente serie-WebSocket y grabación. \\
+\fichero{static/index.html} & Página de supervisión. \\
+\fichero{static/ensayos.html} & Visor de ensayos con modelo teórico. \\
+\fichero{leer\_ciclo.py} & Resumen de ensayos en consola. \\
+\fichero{monitor.py}, \fichero{monitor\_posicion.py} & Monitores de terminal de versiones anteriores. \\
+\fichero{cycles/} & Ficheros de ensayo (CSV). \\
+\midrule
+\multicolumn{2}{@{}l}{\textbf{Hardware y documentación}} \\
+\fichero{tfg\_adaptador/} & Proyecto KiCad de la placa (revisión A) y copias de seguridad. \\
+\fichero{image (1).png} & Esquema de la revisión B. \\
+\fichero{README.MD} & Notas sobre la UART de la Pico y el doble núcleo. \\
+\fichero{memoria/} & Esta memoria (\LaTeX), figuras y \fichero{generar\_figuras.py}. \\
+\fichero{old/} & Pruebas iniciales en modo par. \\
+\bottomrule
+\end{longtable}

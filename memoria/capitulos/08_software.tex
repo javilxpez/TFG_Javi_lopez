@@ -1,0 +1,190 @@
+\chapter{Software de supervisión y análisis}
+\label{chap:software}
+
+\section{Visión general}
+
+El software del ordenador consta de un servidor en Python (\fichero{web\_monitor.py}), dos páginas
+web (\fichero{static/index.html} para la operación en vivo y \fichero{static/ensayos.html} para el
+análisis) y varias herramientas auxiliares. El servidor se ejecuta con
+
+\begin{lstlisting}[language=bash,numbers=none]
+python web_monitor.py [puerto_serie]      # http://localhost:8080
+\end{lstlisting}
+
+y detecta solo el puerto del microcontrolador si no se indica.
+
+\section{Servidor}
+
+\subsection{Estructura concurrente}
+
+El servidor combina un hilo del sistema operativo para el puerto serie con el bucle asíncrono de
+FastAPI (figura~\ref{fig:servidor}).
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\small,>=Stealth,
+  box/.style={draw,rounded corners=2pt,align=center,minimum height=10mm,inner sep=4pt,fill=white}]
+  \node[box,minimum width=28mm] (usb) {Puerto USB\\ \scriptsize pySerial};
+  \node[box,minimum width=34mm,right=10mm of usb,fill=blue!6] (hilo) {Hilo serie\\ \scriptsize decodifica · integra · graba};
+  \node[box,minimum width=24mm,right=10mm of hilo] (cola) {deque\\ \scriptsize maxlen = 100};
+  \node[box,minimum width=30mm,right=10mm of cola,fill=green!6] (bc) {Difusor asíncrono\\ \scriptsize FastAPI / Uvicorn};
+  \node[box,minimum width=24mm,below=10mm of bc] (ws) {Navegadores\\ \scriptsize WebSocket};
+  \node[box,minimum width=24mm,below=10mm of hilo] (csv) {cycles/*.csv};
+  \node[box,minimum width=30mm,below=10mm of cola] (cmd) {\_handle\_command\\ \scriptsize valida · empaqueta};
+  \draw[->,thick] (usb) -- (hilo);
+  \draw[->,thick] (hilo) -- (cola);
+  \draw[->,thick] (cola) -- (bc);
+  \draw[->,thick] (bc) -- (ws);
+  \draw[->,thick] (hilo) -- (csv);
+  \draw[->,thick] (ws) -- (cmd);
+  \draw[->,thick] (cmd.south) -- ++(0,-5mm) -| node[pos=0.25,below,font=\scriptsize]{tramas binarias} (usb.south);
+\end{tikzpicture}
+\caption{Estructura del servidor de supervisión.}
+\label{fig:servidor}
+\end{figure}
+
+\paragraph{Hilo serie.} Abre el puerto (probando \codigo{/dev/ttyACM*}, \codigo{/dev/ttyUSB*},
+\codigo{/dev/cu.usbmodem*} y \codigo{COM*}), vacía el búfer y entra en un bucle que lee tramas,
+comprueba el CRC y las decodifica con \codigo{struct}. Cualquier excepción cierra el puerto y
+provoca un reintento al cabo de un segundo, lo que cubre la desconexión física y el reinicio del
+microcontrolador al reprogramarlo (RNF4). Por cada muestra de telemetría:
+\begin{itemize}
+  \item mide la frecuencia de muestreo contando las muestras del último segundo \emph{con el reloj
+        del dispositivo}, no con el del ordenador;
+  \item detecta que el reloj del microcontrolador ha vuelto a cero (reinicio) y en ese caso reinicia
+        la ventana de medida y la integración. Sin esta comprobación, la ventana no se podaba nunca y
+        la interfaz llegó a mostrar ``\SI{3813}{\hertz}'', que en realidad era el número de muestras
+        acumuladas;
+  \item integra la posición a partir de la velocidad, descartando saltos de tiempo anómalos;
+  \item si hay un ensayo en grabación, escribe la fila correspondiente;
+  \item deposita un mensaje JSON en la cola.
+\end{itemize}
+
+\paragraph{Cola y difusor.} La comunicación entre el hilo y el bucle asíncrono usa una
+\codigo{deque} de la biblioteca estándar con un único productor y un único consumidor, segura sin cerrojos en
+CPython para \codigo{append} y \codigo{popleft}. La longitud máxima de 100 mensajes acota la memoria
+si no hay ningún navegador conectado: los mensajes más antiguos se descartan. El difusor envía cada
+mensaje a todos los clientes, elimina los que han cerrado la conexión y, cuando la cola está vacía,
+duerme \SI{20}{\milli\second}.
+
+\paragraph{Estado compartido.} Los valores que necesitan varios contextos (posición, calibración,
+estado del \emph{homing}) se guardan en un diccionario protegido por un \codigo{threading.Lock}.
+
+\paragraph{Registro.} Todas las tramas, órdenes y confirmaciones se registran con marca de tiempo en
+consola y en \fichero{web\_monitor.log}. El registro ha sido la principal herramienta de diagnóstico
+de los problemas de comunicación.
+
+\subsection{Grabación de ensayos}
+
+La grabación es automática y la dirigen los paquetes de ciclo: cuando la fase pasa a ``hacia B'' o
+``volviendo a A'' y no hay fichero abierto, se crea \fichero{cycles/AAAAMMDD-HHMMSS\_ciclo.csv}; cuando
+la fase pasa a completado, abortado o reposo, se cierra. Cada fichero tiene una cabecera con las
+constantes del ensayo (calibración de la célula, fuerza en el punto de tara, repeticiones y punto B)
+y una fila por muestra (formato completo en el anexo~\ref{anx:csv}).
+
+Se graban deliberadamente las \emph{cuentas brutas} de la célula y no newtons. La calibración puede
+cambiar después del ensayo (de hecho, la de este trabajo es provisional), y con los datos brutos
+basta con aplicar la nueva constante (RNF5).
+
+\section{Página de supervisión}
+
+La página principal (\fichero{index.html}) se organiza en tres zonas:
+
+\begin{enumerate}
+  \item \textbf{Estado}: indicador de conexión, estado de la máquina y código de error, modo, estado del
+        servo y de la célula, tiempo del dispositivo y frecuencia de muestreo, finales de carrera con
+        fase del \emph{homing} y recorrido medido, y una tarjeta destacada con la fuerza sobre la
+        carga.
+  \item \textbf{Controles en pestañas}:
+  \begin{itemize}
+    \item \emph{Servo}: dirección Modbus, inicialización, movimiento manual, \emph{homing}, parada,
+          puesta a cero de la posición y apagado; velocidad, desplazamiento del origen y velocidad de
+          \emph{homing}.
+    \item \emph{Célula 1}: calibración (cuentas/N), fuerza en el punto de tara y tara. En la
+          configuración avanzada se accede a la palabra B\_Config (ganancia de ×1,5 a ×192, cero del
+          A/D, polaridad, puente completo o medio, integración larga, alimentación del puente y
+          anulación de desequilibrio) y a ZMDI\_Config1 (reloj de 4 o \SI{1}{\mega\hertz}, tasa de
+          conversión y modo continuo o a demanda), con el botón de programar. La configuración
+          grabada se consulta automáticamente la primera vez que se abre la pestaña con el eje
+          parado.
+    \item \emph{Ciclo A$\leftrightarrow$B}: punto B (final de carrera o posición), velocidad y
+          repeticiones; arranque y parada; lista de ensayos y enlace al visor.
+    \item \emph{Cálculo teórico}: esquema del mecanismo y curvas de tensión, par y ángulo para un
+          tambor de radio constante, con comparación con el par medido.
+  \end{itemize}
+  \item \textbf{Gráficas}: velocidad consigna y real con los finales de carrera y marcas verticales en
+        los instantes en que se enviaron órdenes, y fuerza frente al tiempo.
+\end{enumerate}
+
+\section{Visor de ensayos}
+
+El visor (\fichero{ensayos.html}) lista los ensayos grabados y, al abrir uno, muestra:
+
+\begin{itemize}
+  \item un \textbf{resumen} con número de muestras, duración, cadencia, repeticiones y rangos de
+        posición, par y fuerza, y una tabla por repetición;
+  \item \textbf{fuerza frente a posición}, con una traza por repetición, donde se ven directamente la
+        ida, la vuelta y la histéresis;
+  \item \textbf{fuerza y posición frente al tiempo}, con la posibilidad de superponer la curva
+        teórica del capítulo~\ref{chap:modelo} para un tambor cilíndrico o una caracola lineal. Se
+        introducen las cotas, la masa, el ángulo de la barra en el origen, la reducción y el sentido
+        de giro;
+  \item \textbf{par frente a posición y frente al tiempo}, con el par teórico $\tau = T\,r(\varphi)$;
+  \item \textbf{velocidad consigna y real} con los finales de carrera.
+\end{itemize}
+
+Al superponer la curva teórica, el visor comprueba dos consistencias que han resultado muy útiles
+para detectar datos de entrada erróneos:
+\begin{enumerate}
+  \item \emph{Escala}: compara el cable que paga el tambor durante el ensayo con el que puede absorber
+        el mecanismo desde el ángulo inicial hasta la vertical en ese sentido. Si difieren más de un
+        \SI{15}{\percent}, avisa y sugiere la reducción o los radios que lo harían cuadrar.
+  \item \emph{Ángulo}: con la ecuación~\eqref{eq:angulo} calcula el ángulo de la barra en el origen,
+        en el extremo y al final del ensayo, y avisa si el modelo exigiría superar la vertical o si el
+        ángulo inicial introducido no es alcanzable.
+\end{enumerate}
+
+Por último, ofrece un \textbf{ajuste por mínimos cuadrados} de la recta que convierte las cuentas de
+la célula en la fuerza teórica, $F = a\cdot\text{cuentas} + b$, con
+\begin{equation}
+  a = \frac{n\sum x_iy_i - \sum x_i\sum y_i}{n\sum x_i^2 - (\sum x_i)^2}, \qquad
+  b = \frac{\sum y_i - a\sum x_i}{n},
+\end{equation}
+e informa del coeficiente de determinación $R^2$ y de la \emph{cobertura}, el porcentaje de muestras
+donde la geometría tiene solución. Un $R^2$ alto con poca cobertura no garantiza un ajuste válido, y
+por eso la interfaz lo señala.
+
+\section{Herramientas auxiliares}
+
+\begin{itemize}
+  \item \fichero{leer\_ciclo.py}: resumen de un ensayo en consola, usando sólo la biblioteca estándar,
+        y exportación sin cabecera para hojas de cálculo.
+  \item \fichero{monitor.py} y \fichero{monitor\_posicion.py}: monitores de terminal de las primeras
+        versiones del protocolo, con control por teclado.
+  \item \fichero{test\_servo\_modbus.py}: barrido de velocidades y direcciones Modbus con un adaptador
+        USB-RS485 y un CRC-16 propio, útil para identificar la configuración del accionamiento sin el
+        microcontrolador.
+  \item \fichero{memoria/figuras/generar\_figuras.py}: genera todas las figuras de resultados y las
+        cifras de esta memoria a partir de los ficheros de ensayo y del modelo.
+\end{itemize}
+
+\section{Observaciones de calidad}
+
+Durante la redacción de esta memoria se revisó el software y se identificaron los siguientes puntos
+de mejora, que no afectan a los resultados:
+\begin{itemize}
+  \item \fichero{requirements.txt} sólo declara \codigo{pyserial}; faltan \codigo{fastapi} y
+        \codigo{uvicorn[standard]}, que se instalan a mano.
+  \item La cabecera del CSV decide si B es ``posición'' o ``final de carrera'' según el objetivo en
+        revoluciones sea mayor que cero, no según el modo realmente pedido. Como la interfaz envía
+        siempre el objetivo (1 rev por defecto), todos los ensayos de este trabajo aparecen como
+        ``posición'' aunque se hicieron hasta el final de carrera. Los datos no se ven afectados; la
+        corrección es incluir el modo en el paquete de ciclo.
+  \item El servidor escucha en todas las interfaces (\codigo{0.0.0.0}) sin autenticación, así que
+        cualquier equipo de la red puede mover la máquina. En un entorno compartido debería
+        escuchar sólo en \codigo{127.0.0.1} o exigir credenciales.
+  \item La posición se integra dos veces, en el firmware y en el servidor, con el mismo método. El
+        CSV guarda la del servidor. Sería más limpio transmitir la del firmware en cada muestra.
+  \item Algunos comentarios han quedado desfasados respecto al código: la cabecera del firmware
+        todavía describe la versión de doble núcleo y el tamaño de muestra de 12 bytes.
+\end{itemize}

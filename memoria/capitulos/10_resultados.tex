@@ -1,0 +1,308 @@
+\chapter{Resultados experimentales}
+\label{chap:resultados}
+
+Este capítulo presenta, primero, la caracterización del sistema de control y adquisición
+(temporización y repetibilidad) y, después, los resultados sobre el mecanismo: la evolución de la
+tensión del cable y del par del motor a lo largo del recorrido, la separación de sus componentes y
+la comparación con el modelo. Todas las figuras y cifras se obtienen con
+\fichero{memoria/figuras/generar\_figuras.py} a partir de los ficheros de \fichero{cycles/}, sin
+ninguna edición manual.
+
+\section{Condiciones de ensayo}
+
+\completar{fotografía del prototipo montado, con la caracola, el cable, la célula de carga, la barra,
+la masa y los finales de carrera identificados}
+
+Los ensayos se realizaron los días 14 y 15 de septiembre de 2026 con la masa de \SI{2}{\kilo\gram}.
+Antes de cada serie se inicializó el accionamiento y se ejecutó el \emph{homing}. Cada ensayo es un
+ciclo automático que parte del origen (A), avanza a velocidad constante hasta el final de carrera B
+y vuelve al origen. Los parámetros del accionamiento fueron los de la tabla~\ref{tab:parametros}
+(rigidez 10, rampas 5) \verificar{confirmar que no se modificaron durante la campaña}.
+
+Se grabaron 15 ficheros (tabla~\ref{tab:ensayos}). Uno de ellos, a \SI{300}{rpm}, se interrumpió
+a los \SI{1.15}{\second} y se descarta. Quedan 14 ensayos válidos con 2744 muestras: 12 a
+\SI{30}{rpm}, que suman 14 ciclos porque dos de ellos tienen dos repeticiones, uno a \SI{20}{rpm} y
+otro a \SI{40}{rpm}.
+
+\begin{longtable}{@{}lcccccl@{}}
+\caption{Ensayos grabados. Velocidad de consigna, repeticiones, muestras, duración y posición
+máxima alcanzada (final de carrera B).}\label{tab:ensayos}\\
+\toprule
+Fichero & rpm & Rep. & Muestras & $t$ (s) & $p_{\max}$ (rev) & Observaciones \\
+\midrule
+\endfirsthead
+\toprule
+Fichero & rpm & Rep. & Muestras & $t$ (s) & $p_{\max}$ (rev) & Observaciones \\
+\midrule
+\endhead
+20260914-183121 & 20 & 1 & 252 & 12,55 & 1,763 & \\
+20260914-184729 & 30 & 2 & 332 & 16,55 & 1,763 & \\
+20260914-190535 & 30 & 2 & 340 & 16,95 & 1,762 & \\
+20260914-190826 & 31 & 1 & 160 & 7,95 & 1,755 & \\
+20260914-194105 & 40 & 1 & 128 & 6,35 & 1,761 & \\
+20260914-194640 & 300 & 1 & 24 & 1,15 & 1,810 & descartado \\
+20260914-194648 & 30 & 1 & 176 & 8,75 & 1,717 & inicio en $-0{,}10$ \\
+20260914-195242 & 30 & 1 & 168 & 8,35 & 1,755 & \\
+20260914-195540 & 30 & 1 & 172 & 8,55 & 1,760 & \\
+20260914-202156 & 30 & 1 & 168 & 8,35 & 1,752 & \\
+20260914-202425 & 30 & 1 & 168 & 8,36 & 1,758 & \\
+20260914-202801 & 30 & 1 & 168 & 8,35 & 1,750 & \\
+20260914-203733 & 30 & 1 & 172 & 8,55 & 1,756 & \\
+20260915-174420 & 30 & 1 & 168 & 8,35 & 1,782 & \\
+20260915-181346 & 30 & 1 & 172 & 8,55 & 1,759 & ensayo tipo \\
+\bottomrule
+\end{longtable}
+
+Los ensayos se grabaron con una versión del servidor que todavía no escribía la calibración en la
+cabecera (\codigo{lc1\_cuentas\_por\_N=0}). Como los ficheros contienen las cuentas brutas, los
+valores de fuerza de este capítulo se obtienen aplicando después la calibración provisional de la
+interfaz: \num{14.41} cuentas/N y \SI{51.78}{\newton} en el punto de tara, con
+$F = \text{lc1\_base}/14{,}41 + 51{,}78$ (sección~\ref{sec:res-limitaciones}).
+
+\section{Temporización del lazo de control}
+\label{sec:res-temporizacion}
+
+La figura~\ref{fig:temporizacion} muestra la distribución del periodo entre muestras consecutivas y
+del tiempo de trabajo de cada vuelta del lazo, medidos por el propio firmware. En las 2744 muestras:
+
+\begin{itemize}
+  \item el periodo medio es \SI{50.004}{\milli\second}, con una desviación típica de
+        \SI{0.066}{\milli\second}. El \SI{99.56}{\percent} de los periodos son exactamente de
+        \SI{50}{\milli\second} y el resto de \SI{51}{\milli\second}, el grano de \codigo{millis()}.
+        La frecuencia de muestreo es de \SI{20.0}{\hertz} y cumple RNF1 con holgura;
+  \item el tiempo de trabajo del lazo está entre \num{10.82} y \SI{11.02}{\milli\second}, con media
+        de \SI{10.97}{\milli\second}. Es el \SI{22}{\percent} del periodo y deja
+        \SI{39}{\milli\second} de margen. Su dispersión, de sólo \SI{0.2}{\milli\second}, confirma
+        que el lazo está dominado por las tres transacciones Modbus, de duración muy regular
+        (sección~\ref{sec:fw-lazo}).
+\end{itemize}
+
+\begin{figure}[tbp]
+\centering
+\includegraphics[width=\textwidth]{temporizacion.pdf}
+\caption{Izquierda: periodo entre muestras (escala logarítmica). Derecha: tiempo de trabajo por
+vuelta del lazo. Todos los ensayos válidos.}
+\label{fig:temporizacion}
+\end{figure}
+
+La latencia de parada (RNF2) está acotada por la estructura del lazo. Un final de carrera se lee y
+la consigna nula se escribe en la misma vuelta, así que la reacción es como máximo de un periodo
+más la rampa de deceleración del accionamiento. En el ensayo tipo, el final B se detecta en
+$p=\SI{1.737}{rev}$ y el eje se detiene en \SI{1.759}{rev}: un sobrerrecorrido de
+\SI{22}{mrev}, coherente con recorrer a \SI{30}{rpm} durante un periodo
+(\SI{25}{mrev}).
+
+\section{Ensayo tipo}
+
+La figura~\ref{fig:ensayo-tipo} muestra el ensayo del 15 de septiembre a las 18:13:46. La secuencia
+es la siguiente:
+
+\begin{enumerate}
+  \item El eje arranca con el final A pulsado (sombreado rojo), que se libera a los
+        \SI{0.2}{\second}. La velocidad alcanza la consigna en unos \SI{0.3}{\second}.
+  \item Hacia B, que corresponde a bajar la masa, la tensión del cable crece de forma continua. El
+        par del motor se mantiene prácticamente constante hasta $p\approx\SI{1.3}{rev}$ y después
+        disminuye. En ese último tramo la velocidad real cae a unas \SI{20}{rpm}, pese a que la
+        consigna sigue en \SI{30}{rpm}.
+  \item A los \SI{4.1}{\second} se activa el final B (sombreado azul). El firmware invierte la
+        consigna y el eje vuelve hacia A, subiendo la masa, con un par mayor que a la ida por efecto
+        de las pérdidas.
+  \item Al llegar a la posición $p\le\SI{0.02}{rev}$ el ciclo termina. La posición final es
+        \SI{-9.5}{mrev} y la duración total \SI{8.55}{\second}.
+\end{enumerate}
+
+La lectura bruta de la célula aparece en escalones de \SI{200}{\milli\second} porque sólo se
+transmite en la cabecera de cada lote. La lectura filtrada, que viaja en cada muestra, va retrasada
+respecto a ella por la media móvil de ocho lecturas.
+
+\begin{figure}[tbp]
+\centering
+\includegraphics[width=\textwidth]{ensayo_tipo.pdf}
+\caption{Ensayo tipo a \SI{30}{rpm}: posición, velocidad, célula de carga (con la escala provisional
+en newtons a la derecha) y par del motor.}
+\label{fig:ensayo-tipo}
+\end{figure}
+
+\section{Repetibilidad de posición}
+
+La figura~\ref{fig:repetibilidad} resume los 14 ciclos a \SI{30}{rpm}.
+
+\begin{itemize}
+  \item \textbf{Posición del final de carrera B}: media \SI{1.7553}{rev} y desviación típica
+        \SI{13.4}{mrev}, con valores entre \num{1.7172} y \SI{1.7815}{rev}. El valor más
+        bajo corresponde al ensayo que arrancó a \SI{-0.10}{rev}; sin él, el rango se reduce a
+        \SIrange{1.750}{1.782}{rev}. Esta dispersión combina la repetibilidad del propio final de
+        carrera con la deriva de la posición integrada a lo largo de 1,75 revoluciones, así que es
+        una cota superior de ambas: menos del \SI{1}{\percent} del recorrido.
+  \item \textbf{Posición final en A}: media \SI{+0.6}{mrev}, desviación típica
+        \SI{10.7}{mrev} y máximo absoluto \SI{16.6}{mrev}. Siempre está dentro
+        de la tolerancia de parada de $\pm\SI{20}{mrev}$. Esta cifra mide la precisión de
+        la parada respecto a la posición integrada, no respecto al mecanismo, porque es la propia
+        posición integrada la que decide la parada.
+\end{itemize}
+
+Para dar escala: con la reducción $N=4$, \SI{10}{mrev} de motor equivalen a
+\SI{0.9}{\degree} de giro de la caracola.
+
+\begin{figure}[tbp]
+\centering
+\includegraphics[width=\textwidth]{repetibilidad.pdf}
+\caption{Repetibilidad en los 14 ciclos a \SI{30}{rpm}. Izquierda: posición a la que se alcanza B.
+Derecha: posición final en A, con la banda de tolerancia de $\pm\SI{20}{mrev}$.}
+\label{fig:repetibilidad}
+\end{figure}
+
+\section{Tensión del cable y par del motor frente a la posición}
+
+La figura~\ref{fig:fuerza-par-pos} superpone todas las muestras de los ensayos a \SI{30}{rpm} en las
+que el eje se mueve de forma estable, es decir, con velocidad del mismo signo que la consigna y al
+menos el \SI{60}{\percent} de su valor. Se aprecian tres hechos:
+
+\begin{enumerate}
+  \item Los ensayos son muy repetibles: las nubes de puntos de los distintos ciclos se superponen.
+  \item La tensión crece de forma monótona desde el origen hasta B, lo que confirma que ir hacia B
+        baja la masa (el cable se alarga y, por la ecuación~\eqref{eq:tension}, la tensión aumenta).
+  \item El par del motor es mayor hacia A (subida) que hacia B (bajada) en todo el recorrido, como
+        corresponde a unas pérdidas que se oponen siempre al movimiento. Su valor es casi constante
+        hasta \SI{1.3}{rev} y cae en el tramo final.
+\end{enumerate}
+
+\begin{figure}[tbp]
+\centering
+\includegraphics[width=\textwidth]{fuerza_par_posicion.pdf}
+\caption{Tensión del cable (arriba) y par del motor (abajo) frente a la posición, en los 12 ensayos a
+\SI{30}{rpm}. Azul: hacia B (baja la masa). Rojo: hacia A (sube la masa).}
+\label{fig:fuerza-par-pos}
+\end{figure}
+
+\section{Separación de componentes y efecto de la caracola}
+\label{sec:res-caracola}
+
+Para aplicar el método de la sección~\ref{sec:mod-separacion}, las muestras se agrupan en intervalos
+de posición de \SI{0.05}{rev} y en cada uno se promedian por separado la fuerza y el par de cada
+sentido. Sólo se usan los intervalos con al menos ocho muestras en ambos sentidos, que resultan 34
+entre \num{0.03} y \SI{1.73}{rev}. La figura~\ref{fig:descomposicion} muestra el resultado.
+
+\begin{figure}[tbp]
+\centering
+\includegraphics[width=\textwidth]{descomposicion_par.pdf}
+\caption{Arriba: tensión media por intervalo en cada sentido y su promedio. Centro: par en cada
+sentido, componente gravitatoria $\tau_g$ y de pérdidas $\tau_f$. Abajo: radio efectivo relativo
+$\tau_g/F$, normalizado a su máximo.}
+\label{fig:descomposicion}
+\end{figure}
+
+\paragraph{Tensión.} Promediando ambos sentidos, la tensión pasa de \SI{30.6}{\newton} en el origen a
+\SI{42.8}{\newton} en B. Las curvas de ida y vuelta difieren en promedio sólo
+\SI{0.27}{\newton}: una vez agrupadas por posición, la histéresis aparente que introduce el filtro de
+la célula prácticamente desaparece.
+
+\paragraph{Pérdidas.} La componente de pérdidas es casi constante a lo largo del recorrido, con un
+valor medio de \SI{4.9}{\uacc}, el \SI{14}{\percent} de la componente gravitatoria. Una pérdida
+independiente de la posición y del sentido corresponde a un rozamiento de tipo Coulomb en la
+transmisión y en el guiado del cable.
+
+\paragraph{Compensación en el tramo central.} Entre \num{0.3} y \SI{1.2}{rev}, lejos de las
+aceleraciones del arranque y del final de carrera:
+
+\begin{center}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Magnitud & Mínimo & Máximo & Variación relativa \\
+\midrule
+Tensión del cable $F$ & \SI{31.9}{\newton} & \SI{37.8}{\newton} & \SI{17.0}{\percent} \\
+Par gravitatorio del motor $\tau_g$ & \SI{36.4}{\uacc} & \SI{38.9}{\uacc} & \SI{6.4}{\percent} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Con un tambor cilíndrico, el par sería proporcional a la tensión (ecuación~\eqref{eq:par}) y variaría
+también un \SI{17}{\percent}. La caracola reduce esa variación a un \SI{6.4}{\percent}: compensa del
+orden del \SI{60}{\percent} de la variación de la carga. El resultado sólo usa variaciones relativas,
+así que no depende de la escala desconocida del par, y tampoco de la calibración absoluta de la
+célula, salvo en el valor de la fuerza en la tara, que fija el denominador. \textbf{Este es el
+resultado experimental central del trabajo.}
+
+\paragraph{Tramo final.} A partir de \SI{1.3}{rev} el par gravitatorio cae hasta \SI{18}{\uacc}
+mientras la tensión sigue creciendo, y el radio efectivo baja al \SI{34}{\percent} de su valor
+inicial. Hay tres explicaciones posibles, que no se han podido discriminar con estos ensayos: (a) el
+perfil real de la caracola se estrecha bruscamente al final de la espiral; (b) el cable llega al
+extremo de la espiral y cambia su punto de salida; (c) la caída de velocidad observada en ese tramo
+(figura~\ref{fig:ensayo-tipo}) rompe la hipótesis de régimen cuasiestático e igual velocidad en ambos
+sentidos \verificar{medir el perfil de radio de la caracola real y comprobar la salida del cable al
+final del recorrido}.
+
+\section{Influencia de la velocidad}
+
+La figura~\ref{fig:velocidad} compara el par en ensayos a \num{20}, \num{30} y \SI{40}{rpm}. Los
+pares medios son \SIlist{38.7;38.4;39.7}{\uacc} hacia A y \SIlist{30.2;27.6;28.9}{\uacc} hacia B,
+respectivamente. No se aprecia una tendencia con la velocidad: las diferencias, inferiores al
+\SI{10}{\percent}, están en el orden de la variación entre ensayos. Esto confirma que en este rango
+las pérdidas no son viscosas y que el ensayo es cuasiestático. La posición de B coincide en los tres
+casos con una dispersión de \SI{4}{mrev} (\SIlist{1.763;1.759;1.761}{rev}).
+
+\begin{figure}[tbp]
+\centering
+\includegraphics[width=\textwidth]{efecto_velocidad.pdf}
+\caption{Par del motor frente a la posición a \num{20}, \num{30} y \SI{40}{rpm}. Línea continua:
+hacia B. Discontinua: hacia A.}
+\label{fig:velocidad}
+\end{figure}
+
+\section{Coherencia con el modelo}
+
+Aunque el modelo se ha evaluado con cotas nominales, conviene comprobar que los órdenes de magnitud
+son coherentes:
+
+\begin{itemize}
+  \item La tensión medida (\SIrange{30.6}{42.8}{\newton}) está dentro del rango teórico con la masa
+        de \SI{2}{\kilo\gram} (\SIrange{28.5}{56.2}{\newton}).
+  \item Invirtiendo $T=Kc$, esa tensión corresponde a un cable de \SIrange{209.6}{293.2}{\milli\metre}
+        y, por la ecuación~\eqref{eq:angulo}, a una barra que pasa de unos \SI{63}{\degree} a unos
+        \SI{7}{\degree}.
+  \item Esos \SI{83.6}{\milli\metre} de cable se pagan en \SI{1.755}{rev} de motor, es decir,
+        \SI{0.439}{rev} de caracola con $N=4$. El radio medio de enrollamiento resulta de
+        \SI{30.3}{\milli\metre}, un valor razonable para la pieza.
+  \item Con ese radio medio y $F\approx\SI{35}{\newton}$, el par gravitatorio en el motor sería de
+        unos \SI{0.27}{\newton\metre} (con $\eta = 1$). Comparado con $\tau_g\approx\SI{37.5}{\uacc}$,
+        cada unidad del accionamiento equivaldría a unos \SI{7}{\milli\newton\metre}. Es sólo una
+        estimación de orden de magnitud; sirve para contrastar con el manual del accionamiento
+        \verificar{escala del registro 16387 y par nominal del motor}.
+\end{itemize}
+
+\section{Limitaciones de las medidas}
+\label{sec:res-limitaciones}
+
+\begin{itemize}
+  \item \textbf{Calibración de la célula.} La constante de \num{14.41} cuentas/N y el valor de
+        \SI{51.78}{\newton} en la tara son provisionales: no proceden de una calibración con masas
+        patrón. Las variaciones relativas del tramo central dependen poco de ellos, pero los valores
+        absolutos en newtons deben tomarse como orientativos. Se propone el procedimiento de
+        calibración del apartado siguiente.
+  \item \textbf{Filtro de la célula.} La media móvil de ocho lecturas válidas introduce un retardo de
+        varias décimas de segundo. Promediar ambos sentidos lo compensa en primera aproximación, pero
+        limita el análisis de transitorios.
+  \item \textbf{Lectura bruta por lote.} La lectura sin filtrar sólo se transmite una vez cada
+        \SI{200}{\milli\second}.
+  \item \textbf{Posición integrada.} No se ha contrastado con una medida independiente (codificador
+        del accionamiento o medida angular de la barra).
+  \item \textbf{Unidades del par.} El par se usa en unidades internas del accionamiento.
+  \item \textbf{Una sola masa y un solo prototipo.} No se ha estudiado la dependencia con la carga
+        ni con el montaje.
+\end{itemize}
+
+\subsection{Procedimiento de calibración propuesto}
+
+\begin{enumerate}
+  \item Colgar la célula en vertical con su cadena de montaje y tarar sin carga.
+  \item Aplicar masas patrón en escalones crecientes y decrecientes que cubran el rango de uso (por
+        ejemplo, de \num{0} a \SI{6}{\kilo\gram} en pasos de \SI{0.5}{\kilo\gram}), registrando
+        \SI{10}{\second} por escalón con el eje parado.
+  \item Ajustar por mínimos cuadrados la recta cuentas--fuerza y obtener la sensibilidad, el cero,
+        el error de linealidad, la histéresis entre carga y descarga y la repetibilidad en tres
+        series.
+  \item Estimar la incertidumbre combinada, con las contribuciones de las masas patrón, la
+        resolución, el ruido, la linealidad y la histéresis, y expresarla con $k=2$.
+  \item Introducir la nueva constante en la interfaz y recalcular los ensayos existentes, cuyas
+        cuentas brutas se conservan.
+\end{enumerate}

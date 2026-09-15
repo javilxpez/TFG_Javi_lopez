@@ -1,0 +1,93 @@
+\chapter{Conclusiones y trabajo futuro}
+\label{chap:conclusiones}
+
+\section{Grado de cumplimiento de los objetivos}
+
+\begin{longtable}{@{}L{0.07\textwidth}L{0.58\textwidth}L{0.23\textwidth}@{}}
+\toprule
+\textbf{Obj.} & \textbf{Resultado} & \textbf{Estado} \\
+\midrule
+\endhead
+O1 & Modelo analítico con tensión proporcional a la longitud de cable, perfil ideal de par constante en forma cerrada, demostración de que minimiza el par de pico y comparación con el cilindro y la espiral lineal (capítulo~\ref{chap:modelo}). & Cumplido \\
+O2 & Placa adaptadora con RS-485, entradas digitales y analógicas, salidas de potencia y dos zócalos mikroBUS. Revisión A analizada y corregida en la revisión B (capítulo~\ref{chap:hardware}). & Cumplido; falta versionar la revisión B \\
+O3 & Firmware determinista a \SI{20}{\hertz} con Modbus, célula de carga, \emph{homing}, ciclos y protecciones (capítulo~\ref{chap:firmware}). & Cumplido \\
+O4 & Protocolo binario con CRC-8, telemetría por lotes y modelo pregunta-respuesta (capítulo~\ref{chap:comunicaciones}). & Cumplido \\
+O5 & Servidor y páginas de supervisión y de análisis con modelo teórico y grabación automática (capítulo~\ref{chap:software}). & Cumplido \\
+O6 & Caracterización temporal y de repetibilidad; cuantificación de la compensación de par (capítulo~\ref{chap:resultados}). & Cumplido, con calibración provisional \\
+O7 & Documentación de problemas, planificación, presupuesto e impacto (capítulos~\ref{chap:problemas} y~\ref{chap:gestion}). & Cumplido \\
+\bottomrule
+\end{longtable}
+
+\section{Conclusiones}
+
+\begin{enumerate}
+  \item \textbf{La tensión del cable es proporcional a su longitud libre}, $T = mg(L_3+L_4)\,c/(L_2L_3)$,
+        con independencia del ángulo de la barra. Este resultado simplifica todo el análisis
+        posterior.
+  \item \textbf{El perfil de par constante es el óptimo} en cuanto a par de pico, y existe en forma
+        cerrada: $r(\varphi) = C/\sqrt{c_0^2 + 2C\varphi}$. La reducción de par de pico frente al tambor
+        cilíndrico sólo depende de la geometría, $1 - (c_{\max}+c_{\min})/(2c_{\max})$, y vale un
+        \SI{24.7}{\percent} con las cotas nominales. Una espiral lineal bien elegida consigue el
+        \SI{85}{\percent} de esa mejora.
+  \item \textbf{La caracola compensa la variación de carga en el prototipo real.} En el tramo central
+        del recorrido la tensión del cable varía un \SI{17}{\percent} y el par gravitatorio del motor
+        sólo un \SI{6.4}{\percent}. El método de separar el par en componentes gravitatoria y de
+        pérdidas a partir de recorridos en ambos sentidos permite obtener esta conclusión sin conocer
+        la escala del par del accionamiento.
+  \item \textbf{Las pérdidas del mecanismo son de tipo Coulomb}: aproximadamente constantes a lo largo
+        del recorrido (\SI{14}{\percent} del par gravitatorio) e independientes de la velocidad entre
+        \num{20} y \SI{40}{rpm}.
+  \item \textbf{La plataforma cumple los requisitos de temporización}: periodo de
+        \SI{50.004}{\milli\second} con dispersión de \SI{0.066}{\milli\second} y un tiempo de trabajo
+        del \SI{22}{\percent} del periodo. Llegar a este determinismo exigió abandonar la
+        versión de doble núcleo en favor de un único dueño de cada bus en un lazo de periodo fijo.
+  \item \textbf{Los componentes con reglas estrictas requieren diagnóstico.} El acondicionador
+        ZSC31014 sólo pudo configurarse de forma fiable después de descubrir y eliminar la
+        alimentación parásita a través de las líneas I\textsuperscript{2}C, y de medir la ventana del
+        modo comando con un barrido de retardos en lugar de copiar valores de otros diseños.
+  \item \textbf{Validar cada subsistema por separado} con programas de prueba específicos permitió
+        aislar rápidamente los fallos de hardware (revisión A de la placa) y de comunicación.
+\end{enumerate}
+
+\section{Trabajo futuro}
+
+\subsection{Medida y validación}
+\begin{itemize}
+  \item Calibrar la célula de carga con masas patrón y estimar su incertidumbre
+        (sección~\ref{sec:res-limitaciones}).
+  \item Confirmar la escala del registro de par del accionamiento y expresar los pares en
+        \si{\newton\metre}.
+  \item Medir el perfil real de la caracola y las cotas del mecanismo, regenerar el modelo y explicar
+        la caída de par del tramo final.
+  \item Leer la posición del codificador del accionamiento por Modbus en lugar de integrar la velocidad.
+  \item Ensayar varias masas y fabricar, por ejemplo por impresión 3D, un tambor cilíndrico y otro con el
+        perfil ideal~\eqref{eq:ideal}, para comparar los tres perfiles en el mismo banco.
+\end{itemize}
+
+\subsection{Firmware y comunicaciones}
+\begin{itemize}
+  \item Leer velocidad y par en una sola transacción Modbus (función 0x03 sobre los registros
+        16385--16387). Eliminaría una de las tres transacciones por periodo y ahorraría unos
+        \SI{3}{\milli\second}.
+  \item Enviar en cada muestra la posición del firmware y la lectura sin filtrar de la célula, y
+        sincronizar la lectura con la señal INT del ZSC31014.
+  \item Corregir la codificación de los bits de estado del ZSC31014 según la hoja de datos
+        (sección~\ref{sec:prob-estado}).
+  \item Incluir el modo del ciclo en el paquete 0x05 para que la cabecera del CSV sea correcta.
+  \item Respetar el silencio de \SI{1.75}{\milli\second} recomendado por Modbus por encima de
+        19200 baudios.
+\end{itemize}
+
+\subsection{Hardware y seguridad}
+\begin{itemize}
+  \item Versionar y fabricar la revisión B de la placa, con los ajustes de resistencias propuestos.
+  \item Cablear los finales de carrera y una seta de emergencia a la entrada STO del accionamiento, de
+        modo que la parada no dependa del software.
+  \item Hacer que el servidor escuche sólo en la máquina local o exija autenticación, y añadir pruebas
+        automáticas del protocolo.
+\end{itemize}
+
+\section{Valoración personal}
+
+\completar{Valoración personal: qué se ha aprendido, qué dificultades han sido más formativas y qué se
+haría de otra manera.}
