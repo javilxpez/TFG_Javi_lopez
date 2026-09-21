@@ -1,0 +1,66 @@
+\chapter{Formato de los ficheros de ensayo}
+\label{anx:csv}
+
+Cada ensayo se graba en \fichero{cycles/AAAAMMDD-HHMMSS\_ciclo.csv}, codificado en UTF-8. Las líneas
+que empiezan por \codigo{\#} forman la cabecera, con las constantes en pares \codigo{clave=valor};
+después viene una línea de nombres de columna y una fila por muestra.
+
+\begin{lstlisting}[numbers=none,caption={Comienzo de un fichero de la campaña del 21 de septiembre.}]
+# ensayo 2026-09-21 18:08:46
+# lc1_cuentas_por_N=14.41  lc1_cero_N=51.78  lc1_int16=0
+# repeticiones_pedidas=1  B=1.000 rev (posicion)
+# lc1_base ya lleva restada la tara del firmware; lc1_raw es cruda
+t_ms,t_rel_s,rep,fase,pos_rev,lc1_raw,lc1_base,rpm,par_x10,ref_rpm,lim_a,lim_b,estado,work_us
+\end{lstlisting}
+
+\begin{longtable}{@{}llL{0.58\textwidth}@{}}
+\caption{Columnas del fichero de ensayo.}\label{tab:csv}\\
+\toprule
+Columna & Unidad & Descripción \\
+\midrule
+\endfirsthead
+\toprule
+Columna & Unidad & Descripción \\
+\midrule
+\endhead
+t\_ms & ms & Reloj del microcontrolador \\
+t\_rel\_s & s & Tiempo desde la primera muestra del ensayo \\
+rep & -- & Repetición en curso (desde 1) \\
+fase & -- & \codigo{hacia\_A} (subida) o \codigo{volviendo\_a\_B} (bajada). En los ensayos de la campaña preliminar, \codigo{hacia\_B} y \codigo{volviendo\_a\_A} \\
+pos\_rev & rev & Posición del eje del motor integrada por el servidor \\
+lc1\_raw & cuentas & Lectura bruta del ZSC31014 (una por lote) \\
+lc1\_base & cuentas & Media móvil de 8 lecturas menos la tara del firmware \\
+rpm & rpm & Velocidad medida por el accionamiento \\
+par\_x10 & 0,1\,\ua & Par medido por el accionamiento \\
+ref\_rpm & rpm & Consigna de velocidad (negativa hacia A, positiva hacia B) \\
+lim\_a, lim\_b & 0/1 & Estado de los finales de carrera \\
+estado & -- & Estado de la máquina (tabla~\ref{tab:estados}) \\
+work\_us & µs & Tiempo de trabajo de la vuelta del lazo \\
+\bottomrule
+\end{longtable}
+
+\section{Conversión y análisis}
+
+La conversión a fuerza es $F\,[\si{\newton}] = \text{lc1\_base}/k + F_0$, con $k$ =
+\codigo{lc1\_cuentas\_por\_N} y $F_0$ = \codigo{lc1\_cero\_N}. Conviene recordar que esa constante
+es provisional (sección~\ref{sec:res-limitaciones}).
+
+Para el análisis, el \emph{avance del ciclo} se obtiene restando la posición de la primera muestra,
+que es el punto B donde arranca el ensayo, y corrigiendo el signo con el de la muestra más alejada:
+\begin{equation}
+  p_i = \big(\text{pos\_rev}_i - \text{pos\_rev}_0\big)\cdot\operatorname{signo}
+        \big(\text{pos\_rev}_{\text{lejana}} - \text{pos\_rev}_0\big).
+\end{equation}
+Así el avance es siempre positivo hacia A, y los ensayos de las dos campañas se pueden comparar pese
+a tener sentidos de recorrido opuestos.
+
+\section{Notas sobre las cabeceras}
+
+\begin{itemize}
+  \item Los ensayos de la campaña preliminar se grabaron con una versión del servidor que todavía no
+        escribía la calibración: en ellos aparece \codigo{lc1\_cuentas\_por\_N=0}.
+  \item El texto ``(posicion)'' de la tercera línea se escribe siempre que el recorrido pedido sea
+        mayor que cero, aunque el ensayo se haya hecho contra los finales de carrera, que es el caso
+        de todos los ensayos de esta memoria. Es un defecto conocido de la cabecera y no afecta a los
+        datos.
+\end{itemize}

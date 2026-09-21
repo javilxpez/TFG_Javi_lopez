@@ -1,0 +1,338 @@
+\chapter{Firmware del microcontrolador}
+\label{chap:firmware}
+
+\section{Entorno y organización}
+
+El firmware está escrito en C++ con el entorno Arduino y el núcleo Arduino-Pico \cite{arduinopico},
+que da acceso a los periféricos del RP2350 y a su SDK. Usa las bibliotecas \codigo{Wire}
+(I\textsuperscript{2}C), \codigo{SerialPIO} (UART implementada con PIO) y ModbusMaster
+\cite{modbusmaster}. El código final está en \fichero{firmware\_posicion\_v2/}: un fichero principal
+de unas 1500 líneas y la cabecera \fichero{i2c\_bus.h} con el árbitro del bus I\textsuperscript{2}C.
+
+El diseño sigue un principio que se repite en todo el código: \emph{cada bus tiene un único dueño y
+un único punto del lazo donde se usa}. Sólo dos funciones tocan el bus RS-485
+(\codigo{servoReadState} y \codigo{servoAction}) y sólo dos tocan el I\textsuperscript{2}C durante el
+funcionamiento (\codigo{i2cUpdate} y \codigo{lcRequestService}). El intérprete de órdenes
+(\codigo{processCommand}) nunca accede a un bus: se limita a modificar variables de estado, que el
+lazo lee en el punto que corresponde. Así, la llegada de una orden no puede interrumpir una
+transacción a medias.
+
+El estado vive en dos estructuras: \codigo{ControlState ctrl} (modo, errores, parámetros, célula,
+posición, \emph{homing} y ciclo) y \codigo{Servo sv} (fase del enlace, dirección, conexión,
+contadores de fallos, consigna pendiente y últimas lecturas).
+
+\section{Lazo principal}
+\label{sec:fw-lazo}
+
+El núcleo 0 ejecuta un lazo con periodo mínimo de \SI{50}{\milli\second} (\codigo{LOOP\_MS}). Cada
+vuelta tiene cinco fases (código~\ref{lst:loop}).
+
+\begin{lstlisting}[language=C++,caption={Estructura del lazo principal (simplificada).},label={lst:loop}]
+void loop(){
+  unsigned long now = millis();  uint32_t t0us = micros();
+
+  // == LECTURA ==
+  servoReadState();      // RS-485: velocidad y par (2 transacciones)
+  lcRequestService();    // consulta/programación de la célula si se ha pedido
+  i2cUpdate();           // I2C: una lectura de la célula
+  positionUpdate();      // integra rpm -> posición (sin buses)
+
+  // == LÓGICA == (sin acceso a buses)
+  checkCommands();       // órdenes USB -> variables de estado
+  if (ctrl.lcProgBusy)      { sv.speedCmd = 0; ctrl.cycPhase = CYC_IDLE; }
+  else if (homing en curso)   homingUpdate();
+  else                      { homingUpdate(); cycleUpdate(); }
+  // protecciones: límite de fuerza y finales de carrera anulan la consigna
+  // derivación del estado de la aplicación para la telemetría
+
+  // == ACTUACIÓN ==
+  servoAction();         // RS-485: máquina de estados del servo y escritura de consigna
+
+  // == REGISTRO ==
+  recordSample(now, micros() - t0us);
+  if (sampleCount >= MAX_SAMPLES || now - ctrl.lastTelemetryTime >= 200)
+    telemetryFlush();    // + tramas de homing y de ciclo si están activos
+
+  // == RITMO ==
+  unsigned long dt = millis() - now;
+  if (dt < LOOP_MS) delay(LOOP_MS - dt);
+}
+\end{lstlisting}
+
+Este orden tiene consecuencias deliberadas:
+\begin{itemize}
+  \item Las protecciones se evalúan \emph{después} de la lógica y \emph{antes} de la escritura:
+        ninguna consigna generada por el \emph{homing}, el ciclo o una orden manual llega al
+        accionamiento sin pasar por ellas.
+  \item Una orden recibida se aplica en la misma vuelta, porque la escritura de la consigna es
+        posterior a la lectura de órdenes.
+  \item El tiempo de trabajo (\codigo{work\_us}) se mide antes del retardo de ritmo y viaja con cada
+        muestra. Es la base de la caracterización temporal de la
+        sección~\ref{sec:res-temporizacion}.
+  \item El retardo final hace que el periodo no dependa de la duración del trabajo mientras ésta no
+        supere \SI{50}{\milli\second}.
+\end{itemize}
+
+El núcleo 1 no se usa (\codigo{loop1()} sólo espera). La evolución desde la versión de doble núcleo
+se explica en la sección~\ref{sec:prob-uart}.
+
+\section{Máquina de estados del servo}
+
+La figura~\ref{fig:fsm-servo} muestra la máquina de estados del enlace con el accionamiento, que
+ejecuta \codigo{servoAction}.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\small,>=Stealth,node distance=18mm and 26mm,
+  st/.style={draw,rounded rectangle,minimum width=24mm,minimum height=8mm,fill=blue!5}]
+  \node[st] (idle) {SV\_IDLE};
+  \node[st,right=of idle] (cfg) {SV\_CONFIGURING};
+  \node[st,right=of cfg] (run) {SV\_RUNNING};
+  \node[st,below=24mm of cfg] (fault) {SV\_FAULT};
+  \draw[->] (idle) -- node[above,font=\scriptsize]{INIT} (cfg);
+  \draw[->] (cfg) -- node[above,font=\scriptsize]{configuración OK} (run);
+  \draw[->] ([xshift=6mm]cfg.south) -- node[right,font=\scriptsize]{3 fallos} ([xshift=6mm]fault.north);
+  \draw[->] (cfg.north) to[bend right=35] node[above,font=\scriptsize]{STOP} (idle.north);
+  \draw[->] (run.south) |- node[pos=0.25,right,font=\scriptsize]{SHUTDOWN} ([yshift=-9mm]idle.south) -- (idle.south);
+  \draw[->] ([xshift=-6mm]fault.north) -- node[left,font=\scriptsize]{INIT} ([xshift=-6mm]cfg.south);
+  \draw[->] (run) edge[loop above] node[above,font=\scriptsize]{escritura de consigna cada 50 ms} (run);
+\end{tikzpicture}
+\caption{Máquina de estados del enlace con el accionamiento.}
+\label{fig:fsm-servo}
+\end{figure}
+
+En \codigo{SV\_CONFIGURING} se ejecuta la secuencia de configuración del
+capítulo~\ref{chap:comunicaciones}. En \codigo{SV\_RUNNING} cada vuelta escribe la consigna: un
+fallo marca el servo como desconectado y pone a cero las lecturas, pero no provoca un nuevo escaneo
+del bus, que es bloqueante y lento (hasta un segundo por dirección vacía). El escaneo sólo se hace
+bajo demanda con la orden SCAN.
+
+La orden INIT, además de reiniciar la posición, invalida el recorrido A$\rightarrow$B medido: poner
+el cero donde esté el eje deja sin sentido la referencia anterior, y sin esa invalidación el ciclo
+podría creer que A es el punto actual.
+
+\section{Lectura de la célula de carga}
+
+El ZSC31014 trabaja en modo de conversión continua: convierte a su propio ritmo, fijado por la
+palabra ZMDI\_Config1, de \num{0.5} a \SI{125}{\milli\second} según el reloj y la tasa elegidos
+\cite{zsc31014}, y guarda el último resultado. Una lectura no dispara una conversión: devuelve el
+último dato con dos bits de estado que indican si es nuevo o si ya se había leído.
+
+Por ello, \codigo{loadCellUpdate} hace \emph{una sola lectura de dos bytes por vuelta}:
+\begin{enumerate}
+  \item Pide el bus al árbitro. Si está ocupado, pierde el turno y lo intenta en la vuelta
+        siguiente.
+  \item Lee 14 bits de dato y 2 de estado. Si el estado es ``dato válido'', lo introduce en una
+        media móvil de 8 posiciones y calcula la lectura tarada
+        \codigo{baseRead = media $-$ zeroOffset}.
+  \item Si pasan más de \SI{150}{\milli\second} sin un dato válido, marca la célula como no válida y
+        el límite de fuerza deja de actuar, en lugar de hacerlo con un dato viejo.
+\end{enumerate}
+
+\subsection{Árbitro del bus I\textsuperscript{2}C}
+
+La cabecera \fichero{i2c\_bus.h} implementa un árbitro mínimo: una variable con el dueño actual
+(\codigo{I2C\_FREE}, \codigo{I2C\_LC1}, \codigo{I2C\_LC2} o \codigo{I2C\_CFG}) y dos funciones,
+\codigo{i2cAcquire} e \codigo{i2cRelease}. La reserva se deniega si el bus tiene otro dueño o si se
+pide desde el núcleo 1, y cada denegación se cuenta para el diagnóstico. El árbitro nació al
+compartir el bus con el NAU7802 (sección~\ref{sec:prob-nau}) y se conserva para reservar el bus en
+exclusiva durante la programación de la EEPROM. Nadie espera con el bus ocupado, así que el árbitro
+no puede bloquear el lazo.
+
+\section{Posición integrada}
+\label{sec:fw-posicion}
+
+La posición del eje del motor se obtiene integrando la velocidad que devuelve el accionamiento:
+\begin{equation}
+  p_k = p_{k-1} + \frac{n_k\,\Delta t_k}{60000}, \qquad [p]=\text{rev},\ [n]=\text{rpm},\ [\Delta t]=\text{ms}.
+\end{equation}
+Es una integración rectangular con la última velocidad leída y el intervalo real medido con
+\codigo{millis()}. Hay tres aspectos que tener en cuenta:
+\begin{itemize}
+  \item \textbf{Rebase tras un hueco.} Si el lazo se detiene, por ejemplo durante la programación de
+        la célula, la siguiente vuelta vería un $\Delta t$ de casi un segundo y lo multiplicaría por
+        la última velocidad, inventando un desplazamiento que no ha ocurrido. Por eso se anula la
+        base de tiempo (\codigo{lastPosTime = 0}) tras INIT, al iniciar el \emph{homing} y tras
+        cualquier operación bloqueante.
+  \item \textbf{Resolución.} El registro de velocidad tiene resolución de \SI{1}{rpm}: si el
+        accionamiento redondea, el error es de media nula; si trunca, a \SI{30}{rpm} introduciría un
+        sesgo de hasta el \SI{3}{\percent}.
+  \item \textbf{Acotación.} La deriva no se acumula entre ensayos, porque el ciclo reconoce sus
+        extremos por los finales de carrera y no por la posición integrada.
+\end{itemize}
+
+Esta última decisión es la que hace que el banco siga siendo utilizable pese a la incertidumbre de
+la posición: el recorrido del ensayo queda definido por dos contactos físicos, y la posición
+integrada sólo sirve como eje de referencia dentro del ensayo.
+
+\section{\emph{Homing}}
+
+La rutina de \emph{homing} (figura~\ref{fig:homing}) establece un origen repetible y mide el
+recorrido disponible:
+\begin{enumerate}
+  \item \textbf{Buscar A}: avanza hacia A (arriba) a la velocidad de \emph{homing} hasta que se
+        activa el final A, y fija ahí $p=0$.
+  \item \textbf{Buscar B}: avanza hacia B (abajo) hasta el final B y guarda el recorrido $p_B$.
+  \item \textbf{Ir al origen}: se mueve hasta el desplazamiento configurado, acotado a $[0, p_B]$,
+        con tolerancia de $\pm\SI{0.02}{rev}$.
+  \item Fija ese punto como nuevo origen ($p=0$) y sigue informando del resultado durante
+        \SI{1.5}{\second} para que la interfaz lo muestre.
+\end{enumerate}
+Cualquier tramo que dure más de \SI{30}{\second}, o la pérdida del servo, aborta con fallo. Durante
+el \emph{homing} se ignoran las órdenes de movimiento manual.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\small,>=Stealth,
+  st/.style={draw,rounded rectangle,minimum width=22mm,minimum height=8mm,fill=green!5}]
+  \node[st] (i) at (0,0) {IDLE};
+  \node[st] (a) at (3.6,0) {SEEK\_A};
+  \node[st] (b) at (7.6,0) {SEEK\_B};
+  \node[st] (g) at (7.6,-2) {GOTO};
+  \node[st] (d) at (3.6,-2) {DONE};
+  \node[st,fill=red!8] (f) at (3.6,2) {FAIL};
+  \draw[->] (i) -- node[above,font=\scriptsize]{HOME} (a);
+  \draw[->] (a) -- node[above,font=\scriptsize]{FC A: $p\!=\!0$} (b);
+  \draw[->] (b) -- node[right,font=\scriptsize]{FC B: $p_B\!=\!p$} (g);
+  \draw[->] (g) -- node[above,font=\scriptsize]{$|e|\le 0{,}02$: $p\!=\!0$} (d);
+  \draw[->,dashed] (d) -| node[pos=0.25,below,font=\scriptsize]{tras 1,5 s} (i);
+  \draw[->,dashed] (f) -| node[pos=0.25,above,font=\scriptsize]{tras 1,5 s} (i);
+  \draw[->,red!70!black] (a) -- node[right,font=\scriptsize,align=left]{timeout (30 s) o servo perdido\\ en cualquier fase activa} (f);
+  \draw[->,red!70!black] (b) |- (f);
+\end{tikzpicture}
+\caption{Máquina de estados del \emph{homing}.}
+\label{fig:homing}
+\end{figure}
+
+\section{Ciclo de ensayo B$\rightarrow$A$\rightarrow$B}
+\label{sec:fw-ciclo}
+
+El ensayo tiene sentido físico empezando por el extremo inferior, con el mecanismo en extensión
+completa y la masa en su punto más bajo. Como el \emph{homing} deja el eje en A, el ciclo se
+organiza en tres fases (figura~\ref{fig:ciclo}):
+
+\begin{description}[style=nextline,leftmargin=1.5em]
+  \item[\codigo{CYC\_POS\_B} --- colocación] Baja hasta B. Este tramo no cuenta como repetición y el
+        servidor no lo graba: el ensayo empieza cuando el eje ya está en B. Al llegar se guarda
+        \codigo{cycPosB}, la posición integrada en ese punto, que será el origen de medida del
+        ensayo.
+  \item[\codigo{CYC\_TO\_A} --- ida] Sube hasta A. Es el tramo cargado del ensayo.
+  \item[\codigo{CYC\_TO\_B} --- vuelta] Baja de nuevo hasta B y cierra la repetición; si quedan
+        repeticiones, se vuelve a \codigo{CYC\_TO\_A}.
+\end{description}
+
+Por convenio, la consigna negativa lleva el eje hacia A (arriba) y la positiva hacia B (abajo).
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\small,>=Stealth,
+  st/.style={draw,rounded rectangle,minimum width=26mm,minimum height=8mm,fill=blue!5}]
+  \node[st] (i) at (0,0) {CYC\_IDLE};
+  \node[st] (p) at (4.2,0) {CYC\_POS\_B};
+  \node[st] (a) at (8.6,0) {CYC\_TO\_A};
+  \node[st] (b) at (8.6,-2) {CYC\_TO\_B};
+  \node[st] (d) at (4.2,-2) {CYC\_DONE};
+  \node[st,fill=red!8] (f) at (0,-2) {CYC\_FAIL};
+  \draw[->] (i) -- node[above,font=\scriptsize]{CYCLE\_START} (p);
+  \draw[->] (p) -- node[above,font=\scriptsize,align=center]{FC B\\ $p_B$ fijado} (a);
+  \draw[->] (a) -- node[right,font=\scriptsize]{FC A} (b);
+  \draw[->] (b) -- node[above,font=\scriptsize,align=center]{FC B: repetición\\ completada} (d);
+  \draw[->] (b.north east) to[bend right=55] node[right,font=\scriptsize,align=left]{quedan\\ repeticiones} (a.south east);
+  \draw[->,red!70!black] (d) -- node[above,font=\scriptsize]{timeout / servo} (f);
+\end{tikzpicture}
+\caption{Máquina de estados del ciclo de ensayo.}
+\label{fig:ciclo}
+\end{figure}
+
+Los extremos se reconocen por los \emph{finales de carrera}, no por la posición integrada. Así el
+ciclo funciona esté el cero donde esté ---el \emph{homing} puede haberlo dejado en A, en B o en
+medio--- y sin depender de que la escala de velocidad del accionamiento sea exacta, que es de donde
+sale la posición. Si se pide un recorrido parcial, la distancia se mide \emph{desde B}:
+
+\begin{lstlisting}[language=C++,caption={Reconocimiento de los extremos del ciclo.},label={lst:ciclo}]
+static bool cycleAtB(bool limB){            // B: el final de abajo
+  if(ctrl.cycToLimitB) return limB;
+  return limB || (ctrl.posRev >= ctrl.cycPosB - HOMING_TOL_REV);
+}
+static bool cycleAtA(bool limA){            // A: el final de arriba, o la distancia pedida
+  if(ctrl.cycToLimitB) return limA;
+  return limA || ((ctrl.cycPosB - ctrl.posRev) >= (ctrl.cycTargetRev - HOMING_TOL_REV));
+}
+\end{lstlisting}
+
+El ciclo sólo se acepta con el servo habilitado, sin \emph{homing} en curso y sin programación de la
+célula. Los temporizadores y la pérdida del servo lo abortan, y los finales de carrera y el límite
+de fuerza siguen actuando en el lazo como red de seguridad. La prioridad es: programación de la
+célula $>$ \emph{homing} $>$ ciclo $>$ movimiento manual.
+
+\section{Configuración del acondicionador de la célula}
+
+La consulta y la programación de la EEPROM del ZSC31014 son las operaciones más delicadas del
+firmware. Por las restricciones que se analizan en la sección~\ref{sec:prob-zsc}, obligan a
+reiniciar el chip y dejan la célula sin medida durante cientos de milisegundos. Se ejecutan así:
+
+\begin{enumerate}
+  \item \codigo{processCommand} sólo \emph{anota} la petición y un plazo de \SI{1}{\second}.
+  \item En su punto fijo del lazo, \codigo{lcRequestService} comprueba que el eje está en reposo:
+        estado IDLE o STOPPED, consigna nula y sin \emph{homing}. Si no lo está, responde
+        ``rechazado''.
+  \item Reserva el bus en exclusiva (\codigo{I2C\_CFG}). Si no lo consigue antes del plazo, responde
+        ``bus ocupado''.
+  \item Pone la consigna a cero, pasa al estado PROGRAMMING y envía la telemetría pendiente para que
+        la interfaz vea el silencio que viene.
+  \item Ejecuta la consulta o la programación, devuelve el bus a \SI{400}{\kilo\hertz}, libera el
+        árbitro, reinicializa la célula, anula la base de la integración de posición y responde con
+        el paquete \codigo{0x04}.
+\end{enumerate}
+
+\subsection{Escritura verificada}
+
+\codigo{loadCellProgram} aplica dos reglas de la hoja de datos \cite{zsc31014}: la palabra
+ZMDI\_Config1 sólo se carga tras un ciclo de alimentación, y la firma MISR de la EEPROM (palabra
+\codigo{0x12}) se regenera al salir del modo comando con Start\_NOM si hubo escrituras. La función
+hace dos pasadas:
+
+\begin{enumerate}
+  \item \textbf{Primera pasada}: entra en modo comando, lee B\_Config (\codigo{0x0F}) y
+        ZMDI\_Config1 (\codigo{0x01}) y calcula las palabras deseadas. Si coinciden con las
+        actuales, termina sin escribir, porque la EEPROM admite 100.000 ciclos de escritura. Si no,
+        escribe las que cambian, espera \SI{20}{\milli\second} por escritura (típico
+        \SI{15}{\milli\second}, peor caso \SI{17.3}{\milli\second}), envía Start\_NOM y espera
+        \SI{150}{\milli\second} antes de cortar la alimentación.
+  \item \textbf{Segunda pasada}: desde un reinicio limpio, vuelve a leer ambas palabras. Si
+        coinciden con lo pedido, el resultado es ``grabado y verificado''; si no, ``fallo''.
+\end{enumerate}
+
+Las palabras deseadas se construyen a partir de las actuales, protegiendo los bits que la interfaz
+no debe tocar: en B\_Config se conservan los reservados [15:13]; en ZMDI\_Config1 se conservan
+[15:9] (signos de las correcciones de segundo orden y de temperatura, calibrados en fábrica) y se
+fuerzan el interfaz I\textsuperscript{2}C (bit 4 = 0) y el campo reservado [2:0] = 001.
+
+\subsection{Mantenimiento del reinicio para medida}
+
+La orden LC\_HOLD deja la célula sin alimentación durante \SI{8}{\second}, con las líneas del bus en
+el estado elegido, para medir con un polímetro la tensión de la placa Click. A diferencia de la
+programación, esta espera \emph{no} bloquea: el lazo sigue girando, leyendo el servo, vigilando los
+finales de carrera y enviando telemetría, y en cada vuelta sólo comprueba si ha vencido el plazo.
+Mientras dura se fuerza la consigna a cero en cada vuelta: alguien tiene las manos dentro de la
+máquina, y una orden de movimiento que llegue por USB no debe poder arrancar el eje.
+
+\section{Evolución del firmware}
+
+\begin{longtable}{@{}L{0.27\textwidth}L{0.12\textwidth}L{0.49\textwidth}@{}}
+\caption{Versiones del firmware conservadas en el repositorio.}\label{tab:versiones-fw}\\
+\toprule
+Versión & Placa & Características \\
+\midrule
+\endfirsthead
+\toprule
+Versión & Placa & Características \\
+\midrule
+\endhead
+\fichero{old/speedtorque\_mode} & XIAO ESP32-S3 & Escaneo Modbus y selección de modo par o velocidad. \\
+\fichero{firmware} & XIAO ESP32-S3 & Protocolo binario v2, parámetros del accionamiento y regulador de fuerza en modo par con zona muerta, umbral y ganancia sobre la célula filtrada. \\
+\fichero{firmwarerasp} & Pico 2 & Migración con SerialPIO. Doble núcleo: el núcleo 1 escribe la consigna y lee la supervisión Modbus, comunicado con el núcleo 0 por variables \codigo{volatile}. \\
+\fichero{firmware\_posicion} & Pico 2 & Modo velocidad sin lazo de fuerza, integración de posición, telemetría por lotes y diseño de dueño único en el núcleo 0. \\
+\fichero{firmware\_posicion\_v2} & Pico 2 & Versión final: \emph{homing}, ciclo B$\rightarrow$A$\rightarrow$B con extremos por finales de carrera, programación verificada de la EEPROM, árbitro I\textsuperscript{2}C y diagnóstico en la telemetría. \\
+\bottomrule
+\end{longtable}

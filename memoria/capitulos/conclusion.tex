@@ -1,0 +1,134 @@
+\chapter{Conclusiones}
+\label{chap:conclusiones}
+
+\section{Conclusión}
+
+El objetivo general era construir y validar un banco de ensayos para un mecanismo de elevación con
+caracola de radio variable, y usarlo para contrastar el modelo del mecanismo. El banco está
+construido y funciona; el contraste ha dado un resultado distinto del esperado, y de ahí salen las
+conclusiones más interesantes del trabajo.
+
+\subsection{Sobre el banco de ensayos}
+
+\begin{enumerate}
+  \item El sistema cumple los requisitos de temporización: muestrea a \SI{20.0}{\hertz} con una
+        desviación típica del periodo de \SI{0.06}{\milli\second}, y el trabajo del lazo ocupa el
+        \SI{22}{\percent} del periodo. Llegar a ese determinismo exigió abandonar la versión de doble
+        núcleo en favor de un lazo de periodo fijo con un único dueño de cada bus.
+  \item El ciclo de ensayo B$\rightarrow$A$\rightarrow$B, con los extremos reconocidos por los
+        finales de carrera y no por la posición integrada, repite el recorrido dentro del
+        \SI{0.6}{\percent} y cierra sobre el punto de partida. Esa decisión hace que el banco sea
+        utilizable pese a la incertidumbre de la medida de posición.
+  \item Guardar los ensayos en cuentas brutas, con las constantes en la cabecera, ha permitido
+        reanalizar por completo dos campañas después de cambiar el modelo y la calibración, sin
+        repetir un solo ensayo. Es la decisión de diseño que más ha rendido.
+  \item Unificar el modelo en una sola implementación compartida por el simulador y el visor
+        eliminó una fuente real de error: las páginas habían divergido hasta calcular con
+        geometrías distintas.
+\end{enumerate}
+
+\subsection{Sobre el modelo del mecanismo}
+
+\begin{enumerate}\setcounter{enumi}{4}
+  \item La posición de la salida del cable respecto a la articulación no es un detalle de dibujo.
+        Con la salida en la vertical, la tensión resulta proporcional a la longitud libre de cable,
+        un resultado simple y atractivo; con la salida desplazada, esa cancelación desaparece y la
+        tensión pasa a depender de dos ángulos. El modelo del banco trabaja ya con el caso general.
+  \item El perfil de par constante es el que minimiza el par de pico para un recorrido y un giro de
+        tambor dados. La demostración es independiente de la geometría: el trabajo está fijado, luego
+        el máximo del par no puede ser menor que su media.
+\end{enumerate}
+
+\subsection{Sobre la validación experimental}
+
+\begin{enumerate}\setcounter{enumi}{6}
+  \item \textbf{Medir sólo la fuerza no permite validar el modelo.} Con la célula sin calibrar, el
+        ajuste incluye la sensibilidad como incógnita y el coeficiente de determinación es el
+        cuadrado de la correlación: no distingue el signo. Tres hipótesis de tambor muy distintas
+        ---cilindro, caracola y caracola invertida--- ajustan la señal de la célula con
+        $R^2$ entre \num{0.93} y \num{0.97}. Un buen ajuste no es una validación.
+  \item \textbf{El par del accionamiento sí decide}, porque no depende de ninguna calibración
+        pendiente. Y al usarlo, la comparación es concluyente: un tambor cilíndrico obligaría al par
+        a bajar un \SI{22}{\percent} a lo largo del tramo con carga, mientras que el par medido sube
+        un \SI{56}{\percent}. \textbf{El tambor no se comporta como un cilindro}: su radio efectivo
+        crece un \SI{93}{\percent} a lo largo del recorrido.
+  \item \textbf{La caracola, sin embargo, no compensa: sobrecompensa.} Para mantener el par constante
+        bastaría con que el radio creciera un \SI{24}{\percent}. Con el crecimiento real, el par
+        queda peor repartido que con un cilindro equivalente, y además en el sentido contrario al que
+        describe la configuración del banco.
+  \item Las pérdidas del mecanismo son de tipo Coulomb: constantes a lo largo del recorrido y del
+        orden del \SI{19}{\percent} del par gravitatorio.
+  \item El resultado anterior no cierra la validación, y es importante decirlo con claridad: mientras
+        no se midan las cotas del mecanismo y no se calibre la célula con masas patrón, cualquier
+        juego de parámetros es una descripción de los datos y no una verificación del modelo. El
+        trabajo deja el procedimiento montado y el diagnóstico hecho.
+\end{enumerate}
+
+\subsection{Grado de cumplimiento de los objetivos}
+
+\begin{longtable}{@{}L{0.07\textwidth}L{0.58\textwidth}L{0.25\textwidth}@{}}
+\toprule
+\textbf{Obj.} & \textbf{Resultado} & \textbf{Estado} \\
+\midrule
+\endhead
+O1 & Modelo estático general, perfil ideal de par constante y demostración de que minimiza el par de pico (capítulo~\ref{chap:modelo}). & Cumplido \\
+O2 & Placa adaptadora con RS-485, entradas y salidas y dos zócalos mikroBUS; revisión A analizada y corregida en la revisión B (capítulo~\ref{chap:hardware}). & Cumplido; falta versionar la revisión B \\
+O3 & Firmware determinista con Modbus, célula, \emph{homing}, ciclo B$\rightarrow$A$\rightarrow$B y protecciones (capítulo~\ref{chap:firmware}). & Cumplido \\
+O4 & Protocolo binario con CRC-8, telemetría por lotes y compatibilidad entre versiones (capítulo~\ref{chap:comunicaciones}). & Cumplido \\
+O5 & Servidor y tres páginas web: monitor, configuración con simulador y visor de ensayos (capítulo~\ref{chap:software}). & Cumplido \\
+O6 & Caracterización del banco y contraste cilindro/caracola sobre dos campañas (capítulo~\ref{chap:resultados}). & Cumplido; validación abierta a falta de cotas y calibración \\
+O7 & Problemas y soluciones, planificación, presupuesto e impacto (capítulos~\ref{chap:problemas} y~\ref{chap:gestion}). & Cumplido \\
+\bottomrule
+\end{longtable}
+
+\section{Desarrollos futuros}
+
+\subsection{Para cerrar la validación}
+\begin{itemize}
+  \item Medir las cotas del mecanismo y el perfil real de la caracola (radios, sentido y barrido), y
+        sustituir con ellas los parámetros ajustados.
+  \item Calibrar la célula de carga con masas patrón y estimar su incertidumbre; con ello, los
+        valores de fuerza pasarían de orientativos a trazables.
+  \item Confirmar la escala del registro de par del accionamiento para poder expresar los pares en
+        \si{\newton\metre}.
+  \item Eliminar o medir la holgura inicial del cable, para que el recorrido con carga coincida con
+        el recorrido completo.
+  \item Repetir la campaña y rehacer el contraste cilindro frente a caracola, que el banco ya
+        automatiza.
+\end{itemize}
+
+\subsection{Sobre el mecanismo}
+\begin{itemize}
+  \item Fabricar, por ejemplo por impresión 3D, un tambor cilíndrico y otro con el perfil ideal
+        calculado en la sección~\ref{chap:modelo}, y ensayar los tres en el mismo banco. Sería la
+        comparación definitiva, con el mecanismo como única variable.
+  \item Revisar el sentido de montaje de la caracola actual, que según la medida trabaja al contrario
+        de lo que describe la configuración.
+  \item Ensayar con varias masas para comprobar la linealidad del modelo con la carga.
+\end{itemize}
+
+\subsection{Sobre el sistema de medida}
+\begin{itemize}
+  \item Leer la posición del codificador del accionamiento por Modbus en lugar de integrar la
+        velocidad.
+  \item Leer velocidad y par en una sola transacción Modbus (registros 16385 a 16387), lo que
+        ahorraría unos \SI{3}{\milli\second} por periodo y permitiría subir la frecuencia de muestreo.
+  \item Enviar en cada muestra la posición del firmware y la lectura sin filtrar de la célula, y
+        sincronizar la lectura con la señal de interrupción del acondicionador.
+  \item Corregir la codificación de la ganancia y los bits de estado del ZSC31014
+        (sección~\ref{sec:prob-estado}).
+\end{itemize}
+
+\subsection{Sobre la seguridad y la explotación}
+\begin{itemize}
+  \item Cablear los finales de carrera y una seta de emergencia a la entrada STO del accionamiento,
+        de modo que la parada no dependa del software.
+  \item Versionar y fabricar la revisión B de la placa, con los ajustes de resistencias propuestos.
+  \item Hacer que el servidor escuche sólo en la máquina local o exija autenticación, y añadir
+        pruebas automáticas del protocolo.
+\end{itemize}
+
+\section{Valoración personal}
+
+\completar{Valoración personal: qué se ha aprendido, qué dificultades han sido más formativas y qué
+se haría de otra manera.}

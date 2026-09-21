@@ -1,0 +1,94 @@
+\chapter{Manual de uso}
+\label{anx:manual}
+
+\section{Instalación}
+
+\subsection{Firmware}
+\begin{enumerate}
+  \item Instalar Arduino IDE y añadir en \emph{Preferencias} el gestor de placas de Arduino-Pico:\\
+        \url{https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json}
+  \item Instalar el paquete \emph{Raspberry Pi Pico/RP2040/RP2350} y la biblioteca
+        \emph{ModbusMaster} desde el gestor de bibliotecas.
+  \item Abrir \fichero{firmware\_posicion\_v2/firmware\_posicion\_v2.ino} y seleccionar la placa
+        \emph{Raspberry Pi Pico 2}.
+  \item Conectar la Pico con el botón BOOTSEL pulsado y cargar el programa.
+\end{enumerate}
+
+\subsection{Aplicación de supervisión}
+\begin{lstlisting}[language=bash,numbers=none]
+python3 -m venv .venv
+source .venv/bin/activate
+pip install fastapi "uvicorn[standard]" pyserial
+python web_monitor.py            # o: python web_monitor.py /dev/ttyACM0
+\end{lstlisting}
+En Linux, la cuenta de usuario debe pertenecer al grupo \codigo{dialout} para acceder al puerto. La
+interfaz se abre en \url{http://localhost:8080}, con tres páginas enlazadas por la barra inferior:
+\emph{monitor} (\codigo{/}), \emph{ensayos} (\codigo{/ensayos}) y \emph{mecanismo} (\codigo{/sim}).
+
+\section{Configuración del mecanismo}
+
+Antes de ensayar conviene revisar la geometría en la página \emph{mecanismo}: tipo de tambor
+(caracola o cilindro), radios y barrido, reducción, sentido, cotas $L_2$, $dx$, $L_3$, $L_4$, masa y
+ángulo $\alpha_0$ en el punto B. Los cambios no se aplican hasta pulsar \emph{Guardar y propagar};
+desde ese momento los usan tanto el simulador como el visor de ensayos.
+
+La página avisa si la geometría es imposible (por ejemplo, si el recorrido pedido obligaría a la
+barra a pasar de sus topes) e indica, mediante la inversa, cuántas revoluciones de motor hacen falta
+para llevar la barra a un ángulo concreto: es el recorrido que tendría que hacer el ciclo.
+
+\section{Procedimiento de ensayo}
+
+\begin{enumerate}
+  \item \textbf{Comprobaciones previas}: masa colgada, cable sin cocas y correctamente asentado en la
+        caracola, finales de carrera en reposo (indicadores apagados) y zona de movimiento despejada.
+  \item \textbf{Inicializar}: pestaña \emph{Servo}, dirección 1, botón \emph{Init}. El estado pasa a
+        STOPPED y el indicador del servo a conectado.
+  \item \textbf{Homing}: fijar la velocidad de \emph{homing} y el desplazamiento del origen, pulsar
+        \emph{Aplicar parámetros} y después \emph{Home}. Al terminar se muestra el recorrido
+        A$\rightarrow$B. El eje queda en A, arriba.
+  \item \textbf{Tara}: con el mecanismo en reposo, pulsar \emph{Tara} para poner a cero la célula.
+  \item \textbf{Ciclo}: en la pestaña \emph{Ciclo B$\rightarrow$A$\rightarrow$B}, elegir hasta dónde
+        sube (final de carrera A, recomendado, o una distancia desde B), la velocidad y las
+        repeticiones, y pulsar \emph{Iniciar ciclo}. El eje baja primero a B para colocarse ---ese
+        tramo no se graba--- y a partir de ahí empieza el ensayo. La grabación se abre y se cierra
+        sola.
+  \item \textbf{Análisis}: en la página \emph{ensayos}, abrir el fichero y activar la curva teórica
+        para compararla con la medida.
+  \item \textbf{Fin}: \emph{Shutdown} para deshabilitar el accionamiento.
+\end{enumerate}
+
+\section{Programación de la célula de carga}
+
+Con el eje parado, abrir \emph{Configuración avanzada} en la pestaña de la célula, elegir la ganancia
+y el cero del A/D y pulsar \emph{Programar}. El eje queda bloqueado cerca de un segundo. El resultado
+aparece debajo; si es ``sigue alimentada con el reinicio activo'', usar \emph{Mantener reset} y medir
+la tensión de alimentación de la placa Click, que debe caer a \SI{0}{\volt}. Téngase en cuenta que
+el código de ganancia de la interfaz no coincide con la ganancia real para los valores intermedios
+(sección~\ref{sec:prob-estado}).
+
+\section{Diagnóstico}
+
+\begin{longtable}{@{}L{0.34\textwidth}L{0.6\textwidth}@{}}
+\toprule
+Síntoma & Causa probable y acción \\
+\midrule
+\endhead
+Servo desconectado, lecturas con código 0xE2 & Tiempo de espera Modbus: revisar el cableado A/B, la masa común, la dirección y la velocidad del accionamiento. Probar con \fichero{test\_modbus\_scan}. \\
+Código 0xE3 & CRC incorrecto: ruido o polaridad A/B invertida. \\
+Estado ERROR con código 0x03 & Tres fallos de configuración: el accionamiento no acepta las escrituras (¿alimentado?, ¿alarma activa?). \\
+Final de carrera siempre activo & Contacto abierto o cable roto (entrada NC). \\
+El ciclo termina enseguida y no graba nada & El eje ya estaba en el extremo o la fase de colocación no llegó a B: revisar en \fichero{web\_monitor.log} las líneas de cambio de fase. \\
+La interfaz no muestra la fase del ciclo & Firmware y servidor desparejados: recargar el firmware o actualizar el servidor. \\
+Célula no válida & Sin lecturas frescas en \SI{150}{\milli\second}: revisar la placa Click y el bus I\textsuperscript{2}C con \fichero{test\_loadcell}. \\
+La curva teórica no se parece a la medida & Revisar la geometría en \emph{mecanismo}: el aviso de escala y el de ángulo indican qué parámetro no cuadra. \\
+\bottomrule
+\end{longtable}
+
+\section{Precauciones}
+\begin{itemize}
+  \item Las protecciones son de software: mantener las manos fuera del recorrido con el servo
+        habilitado y tener a mano el corte de alimentación del accionamiento.
+  \item No programar la célula ni usar \emph{Mantener reset} con carga en movimiento (el firmware lo
+        impide, pero la medida de fuerza queda interrumpida).
+  \item El servidor acepta órdenes de cualquier equipo de la red: usarlo en una red de confianza.
+\end{itemize}

@@ -1,0 +1,261 @@
+\chapter{Comunicaciones}
+\label{chap:comunicaciones}
+
+El sistema usa cuatro enlaces (tabla~\ref{tab:enlaces}). Este capítulo describe el protocolo binario
+propio entre el microcontrolador y el ordenador, el uso de Modbus RTU con el accionamiento y la
+interfaz entre el servidor y el navegador. La especificación byte a byte está en el
+anexo~\ref{anx:protocolo}.
+
+\begin{table}[H]
+\centering
+\caption{Enlaces de comunicación del sistema.}
+\label{tab:enlaces}
+\small
+\begin{tabularx}{\textwidth}{@{}lL{0.27\textwidth}XX@{}}
+\toprule
+Enlace & Extremos & Capa física & Protocolo \\
+\midrule
+USB & PC $\leftrightarrow$ Pico & USB CDC (puerto serie virtual) & Binario propio + CRC-8 \\
+RS-485 & Pico $\leftrightarrow$ accionamiento & UART PIO, 115200 8N1 & Modbus RTU \\
+I\textsuperscript{2}C1 & Pico $\leftrightarrow$ ZSC31014 & \SI{400}{\kilo\hertz} (\SI{100}{\kilo\hertz} en modo comando) & Propio del chip \\
+Red local & Navegador $\leftrightarrow$ servidor & TCP, puerto 8080 & HTTP + WebSocket (JSON) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Protocolo binario entre el microcontrolador y el ordenador}
+
+\subsection{Formato de trama}
+
+Todas las tramas, en ambos sentidos, tienen el mismo formato (figura~\ref{fig:trama}): dos bytes de
+sincronía \codigo{0xAA 0x55}, un byte de longitud, la carga útil y un CRC-8 calculado sobre la carga
+útil. El primer byte de la carga útil identifica el tipo de paquete o la orden. Los enteros
+multibyte van en orden \emph{little-endian}.
+
+\begin{figure}[H]
+\centering
+\begin{bytefield}[bitwidth=2.4em]{12}
+  \bitbox{2}{\small 0xAA} & \bitbox{2}{\small 0x55} & \bitbox{2}{\small LEN} &
+  \bitbox{1}{\small ID} & \bitbox{3}{\small datos (LEN$-$1)} & \bitbox{2}{\small CRC-8}
+\end{bytefield}
+\caption{Formato común de trama. El CRC-8 cubre los LEN bytes de la carga útil (ID + datos).}
+\label{fig:trama}
+\end{figure}
+
+El CRC usa el polinomio $x^8+x^2+x+1$ (\codigo{0x07}), valor inicial \codigo{0x00}, sin reflexión ni
+XOR final (la variante conocida como CRC-8/SMBUS). Se implementa bit a bit en el firmware y en
+Python con el mismo algoritmo. Para tramas cortas como éstas detecta todos los errores de uno y dos
+bits y todas las ráfagas de hasta 8 bits.
+
+\subsection{Recepción y resincronización}
+
+El firmware decodifica las órdenes con una máquina de cuatro estados (\codigo{RX\_SYNC0},
+\codigo{RX\_SYNC1}, \codigo{RX\_LEN}, \codigo{RX\_PAYLOAD}). Una longitud nula o mayor de 60 devuelve
+el decodificador a la búsqueda de sincronía, y una trama con CRC incorrecto se descarta sin
+ejecutarse. Si se pierden bytes, el receptor vuelve a encontrar el patrón \codigo{AA 55} en la
+siguiente trama. El servidor hace lo mismo con la telemetría, con un tiempo de espera de
+\SI{100}{\milli\second} por lectura.
+
+Para depurar desde un terminal, el firmware acepta también órdenes de una letra (\codigo{i},
+\codigo{a}, \codigo{b}, \codigo{x}, \codigo{h}, \codigo{q}), pero \emph{sólo} cuando el decodificador
+está esperando el primer byte de sincronía. Antes se comprobaban en cualquier estado, y eso
+provocaba un error difícil de ver: la orden de programar la célula con ganancia 7 y cero 8 genera la
+trama \codigo{AA 55 03 09 07 08 69}, cuyo CRC \codigo{0x69} coincide con el carácter \codigo{i}. El
+atajo se comía el último byte, la orden se perdía y además se reinicializaba el servo. Con ganancia
+6 el CRC vale \codigo{0x7C} y la misma orden funcionaba. Ambos valores se han comprobado con la
+implementación del CRC.
+
+\subsection{Paquetes del microcontrolador al ordenador}
+
+\begin{table}[H]
+\centering
+\caption{Paquetes de telemetría y estado.}
+\label{tab:paquetes}
+\begin{tabular}{@{}clll@{}}
+\toprule
+ID & Nombre & Tamaño de carga útil & Cuándo se envía \\
+\midrule
+\codigo{0x02} & Telemetría por lotes & $14 + 14n$ B, $n\le 8$ & cada \SI{200}{\milli\second} o con 8 muestras \\
+\codigo{0x03} & Estado de \emph{homing} & 11 B & junto al lote, mientras hay \emph{homing} \\
+\codigo{0x04} & Resultado de la célula & 13 B & una vez por consulta o programación \\
+\codigo{0x05} & Estado del ciclo & 18 B & junto al lote, mientras hay ciclo \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Telemetría por lotes.} Cada vuelta del lazo añade al búfer una muestra de 14 bytes:
+desfase en milisegundos respecto al instante base del lote, velocidad, par, consigna, fuerza tarada,
+estado de los finales de carrera, estado de la máquina y tiempo de trabajo de la vuelta. Los datos
+comunes (instante base de 32 bits, lectura bruta de la célula y su estado, indicadores, código de
+error, dirección del servo y códigos de resultado de las dos lecturas Modbus) viajan una sola vez en
+una cabecera de 14 bytes.
+
+Agrupar las muestras reduce las escrituras por USB a cinco por segundo sin perder resolución
+temporal, porque cada muestra conserva su instante exacto. Con el lazo de \SI{50}{\milli\second} cada
+lote lleva típicamente cuatro muestras: 70 bytes de carga útil, 74 de trama y unos
+\SI{370}{\byte\per\second}, muy por debajo de la capacidad del enlace. El precio es un retardo de
+visualización de hasta \SI{200}{\milli\second} y que la lectura bruta de la célula sólo se refresque
+una vez por lote (sección~\ref{sec:res-limitaciones}).
+
+\paragraph{Estado del ciclo.} El paquete \codigo{0x05} creció de 14 a 18 bytes al reorganizar el
+ciclo: además de la fase, las repeticiones y la posición, transporta \codigo{cycPosB}, la posición
+en la que ha quedado fijado el punto B. Sin ese dato no se puede saber desde fuera contra qué está
+midiendo el ciclo un recorrido parcial. Las fases son ahora seis: reposo, colocándose en B, hacia A,
+volviendo a B, completado y abortado.
+
+Para que un firmware y un servidor desparejados no se queden mudos, el servidor acepta también la
+trama de 14 bytes de la versión anterior y asume \codigo{cycPosB = 0}. Esa compatibilidad se añadió
+precisamente porque un desajuste de versiones despistó durante la depuración del ciclo: el firmware
+enviaba una trama que el servidor rechazaba entera, y la interfaz no mostraba ninguna fase.
+
+\paragraph{Modelo pregunta-respuesta de la célula.} Cada orden de consulta, programación o
+mantenimiento de la célula produce exactamente un paquete \codigo{0x04}, también cuando se rechaza.
+El paquete incluye el código de la orden a la que responde, para que la interfaz nunca se quede
+esperando, y lleva información de diagnóstico: el primer byte que devolvió el chip, si el pin de
+reinicio corta de verdad la alimentación y en qué intento del barrido de retardos se consiguió
+entrar en modo comando (sección~\ref{sec:prob-zsc}).
+
+\subsection{Órdenes del ordenador al microcontrolador}
+
+\begin{longtable}{@{}clL{0.30\textwidth}L{0.33\textwidth}@{}}
+\caption{Órdenes aceptadas por el firmware.}\label{tab:ordenes}\\
+\toprule
+Código & Nombre & Datos & Efecto \\
+\midrule
+\endfirsthead
+\toprule
+Código & Nombre & Datos & Efecto \\
+\midrule
+\endhead
+\codigo{0x01} & INIT & [dirección Modbus] opcional & Reinicia la posición, invalida el recorrido medido y configura y habilita el servo. \\
+\codigo{0x02} & STOP & -- & Consigna a cero; aborta \emph{homing} y ciclo. \\
+\codigo{0x03} & SET\_PARAM & id (1 B), valor int16 & Modifica un parámetro (tabla~\ref{tab:parametros}). \\
+\codigo{0x04} & MOVE\_A & -- & Movimiento manual hacia A (arriba). \\
+\codigo{0x05} & MOVE\_B & -- & Movimiento manual hacia B (abajo). \\
+\codigo{0x06} & SHUTDOWN & -- & Deshabilita el accionamiento. \\
+\codigo{0x07} & SCAN & -- & Búsqueda bloqueante del esclavo (1--247). \\
+\codigo{0x08} & HOME & -- & Inicia el \emph{homing}. \\
+\codigo{0x09} & LC\_PROGRAM & B\_Config, ZMDI\_Config1 (uint16) & Graba la configuración de la célula (sólo parado). \\
+\codigo{0x0A} & LC\_QUERY & -- & Lee la configuración de la célula (sólo parado). \\
+\codigo{0x0B} & LC\_HOLD & modo de aparcado (1 B) & Mantiene la célula sin tensión \SI{8}{\second} para medirla. \\
+\codigo{0x0C} & CYCLE\_START & modo, recorrido (centi-rev), velocidad, repeticiones & Inicia el ciclo B$\rightarrow$A$\rightarrow$B, empezando por la colocación en B. \\
+\codigo{0x0D} & CYCLE\_STOP & -- & Detiene el ciclo donde esté. \\
+\bottomrule
+\end{longtable}
+
+\begin{table}[H]
+\centering
+\caption{Parámetros configurables con SET\_PARAM.}
+\label{tab:parametros}
+\begin{tabular}{@{}cllr@{}}
+\toprule
+Id & Parámetro & Unidad & Defecto \\
+\midrule
+1 & Velocidad de movimiento manual & rpm & 10 \\
+2 & Límite de fuerza (0 = desactivado) & cuentas & 0 \\
+3 & Tara de la célula & cuentas & 8210 \\
+4 & Aceleración (C03.22) & u. del accionamiento & 5 \\
+5 & Deceleración (C03.24) & u. del accionamiento & 5 \\
+6 & Rigidez (C00.05) & nivel & 10 \\
+7 & Calibración de fuerza (sólo informativa) & cuentas/N & 0 \\
+8 & Desplazamiento del origen tras el \emph{homing} & centi-rev & 0 \\
+9 & Velocidad de \emph{homing} & rpm & 30 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Modbus RTU con el accionamiento}
+
+\subsection{Registros utilizados}
+
+El firmware sólo usa las funciones 0x03 y 0x06 sobre un conjunto reducido de registros
+(anexo~\ref{anx:modbus}). Los parámetros del accionamiento se nombran \codigo{Cgg.ii}, y todas las
+direcciones cumplen la regla
+\begin{equation}
+  \text{dirección} = 256\cdot gg + \text{0x}ii,
+\end{equation}
+es decir, el índice se interpreta en hexadecimal. Por ejemplo, C04.11 (habilitación) es
+$1024 + 17 = 1041$ y C03.22 (aceleración) es $768 + 34 = 802$. Las magnitudes de supervisión están en
+el grupo \codigo{0x40}: velocidad en 16385 (\codigo{0x4001}) y par en 16387 (\codigo{0x4003}). Tener
+esta regla evita errores al añadir registros a partir del manual.
+
+\subsection{Secuencia de configuración}
+
+Al recibir INIT, el firmware configura el accionamiento así: deshabilitar (C04.11 = 0), seleccionar
+el modo velocidad (C00.00 = 1), poner la consigna a cero (C03.21 = 0), escribir la rigidez y las
+rampas, configurar la resistencia de frenado externa (C00.10 a C00.13) y habilitar (C04.11 = 1). Si
+una escritura esencial falla se reintenta la secuencia completa, y tras tres fallos el sistema pasa
+a estado de error. Entre escrituras se deja un silencio de \SI{700}{\micro\second}.
+
+\subsection{Transacciones por periodo}
+
+En régimen normal, cada vuelta del lazo realiza tres transacciones: lectura de la velocidad, lectura
+del par y escritura de la consigna. Escribir la consigna en cada vuelta, aunque no cambie, sirve
+además de supervisión del enlace: si la escritura falla, se marca el servo como desconectado.
+
+A 115200 baudios con formato 8N1, cada byte ocupa \SI{86.8}{\micro\second}. Las tres transacciones
+suman 46 bytes, unos \SI{4.0}{\milli\second} de línea. A eso se añaden \SI{0.6}{\milli\second} de
+retardos de conmutación del transceptor y \SI{0.7}{\milli\second} de silencio entre las dos lecturas.
+El tiempo de trabajo medido del lazo es \SI{10.97}{\milli\second}
+(sección~\ref{sec:res-temporizacion}); la diferencia, unos \SI{5.7}{\milli\second}, corresponde
+principalmente al tiempo de respuesta del accionamiento, aproximadamente \SI{1.9}{\milli\second} por
+transacción.
+
+La guía de implementación de Modbus serie recomienda, por encima de 19200 baudios, silencios fijos
+de \SI{1.75}{\milli\second} entre tramas \cite{modbusserial}. El firmware usa
+\SI{700}{\micro\second} y el accionamiento lo acepta sin errores, pero con otros esclavos convendría
+respetar el valor recomendado.
+
+\section{Interfaz entre el servidor y el navegador}
+
+\subsection{WebSocket}
+
+El servidor mantiene una conexión WebSocket en \codigo{/ws} con cada navegador. En sentido servidor
+$\rightarrow$ navegador envía objetos JSON de cinco tipos:
+\begin{itemize}
+  \item \textbf{muestra de telemetría} (sin campo \codigo{type}): una por muestra del lote, con los
+        valores brutos, los nombres de estado y error ya traducidos, la posición integrada, los
+        finales de carrera, la frecuencia de muestreo medida y el estado del \emph{homing};
+  \item \codigo{home}: fase del \emph{homing}, posición y recorrido medido;
+  \item \codigo{cycle}: fase, repeticiones hechas y pedidas, posición, recorrido pedido, posición de
+        B y fichero en grabación;
+  \item \codigo{lc\_config}: resultado de la consulta o programación de la célula;
+  \item \codigo{cmd\_ack}: confirmación de \emph{toda} orden recibida, con indicación de éxito y un
+        texto explicativo. Sin ella, una orden que no llegaba al puerto era indistinguible de una
+        que sí se había ejecutado.
+\end{itemize}
+
+En sentido navegador $\rightarrow$ servidor, las órdenes son objetos
+\codigo{\{"cmd": nombre,} \codigo{...parámetros\}}. El servidor las valida, limita los parámetros a
+rangos seguros (por ejemplo, velocidad del ciclo entre 0 y \SI{300}{rpm}), construye la trama
+binaria y la escribe en el puerto.
+
+\subsection{Servicios HTTP}
+
+\begin{table}[H]
+\centering
+\caption{Servicios HTTP del servidor.}
+\label{tab:http}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Método & Ruta & Función \\
+\midrule
+GET & \codigo{/} & Monitor en tiempo real \\
+GET & \codigo{/ensayos} & Visor de ensayos grabados \\
+GET & \codigo{/sim} & Configuración del mecanismo y simulador \\
+GET & \codigo{/api/mecanismo} & Geometría actual (JSON) \\
+PUT & \codigo{/api/mecanismo} & Guarda la geometría, validada contra rangos \\
+GET & \codigo{/cycles} & Lista de los 50 ensayos más recientes (JSON) \\
+GET & \codigo{/cycles/\{nombre\}} & Descarga de un ensayo (CSV) \\
+DELETE & \codigo{/cycles/\{nombre\}} & Borrado de un ensayo (rechazado si se está grabando) \\
+GET & \codigo{/mecanismo.js}, \codigo{/tema.css}, \codigo{/tema.js}, \codigo{/nav.js} & Recursos comunes a las tres páginas \\
+\multicolumn{2}{@{}l}{\codigo{/fui} (montaje estático)} & Kit de interfaz (hoja de estilo y tipografías) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Las rutas con nombre de fichero reducen el parámetro a su último componente antes de usarlo, de modo
+que una petición con \codigo{../} no puede leer ni borrar ficheros fuera de la carpeta de ensayos.
+La escritura de la geometría se valida en el servidor contra los mismos rangos que comprueba el
+navegador, de forma que una petición construida a mano tampoco puede dejar una configuración
+imposible.

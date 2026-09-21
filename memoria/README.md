@@ -1,32 +1,55 @@
 # Memoria del TFG
 
-Memoria en LaTeX: 12 capítulos, 6 anexos y unas 106 páginas.
+Memoria escrita sobre la **plantilla TFG ETSIDI v3** (Alberto Brunete, UPM): 13 capítulos, 6 anexos
+y unas 106 páginas.
 
 ## Compilar
 
-- **Overleaf**: sube la carpeta `memoria/` y compila `main.tex`. Funciona con pdfLaTeX y con XeLaTeX.
-- **Local**: `latexmk -pdf main.tex`, o bien `tectonic main.tex`, que no necesita tener TeX Live instalado.
+- **Overleaf**: sube la carpeta `memoria/` y compila `TFG.tex` (pdfLaTeX + BibTeX).
+- **Local**: `latexmk -pdf TFG.tex`, o bien `tectonic TFG.tex`, que no necesita TeX Live instalado.
 
-## Figuras
+La estructura, los márgenes y la portada son los de la plantilla. Sobre ella sólo se han añadido los
+paquetes que la memoria necesita (`siunitx`, `booktabs`, `tabularx`, `tikz`, `pgfgantt`, `bytefield`
+y `listings` configurado), declarados al principio de `TFG.tex`.
 
-Las figuras de resultados y `figuras/datos.json` se generan a partir de `cycles/*.csv`:
+## Estructura
 
 ```
-pip install matplotlib numpy
-python memoria/figuras/generar_figuras.py
+TFG.tex                  documento principal
+capitulos/               portada, firmas, licencia, evaluación, resumen, acrónimos,
+                         13 capítulos y 6 anexos
+figuras/                 figuras generadas + cabecera.png y Logo_UPM.jpg de la plantilla
+bibliografia/            bibliografia.bib (BibTeX)
+_v1/                     versión anterior de la memoria, antes de adoptar la plantilla
 ```
 
-Si cambias las cotas del mecanismo (`L2`, `L3`, `L4`, masa, barrido) o la calibración de la célula (`CAL`, `OFF`), edítalas al principio del script y vuelve a ejecutarlo. Después hay que actualizar a mano las cifras que cita el texto en los capítulos 3 y 10.
+## Figuras y cifras
+
+Las figuras de resultados y los ficheros `datos*.json` se generan a partir de `cycles/*.csv`:
+
+```
+pip install matplotlib numpy scipy
+python figuras/generar_figuras.py      # campaña preliminar (14-15 sept)
+python figuras/generar_figuras21.py    # campaña del 21 de septiembre
+```
+
+`figuras/modelo_mecanismo.py` es el modelo del capítulo 4 portado a Python. Sus parámetros
+(`L2`, `dx`, `L3`, `L4`, `a0`, `red`, `r0`, `r1`, `barr`) deben coincidir con los de
+`mecanismo.json`. Si cambias las cotas, vuelve a ejecutar los dos programas y actualiza a mano las
+cifras que cita el texto en los capítulos 4 y 11.
 
 ## Pendientes
 
-Busca en el texto las dos marcas de pendientes:
+Dos marcas señalan lo que queda:
 
-- `\completar{...}` (en rojo en el PDF): datos que sólo puedes aportar tú. Por ejemplo: escuela, grado, tutor, marca del servo, célula de carga, fotos y precios.
-- `\verificar{...}` (en naranja): afirmaciones deducidas del código que conviene confirmar sobre el montaje real.
+- `\completar{...}` (rojo en el PDF): datos que sólo puedes aportar tú (escuela, tutor, marca del
+  servo, célula, fotos, precios).
+- `\verificar{...}` (naranja): afirmaciones deducidas del código o de los datos que conviene
+  confirmar sobre el montaje real. La más importante: **medir las cotas del mecanismo y el perfil de
+  la caracola**, de las que dependen todas las cifras del modelo.
 
-Para comprobar que no queda ninguna antes de entregar:
+Para listarlas:
 
 ```
-grep -rn "completar{\|verificar{" capitulos anexos main.tex
+grep -rn "completar{\|verificar{" capitulos TFG.tex
 ```

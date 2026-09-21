@@ -1,0 +1,9 @@
+# ensayo 2026-09-21 17:49:34
+# lc1_cuentas_por_N=14.41  lc1_cero_N=51.78  lc1_int16=0
+# repeticiones_pedidas=1  B=1.000 rev (posicion)
+# lc1_base ya lleva restada la tara del firmware; lc1_raw es cruda
+t_ms,t_rel_s,rep,fase,pos_rev,lc1_raw,lc1_base,rpm,par_x10,ref_rpm,lim_a,lim_b,estado,work_us
+601412938,0.000,1,volviendo_a_A,-0.0025,8258,35,0,-37,0,0,1,3,10863
+601412988,0.050,1,volviendo_a_A,-0.0025,8258,36,0,-34,0,0,1,3,10994
+601413038,0.100,1,volviendo_a_A,-0.0017,8258,36,1,-35,0,0,1,3,10989
+601413088,0.150,1,volviendo_a_A,-0.0017,8258,36,0,-38,0,0,1,3,10993

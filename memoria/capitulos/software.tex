@@ -1,0 +1,224 @@
+\chapter{Software de supervisión y análisis}
+\label{chap:software}
+
+\section{Visión general}
+
+El software del ordenador consta de un servidor en Python (\fichero{web\_monitor.py}), tres páginas
+web y varias herramientas auxiliares. El servidor se ejecuta con
+
+\begin{lstlisting}[language=bash,numbers=none]
+python web_monitor.py [puerto_serie]      # http://localhost:8080
+\end{lstlisting}
+
+y detecta solo el puerto del microcontrolador si no se indica. Las tres páginas son el
+\emph{monitor} en tiempo real (\codigo{/}), el \emph{visor de ensayos} (\codigo{/ensayos}) y la
+\emph{configuración del mecanismo} con simulador (\codigo{/sim}), enlazadas entre sí por una barra
+de teclas programables común.
+
+\section{Servidor}
+
+\subsection{Estructura concurrente}
+
+El servidor combina un hilo del sistema operativo para el puerto serie con el bucle asíncrono de
+FastAPI (figura~\ref{fig:servidor}).
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\small,>=Stealth,
+  box/.style={draw,rounded corners=2pt,align=center,minimum height=10mm,inner sep=4pt,fill=white}]
+  \node[box,minimum width=28mm] (usb) {Puerto USB\\ \scriptsize pySerial};
+  \node[box,minimum width=34mm,right=10mm of usb,fill=blue!6] (hilo) {Hilo serie\\ \scriptsize decodifica · integra · graba};
+  \node[box,minimum width=24mm,right=10mm of hilo] (cola) {deque\\ \scriptsize maxlen = 100};
+  \node[box,minimum width=30mm,right=10mm of cola,fill=green!6] (bc) {Difusor asíncrono\\ \scriptsize FastAPI / Uvicorn};
+  \node[box,minimum width=24mm,below=10mm of bc] (ws) {Navegadores\\ \scriptsize WebSocket};
+  \node[box,minimum width=24mm,below=10mm of hilo] (csv) {cycles/*.csv};
+  \node[box,minimum width=30mm,below=10mm of cola] (cmd) {\_handle\_command\\ \scriptsize valida · empaqueta};
+  \draw[->,thick] (usb) -- (hilo);
+  \draw[->,thick] (hilo) -- (cola);
+  \draw[->,thick] (cola) -- (bc);
+  \draw[->,thick] (bc) -- (ws);
+  \draw[->,thick] (hilo) -- (csv);
+  \draw[->,thick] (ws) -- (cmd);
+  \draw[->,thick] (cmd.south) -- ++(0,-5mm) -| node[pos=0.25,below,font=\scriptsize]{tramas binarias} (usb.south);
+\end{tikzpicture}
+\caption{Estructura del servidor de supervisión.}
+\label{fig:servidor}
+\end{figure}
+
+\paragraph{Hilo serie.} Abre el puerto (probando \codigo{/dev/ttyACM*}, \codigo{/dev/ttyUSB*},
+\codigo{/dev/cu.usbmodem*} y \codigo{COM*}), vacía el búfer y entra en un bucle que lee tramas,
+comprueba el CRC y las decodifica con \codigo{struct}. Cualquier excepción cierra el puerto y
+provoca un reintento al cabo de un segundo, lo que cubre la desconexión física y el reinicio del
+microcontrolador al reprogramarlo (RNF4). Por cada muestra de telemetría:
+\begin{itemize}
+  \item mide la frecuencia de muestreo contando las muestras del último segundo \emph{con el reloj
+        del dispositivo}, no con el del ordenador;
+  \item detecta que el reloj del microcontrolador ha vuelto a cero (reinicio) y reinicia entonces la
+        ventana de medida y la integración;
+  \item integra la posición a partir de la velocidad, descartando saltos de tiempo anómalos;
+  \item si hay un ensayo en grabación, escribe la fila correspondiente;
+  \item deposita un mensaje JSON en la cola.
+\end{itemize}
+
+\paragraph{Cola y difusor.} La comunicación entre el hilo y el bucle asíncrono usa una \codigo{deque}
+de la biblioteca estándar con un único productor y un único consumidor, segura sin cerrojos en
+CPython para \codigo{append} y \codigo{popleft}. La longitud máxima de 100 mensajes acota la memoria
+si no hay ningún navegador conectado. El difusor envía cada mensaje a todos los clientes, elimina
+los que han cerrado la conexión y, cuando la cola está vacía, duerme \SI{20}{\milli\second}.
+
+\paragraph{Registro.} Todas las tramas, órdenes y confirmaciones se registran con marca de tiempo en
+consola y en \fichero{web\_monitor.log}. Al depurar el ciclo se reforzó ese registro, porque era
+insuficiente: ahora cada línea de telemetría incluye la posición, los dos finales de carrera y la
+fase del ciclo, y cada cambio de fase escribe una línea propia. Sin eso, un ciclo que arrancaba y
+terminaba en \SI{200}{\milli\second} no dejaba rastro de por dónde había pasado.
+
+\subsection{Configuración del mecanismo}
+
+La geometría vive en \fichero{mecanismo.json}, con dos servicios: \codigo{GET /api/mecanismo}
+devuelve la configuración y \codigo{PUT /api/mecanismo} la guarda. El servidor valida cada clave
+contra un rango (por ejemplo, $\alpha_0$ entre 0° y 180°, o radios estrictamente positivos) y
+rechaza lo que no encaje, de modo que ni una petición construida a mano puede dejar una geometría
+imposible. Los ficheros guardados con la convención anterior, que medían el ángulo desde la
+horizontal, se convierten al leerlos mediante $\alpha = 90^\circ - \theta_0$.
+
+\subsection{Grabación de ensayos}
+
+La grabación es automática y la dirigen los paquetes de ciclo: cuando la fase pasa a ``hacia A'' o
+``volviendo a B'' y no hay fichero abierto, se crea
+\fichero{cycles/AAAAMMDD-HHMMSS\_ciclo.csv}; cuando la fase pasa a completado, abortado o reposo, se
+cierra. La fase de colocación en B no se graba, porque el ensayo empieza cuando el eje ya está en B.
+Cada fichero lleva una cabecera con las constantes del ensayo y una fila por muestra (formato en el
+anexo~\ref{anx:csv}).
+
+Se graban deliberadamente las \emph{cuentas brutas} de la célula, no newtons: la calibración puede
+cambiar después del ensayo ---de hecho ha cambiado varias veces--- y con los datos brutos basta con
+aplicar la nueva constante (RNF5).
+
+\section{Modelo compartido}
+
+Las fórmulas del capítulo~\ref{chap:modelo} están implementadas una sola vez, en
+\fichero{static/mecanismo.js}, y las usan por igual el simulador y el visor de ensayos. El módulo
+ofrece la geometría del tambor (\codigo{tambor}), la longitud de cable (\codigo{cable}), el ángulo
+(\codigo{barraAng}), el estado completo del mecanismo para un avance dado (\codigo{estado}) y la
+inversa, el avance necesario para llevar la barra a un ángulo (\codigo{revParaAngulo}), resuelta por
+bisección.
+
+Esta unificación corrigió un problema real: cada página llevaba su copia de las fórmulas y habían
+divergido, hasta el punto de que el monitor seguía calculando con un cilindro y la barra horizontal
+mientras el visor ya usaba la caracola. Los cambios se propagan al instante entre pestañas del mismo
+navegador mediante \codigo{BroadcastChannel}, y al volver a una pestaña se relee la configuración
+por si se cambió desde otro equipo.
+
+\section{Monitor en tiempo real}
+
+La página principal (\fichero{index.html}) se organiza en tres zonas:
+
+\begin{enumerate}
+  \item \textbf{Estado}: indicador de conexión, estado de la máquina y código de error, modo, estado
+        del servo y de la célula, tiempo del dispositivo y frecuencia de muestreo, finales de
+        carrera (A arriba, B abajo) con la fase del \emph{homing} y el recorrido medido, y una
+        tarjeta destacada con la fuerza.
+  \item \textbf{Controles en pestañas}: \emph{Servo} (dirección Modbus, inicialización, movimiento
+        manual, \emph{homing}, parada, puesta a cero y apagado; velocidades y desplazamiento del
+        origen); \emph{Célula 1} (calibración, tara y, en configuración avanzada, las palabras
+        B\_Config y ZMDI\_Config1 con el botón de programar); \emph{Ciclo B$\rightarrow$A$\rightarrow$B}
+        (hasta dónde sube, velocidad y repeticiones); y \emph{Ensayos grabados}.
+  \item \textbf{Gráficas}: velocidad de consigna y real con los finales de carrera y marcas
+        verticales en los instantes en que se enviaron órdenes, y fuerza frente al tiempo.
+\end{enumerate}
+
+\section{Configuración del mecanismo y simulador}
+
+La página \codigo{/sim} (figura~\ref{fig:sim}) reúne la edición de la geometría y un simulador:
+
+\begin{itemize}
+  \item \textbf{Formulario} con el tipo de tambor (caracola o cilindro), radios y barrido, reducción,
+        sentido, cotas $L_2$, $dx$, $L_3$, $L_4$, masa y $\alpha_0$. Los cambios no se aplican hasta
+        pulsar \emph{Guardar y propagar}, y se pueden descartar.
+  \item \textbf{Comprobaciones} automáticas: distancia e inclinación de la línea O$\to$D, ángulo y
+        cable en B, ángulo en el extremo del recorrido, recorrido angular total y avisos cuando la
+        geometría pide a la barra pasar de 0° o de 180°, que es donde la tensión se hace singular.
+        También calcula la inversa: cuántas revoluciones de motor hacen falta para llevar la barra a
+        un ángulo dado, que es el recorrido B$\rightarrow$A que tendría que hacer el ciclo.
+  \item \textbf{Dibujo a escala} del mecanismo en un \codigo{canvas}, con un cursor que recorre el
+        ciclo y un botón de reproducción, y la posibilidad de cargar un ensayo grabado para que el
+        cursor siga sus datos.
+  \item \textbf{Gráficas} de tensión, par y ángulo frente al avance del motor.
+\end{itemize}
+
+\completar{captura de pantalla de la página /sim con el mecanismo dibujado, para incluirla como
+figura~\ref{fig:sim}}
+
+\begin{figure}[H]
+\centering
+\fbox{\parbox[c][45mm][c]{0.7\textwidth}{\centering \completar{captura de /sim}}}
+\caption{Página de configuración del mecanismo con el simulador.}
+\label{fig:sim}
+\end{figure}
+
+\section{Visor de ensayos}
+
+El visor (\fichero{ensayos.html}) lista los ensayos grabados y, al abrir uno, muestra un resumen
+(muestras, duración, cadencia, repeticiones y rangos), la fuerza frente a la posición con una traza
+por repetición, la fuerza y la posición frente al tiempo, el par frente a la posición y al tiempo, y
+la velocidad con los finales de carrera.
+
+Sobre la gráfica de fuerza puede superponerse la curva teórica, calculada con la geometría
+configurada. El avance del ciclo se toma del propio ensayo: se resta la posición de la primera
+muestra ---que es B, donde arranca--- y el sentido se deduce del signo de la muestra más alejada, de
+modo que los ensayos antiguos, que iban de A hacia B, siguen siendo interpretables.
+
+El visor comprueba además dos consistencias que han resultado muy útiles:
+\begin{enumerate}
+  \item \emph{Escala}: compara el cable que paga el tambor durante el ensayo con el que el mecanismo
+        puede absorber en ese sentido; si se pide más del que cabe, avisa y sugiere la reducción o
+        los radios que lo harían cuadrar.
+  \item \emph{Ángulo}: calcula el ángulo de la barra en B, en el extremo y al final del ensayo, y
+        avisa si el modelo exigiría pasar de los topes o si el cierre del ciclo no cuadra.
+\end{enumerate}
+
+Por último, ofrece un ajuste por mínimos cuadrados de la recta que convierte cuentas en newtons,
+$T \approx a\,(\text{cuentas}) + b$, con su $R^2$ y su cobertura. Conviene leerlo junto con la
+sección~\ref{sec:mod-ambiguedad}: un $R^2$ alto no valida la geometría, porque el mismo valor se
+obtiene con la sensibilidad de signo contrario.
+
+\section{Herramientas auxiliares}
+
+\begin{itemize}
+  \item \fichero{leer\_ciclo.py}: resumen de un ensayo en consola, sólo con la biblioteca estándar.
+  \item \fichero{monitor.py} y \fichero{monitor\_posicion.py}: monitores de terminal de versiones
+        anteriores del protocolo.
+  \item \fichero{test\_servo\_modbus.py}: barrido de velocidades y direcciones Modbus con un
+        adaptador USB-RS485, útil para identificar la configuración del accionamiento sin el
+        microcontrolador.
+  \item \fichero{memoria/figuras/generar\_figuras.py} y \fichero{generar\_figuras21.py}: generan las
+        figuras y las cifras de esta memoria a partir de los ficheros de ensayo, junto con
+        \fichero{modelo\_mecanismo.py}, que es el modelo del capítulo~\ref{chap:modelo} portado a
+        Python.
+\end{itemize}
+
+\section{Interfaz de usuario}
+
+Las tres páginas comparten el aspecto de un panel de control industrial, con un kit de interfaz
+externo (hoja de estilo y tipografías) publicado en \codigo{/fui} y copiado sin modificar, y los
+ajustes propios en \fichero{static/tema.css}. Los colores de las gráficas se leen de las variables
+de esa hoja de estilo (\fichero{tema.js}), de modo que hay un único sitio donde cambiarlos, y la
+navegación entre páginas se genera desde \fichero{nav.js}.
+
+\section{Observaciones de calidad}
+
+Durante la redacción de esta memoria se revisó el software y se identificaron estos puntos de
+mejora, que no afectan a los resultados:
+\begin{itemize}
+  \item \fichero{requirements.txt} sólo declara \codigo{pyserial}; faltan \codigo{fastapi} y
+        \codigo{uvicorn[standard]}.
+  \item La cabecera del CSV decide si el punto de parada es ``posición'' o ``final de carrera'' según
+        el recorrido pedido sea mayor que cero, no según el modo realmente usado. Como la interfaz
+        envía siempre un recorrido, todos los ensayos aparecen como ``posición'' aunque se hicieron
+        contra los finales de carrera. La corrección es incluir el modo en el paquete de ciclo.
+  \item El servidor escucha en todas las interfaces (\codigo{0.0.0.0}) sin autenticación, así que
+        cualquier equipo de la red puede mover la máquina.
+  \item La posición se integra dos veces, en el firmware y en el servidor, con el mismo método; el
+        CSV guarda la del servidor. Sería más limpio transmitir la del firmware en cada muestra.
+  \item La cabecera del firmware todavía describe la versión de doble núcleo.
+\end{itemize}

@@ -1,0 +1,138 @@
+\chapter{Marco teórico}
+\label{chap:marco}
+
+Este capítulo resume los conceptos necesarios para seguir el resto de la memoria: cómo se acciona
+el eje, cómo se mide la fuerza, con qué microcontrolador y por qué buses viaja la información.
+
+\section{Transmisión por cable y radio variable}
+
+En una transmisión por cable, el par que hay que aplicar al tambor es el producto de la tensión del
+cable por el radio con el que ese cable sale del tambor:
+\begin{equation}
+  \tau = T\,r .
+  \label{eq:par-basico}
+\end{equation}
+Si el radio es constante, el par reproduce exactamente la forma de la tensión. Si el radio cambia
+con el giro, $r(\varphi)$, se dispone de un grado de libertad para moldear el par: basta con que el
+radio sea grande donde la tensión es pequeña, y pequeño donde es grande, para que el producto se
+mantenga aproximadamente constante. Ésa es la idea del \emph{fusee} y de los tambores de radio
+variable, y el capítulo~\ref{chap:modelo} la desarrolla para la geometría concreta del prototipo.
+
+Conviene separar dos cosas que se confunden con facilidad. Un mecanismo de compensación
+\emph{pasiva} (un muelle con una polea no circular) reduce la energía que el actuador tiene que
+aportar. Una caracola accionada por un motor no reduce esa energía: el trabajo de subir la masa es
+el mismo. Lo que hace es repartirlo de manera uniforme a lo largo del giro, lo que reduce el par de
+pico y, con él, el tamaño del motor necesario.
+
+\section{Accionamiento: servomotores paso a paso de lazo cerrado}
+
+Un motor paso a paso convencional funciona en lazo abierto: el controlador impone la secuencia de
+fases y se da por hecho que el rotor la sigue. Es sencillo y tiene buen par a baja velocidad, pero
+si la carga supera el par disponible se pierden pasos sin que el sistema lo detecte
+\cite{kenjo1994}. Los servomotores paso a paso de lazo cerrado añaden un codificador y un
+accionamiento que regula la corriente en función del error de posición: conservan el par a baja
+velocidad, no pierden pasos y ofrecen modos de control en posición, velocidad o par, además de
+magnitudes de supervisión como la velocidad real o el par entregado.
+
+El accionamiento de este trabajo pertenece a esa familia \completar{marca y modelo del motor y del
+accionamiento, par nominal, tensión de alimentación y resolución del codificador}. Integra una
+interfaz RS-485 con protocolo Modbus RTU, por la que se configura (modo de control, rigidez, rampas
+y resistencia de frenado), se habilita, se envía la consigna de velocidad y se leen la velocidad y
+el par. Tenerlo todo en un bus de dos hilos simplifica el cableado frente a la alternativa de
+señales de paso y dirección más entradas analógicas.
+
+\section{Medida de fuerza con células de carga}
+
+\subsection{Galgas extensométricas y puente de Wheatstone}
+
+Una célula de carga convierte la fuerza en una deformación elástica, que se mide con galgas
+extensométricas dispuestas en un puente de Wheatstone \cite{hoffmann2012}. La salida del puente es
+una tensión diferencial de unos pocos milivoltios por voltio de excitación a plena escala, que hay
+que amplificar con alta ganancia y bajo ruido antes de digitalizarla; además hay que compensar el
+desequilibrio de cero del puente y su deriva con la temperatura \cite{pallas2001}. De ahí que la
+cadena de medida necesite, ante todo, una calibración con masas patrón: sin ella se conoce la forma
+de la señal, pero no su escala ni su cero.
+
+\subsection{Acondicionadores integrados}
+
+Existen circuitos integrados que agrupan excitación, amplificación, conversión A/D y corrección
+digital. En este trabajo se han evaluado dos:
+
+\begin{itemize}
+  \item \textbf{ZSC31014} de Renesas \cite{zsc31014}, con salida digital I\textsuperscript{2}C,
+        preamplificador de ganancia programable, conversor de 14 bits y corrección almacenada en
+        EEPROM. Cada lectura incluye dos bits de estado que indican si el dato es nuevo. Su
+        configuración sólo puede modificarse en un \emph{modo comando} al que se accede durante una
+        ventana corta tras el encendido, lo que ha condicionado el diseño
+        (sección~\ref{sec:prob-zsc}). Se usa en una placa \emph{Load Cell 2 Click}
+        \cite{mikroelc2}.
+  \item \textbf{NAU7802} de Nuvoton \cite{nau7802}, conversor sigma-delta de 24 bits con
+        amplificador programable y regulador interno. Se probó como segunda célula y se retiró del
+        firmware final.
+\end{itemize}
+
+\section{Microcontrolador}
+
+El proyecto empezó con una placa basada en ESP32-S3 (Seeed XIAO) y se migró a una Raspberry Pi
+Pico~2. La tabla~\ref{tab:mcu} resume las características del RP2350 \cite{rp2350}. El motivo del
+cambio y sus consecuencias se explican en la sección~\ref{sec:prob-uart}: los pines que impone el
+trazado de la placa no admiten una UART hardware, pero el RP2350 dispone de periféricos PIO capaces
+de implementar una UART en cualquier pin.
+
+\begin{table}[H]
+\centering
+\caption{Características del microcontrolador RP2350 en la Raspberry Pi Pico 2 \cite{rp2350}.}
+\label{tab:mcu}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Característica & Raspberry Pi Pico 2 (RP2350) \\
+\midrule
+Núcleos & 2 × Arm Cortex-M33 o 2 × RISC-V Hazard3, a \SI{150}{\mega\hertz} \\
+Memoria & \SI{520}{\kilo\byte} SRAM, \SI{4}{\mega\byte} flash QSPI \\
+Periféricos serie & 2 × UART, 2 × SPI, 2 × I\textsuperscript{2}C \\
+E/S programable & 12 máquinas de estado PIO \\
+Entradas analógicas & 3 canales ADC \\
+Entorno usado & Arduino-Pico \cite{arduinopico} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Buses de comunicación}
+
+\subsection{RS-485 y Modbus RTU}
+
+RS-485 \cite{tia485} es un estándar de capa física diferencial y multipunto, extendido en la
+industria por su inmunidad al ruido, su alcance y la posibilidad de conectar varios equipos al mismo
+par trenzado. En modo semidúplex cada nodo activa su emisor sólo mientras transmite, y ese control
+de dirección (líneas DE y $\overline{\text{RE}}$ del transceptor) corresponde al maestro.
+
+Modbus \cite{modbusapp} es un protocolo maestro-esclavo de petición y respuesta que modela los datos
+del esclavo como registros de 16 bits. En su variante RTU sobre línea serie \cite{modbusserial},
+cada trama lleva la dirección del esclavo, el código de función, los datos y un CRC-16, y las tramas
+se delimitan por silencios de al menos 3,5 caracteres. Aquí se usan la función 0x03 (lectura de
+registros) y la 0x06 (escritura de un registro), a través de la biblioteca ModbusMaster
+\cite{modbusmaster}.
+
+\subsection{I\textsuperscript{2}C y mikroBUS}
+
+I\textsuperscript{2}C \cite{i2cspec} es un bus síncrono de dos hilos con resistencias de
+\emph{pull-up}, pensado para comunicar circuitos dentro de una misma placa; es el que usan los
+acondicionadores de célula de carga. Las placas Click siguen el estándar mikroBUS \cite{mikrobus},
+que define un zócalo de 16 pines con I\textsuperscript{2}C, SPI, UART, alimentación y señales
+auxiliares.
+
+\section{Adquisición y supervisión en el ordenador}
+
+La supervisión de máquinas se ha hecho tradicionalmente con paneles HMI o paquetes SCADA
+comerciales. Para un banco de laboratorio, una aplicación web local es una alternativa ligera: no
+requiere licencias, funciona en cualquier navegador y admite varios clientes a la vez. En este
+trabajo se emplea FastAPI \cite{fastapi} con pySerial \cite{pyserial} para el puerto USB, WebSocket
+\cite{rfc6455} para el envío continuo de datos al navegador y Chart.js \cite{chartjs} para las
+gráficas.
+
+Dos conceptos de adquisición son importantes para interpretar los resultados. El primero es la
+\emph{base de tiempos}: si las muestras se marcan con el reloj del ordenador, la latencia del enlace
+se confunde con el fenómeno medido; por eso aquí cada muestra lleva la marca de tiempo del
+microcontrolador. El segundo es la distinción entre \emph{dato bruto} y \emph{dato calibrado}:
+guardar las cuentas del conversor, y no los newtons, permite recalibrar un ensayo sin repetirlo,
+que es justo lo que ha hecho falta en este trabajo.

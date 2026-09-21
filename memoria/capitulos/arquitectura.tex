@@ -1,0 +1,177 @@
+\chapter{Requisitos y arquitectura del banco}
+\label{chap:arquitectura}
+
+\section{Requisitos}
+
+Los requisitos salen de lo que exige el ensayo de la caracola (capítulo~\ref{chap:modelo}). El eje
+debe moverse a velocidad constante y conocida en los dos sentidos, y hay que registrar
+simultáneamente, con la misma base de tiempos, la posición, la tensión del cable y el par del motor.
+Todo ello de forma segura y repetible.
+
+\subsection{Requisitos funcionales}
+
+\begin{longtable}{@{}L{0.09\textwidth}L{0.85\textwidth}@{}}
+\toprule
+\textbf{Id.} & \textbf{Requisito} \\
+\midrule
+\endhead
+RF1 & Configurar y habilitar el accionamiento y gobernar su velocidad por Modbus RTU sobre RS-485. \\
+RF2 & Leer la velocidad y el par del motor en cada periodo de control. \\
+RF3 & Leer la tensión del cable con una célula de carga y un acondicionador digital. \\
+RF4 & Detectar los finales de carrera A (arriba) y B (abajo) y detener el movimiento hacia un final activado. \\
+RF5 & Ejecutar una rutina de \emph{homing} que localice A, mida el recorrido hasta B y fije el origen en un desplazamiento configurable. \\
+RF6 & Ejecutar ciclos de ensayo B$\rightarrow$A$\rightarrow$B: colocarse en el extremo inferior, subir hasta A y volver a bajar, con velocidad y número de repeticiones configurables. \\
+RF7 & Enviar al ordenador la telemetría de cada periodo con su marca de tiempo del dispositivo. \\
+RF8 & Recibir órdenes y parámetros desde el ordenador con detección de errores. \\
+RF9 & Consultar y programar la ganancia y el cero del acondicionador de la célula, sólo con el eje parado. \\
+RF10 & Mostrar el estado de la máquina y los datos en tiempo real en un navegador. \\
+RF11 & Grabar automáticamente cada ensayo en un fichero con datos brutos y constantes de conversión. \\
+RF12 & Visualizar los ensayos grabados y compararlos con el modelo teórico. \\
+RF13 & Mantener una única configuración de la geometría del mecanismo, editable desde la interfaz y compartida por el simulador y el visor de ensayos. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Requisitos no funcionales}
+
+\begin{longtable}{@{}L{0.09\textwidth}L{0.85\textwidth}@{}}
+\toprule
+\textbf{Id.} & \textbf{Requisito} \\
+\midrule
+\endhead
+RNF1 & \textbf{Determinismo}: periodo de control y muestreo fijo de \SI{50}{\milli\second}, con dispersión inferior a \SI{1}{\milli\second}. \\
+RNF2 & \textbf{Latencia de parada}: una orden de parada, un final de carrera o el límite de fuerza deben anular la consigna en el mismo periodo en que se detectan. \\
+RNF3 & \textbf{Robustez de la comunicación}: una trama corrupta no debe ejecutar ninguna orden, y el receptor debe resincronizarse solo. \\
+RNF4 & \textbf{Recuperación}: la aplicación debe reconectarse sola si se desconecta o reinicia el microcontrolador. \\
+RNF5 & \textbf{Reproducibilidad}: cualquier resultado debe poder recalcularse a partir de los ficheros grabados. \\
+RNF6 & \textbf{Coste y disponibilidad}: componentes comerciales y herramientas libres. \\
+RNF7 & \textbf{Mantenibilidad}: validación de cada subsistema con un programa de prueba propio y código documentado. \\
+RNF8 & \textbf{Coherencia del modelo}: una sola implementación de la geometría para todas las páginas, para que el simulador y el análisis no puedan discrepar. \\
+\bottomrule
+\end{longtable}
+
+\section{Arquitectura general}
+
+La figura~\ref{fig:arquitectura} muestra la arquitectura, organizada en tres niveles:
+
+\begin{enumerate}
+  \item \textbf{Nivel de campo}: el servomotor paso a paso con su accionamiento, la transmisión, la
+        caracola, el cable y la barra con la masa; la célula de carga intercalada en el cable y los
+        dos finales de carrera.
+  \item \textbf{Nivel de control}: la placa adaptadora con la Raspberry Pi Pico~2. Ejecuta el lazo
+        de \SI{50}{\milli\second} y es el único elemento que actúa sobre la máquina.
+  \item \textbf{Nivel de supervisión}: un ordenador con el servidor \fichero{web\_monitor.py}, que
+        traduce entre el protocolo binario del puerto USB y mensajes JSON por WebSocket, graba los
+        ensayos, guarda la configuración del mecanismo y sirve las tres páginas web.
+\end{enumerate}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  font=\small, >=Stealth,
+  blk/.style={draw, rounded corners=2pt, align=center, minimum height=9mm, minimum width=33mm, inner sep=3pt, fill=white},
+  bus/.style={<->, thick},
+  grp/.style={draw, dashed, rounded corners=4pt, inner sep=6pt}
+]
+  \node[blk] (nav) at (0,0) {Navegador\\ \scriptsize monitor · ensayos · mecanismo};
+  \node[blk] (srv) at (5,0) {Servidor FastAPI\\ \scriptsize web\_monitor.py};
+  \node[blk] (csv) at (10,0) {Ensayos y configuración\\ \scriptsize cycles/*.csv · mecanismo.json};
+  \draw[bus] (nav) -- node[below,font=\scriptsize,align=center] {WebSocket\\HTTP} (srv);
+  \draw[->,thick] (srv) -- (csv);
+  \node[grp, fit=(nav)(srv)(csv), label={[font=\scriptsize\bfseries,anchor=south west]north west:Ordenador}] {};
+  \node[blk] (click) at (0,-3) {Load Cell 2 Click\\ \scriptsize ZSC31014, dirección 0x28};
+  \node[blk, fill=blue!6] (pico) at (5,-3) {Raspberry Pi Pico 2\\ \scriptsize firmware\_posicion\_v2};
+  \node[blk] (rs) at (10,-3) {Transceptor RS-485\\ \scriptsize THVD1400};
+  \node[blk] (io) at (5,-4.6) {E/S de la placa\\ \scriptsize DI1--4, AIN1--3, DO1--4};
+  \draw[bus] (pico) -- node[below,font=\scriptsize] {I\textsuperscript{2}C} (click);
+  \draw[bus] (pico) -- node[below,font=\scriptsize,align=center] {UART\\PIO} (rs);
+  \draw[bus] (pico) -- (io);
+  \node[grp, fit=(click)(pico)(rs)(io), label={[font=\scriptsize\bfseries,anchor=south west]north west:Placa adaptadora}] {};
+  \draw[bus] (srv) -- node[right,font=\scriptsize,align=left] {USB CDC\\ tramas + CRC-8} (pico);
+  \node[blk] (lc) at (0,-7.4) {Célula de carga\\ \scriptsize puente de galgas};
+  \node[blk] (fc) at (5,-7.4) {Finales de carrera\\ \scriptsize A arriba, B abajo (NC)};
+  \node[blk] (drv) at (10,-7.4) {Accionamiento\\ \scriptsize servo paso a paso};
+  \node[blk] (mot) at (10,-9.0) {Motor + reducción $N$\\ \scriptsize caracola $r(\varphi)$};
+  \node[blk] (mec) at (5,-9.0) {Cable, barra\\ \scriptsize y masa de 2 kg};
+  \draw[->,thick] (lc) -- node[pos=0.28,right,font=\scriptsize] {señal mV/V} (click);
+  \draw[->,thick] (fc) -- (io);
+  \draw[bus] (drv) -- node[pos=0.28,right,font=\scriptsize] {Modbus RTU} (rs);
+  \draw[->,thick] (drv) -- (mot);
+  \draw[->,thick] (mot) -- (mec);
+  \draw[dotted,thick] (mec.west) -| (lc.south);
+  \node[grp, fit=(lc)(fc)(drv)(mot)(mec), label={[font=\scriptsize\bfseries,anchor=south west]north west:Máquina}] {};
+\end{tikzpicture}
+\caption{Arquitectura del banco de ensayos.}
+\label{fig:arquitectura}
+\end{figure}
+
+\section{Flujo de datos y temporización}
+
+El microcontrolador ejecuta un lazo de periodo fijo (sección~\ref{sec:fw-lazo}). En cada vuelta lee
+el estado del servo y de la célula, integra la posición, procesa las órdenes recibidas, actualiza
+las máquinas de estado de \emph{homing} y de ciclo, aplica las protecciones y escribe la nueva
+consigna; además guarda una muestra de la vuelta en un búfer. Cada \SI{200}{\milli\second} (o antes,
+si el búfer se llena) el búfer se envía en una sola trama, con una marca de tiempo por muestra. El
+servidor desempaqueta las muestras, las reenvía al navegador y, si hay un ensayo en marcha, las
+escribe en su fichero. Toda la cadena usa el reloj del microcontrolador, de modo que las gráficas y
+los ficheros reflejan los instantes reales de medida y no los de llegada al ordenador.
+
+La geometría del mecanismo sigue el camino contrario: se edita en la página de configuración, se
+valida y se guarda en el servidor (\fichero{mecanismo.json}), y desde ahí la leen tanto el simulador
+como el visor de ensayos, de modo que el modelo con el que se compara una medida es siempre el
+mismo.
+
+\section{Decisiones de diseño}
+
+\begin{longtable}{@{}L{0.19\textwidth}L{0.21\textwidth}L{0.48\textwidth}@{}}
+\caption{Decisiones de diseño y alternativas consideradas.}\label{tab:decisiones}\\
+\toprule
+\textbf{Aspecto} & \textbf{Elección} & \textbf{Justificación / alternativa descartada} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Aspecto} & \textbf{Elección} & \textbf{Justificación / alternativa descartada} \\
+\midrule
+\endhead
+Microcontrolador & Raspberry Pi Pico 2 & Sustituye al ESP32-S3 inicial. La placa se diseñó para el módulo Pico, y su PIO permite una UART en los pines que imponía el trazado. \\
+Modo del servo & Velocidad & Los primeros firmwares usaban el modo par con un regulador sobre la célula. El ensayo cuasiestático y el método de separación del par (sección~\ref{sec:mod-separacion}) exigen velocidad constante e igual en ambos sentidos. \\
+Organización del firmware & Un único dueño de cada bus en el núcleo 0 & La versión de doble núcleo dedicaba el núcleo 1 a Modbus con variables compartidas. El lazo único de periodo fijo elimina las condiciones de carrera y hace predecible la temporización. \\
+Origen del ciclo & Arranca en B, el extremo inferior & El ensayo tiene sentido físico desde la extensión completa del mecanismo. Como el \emph{homing} deja el eje en A, el ciclo se coloca primero en B, y ese tramo ni cuenta como repetición ni se graba. \\
+Extremos del ciclo & Finales de carrera & Reconocer A y B por los finales, y no por la posición integrada, hace que el ciclo funcione esté donde esté el cero y sin depender de la escala de velocidad del accionamiento. \\
+Protocolo con el PC & Binario con CRC-8 y telemetría por lotes & Un protocolo de texto ocupa más y es ambiguo de delimitar. Las tramas binarias con cabecera, longitud y CRC se resincronizan solas. \\
+Posición & Integración de la velocidad del servo & No requiere cablear el codificador. Su deriva se acota con el \emph{homing} y los finales de carrera (sección~\ref{sec:fw-posicion}). \\
+Células de carga & Una sola (ZSC31014) & El NAU7802 se evaluó como segunda célula y se retiró: compartían bus y el ZSC31014 no tolera transacciones ajenas entre la petición y la recogida del dato. \\
+Supervisión & Aplicación web local & No requiere licencias, admite varios clientes y separa la operación en vivo del análisis. \\
+Modelo del mecanismo & Una implementación única en el servidor & Cada página tenía su copia de las fórmulas y llegaron a discrepar: el monitor seguía con un cilindro mientras el visor usaba la caracola. Ahora la geometría vive en \fichero{mecanismo.json} y las fórmulas en \fichero{mecanismo.js}. \\
+Datos grabados & Cuentas brutas + constantes en la cabecera & Permite recalibrar un ensayo sin repetirlo, que es justo lo que ha hecho falta. \\
+\bottomrule
+\end{longtable}
+
+\section{Seguridad}
+\label{sec:arq-seguridad}
+
+El prototipo mueve una masa pequeña a baja velocidad, pero el sistema incluye varias medidas de
+seguridad, todas implementadas en el firmware:
+
+\begin{itemize}
+  \item \textbf{Finales de carrera normalmente cerrados} conectados entre la entrada y masa, con
+        \emph{pull-up} interna. En reposo la entrada lee nivel bajo, y un final pulsado o un cable
+        roto dan nivel alto: la rotura de cable se interpreta como final activado (comportamiento a
+        prueba de fallos).
+  \item \textbf{Parada hacia el final activado}: en cada periodo se anula cualquier consigna que
+        empuje hacia un final pulsado, sea cual sea el modo (manual, \emph{homing} o ciclo).
+  \item \textbf{Límite de fuerza} configurable: si el valor absoluto de la célula tarada supera el
+        umbral, la consigna se anula. Sólo actúa con una lectura válida reciente (menos de
+        \SI{150}{\milli\second}).
+  \item \textbf{Temporizadores de tramo} de \SI{30}{\second} en el \emph{homing} y en los ciclos.
+  \item \textbf{Bloqueo durante la programación de la célula}, que la deja sin medida durante
+        cientos de milisegundos: se rechaza si el eje no está parado y, mientras dura, se fuerza la
+        consigna a cero en cada vuelta.
+  \item \textbf{Orden de parada} que corta también el \emph{homing} y los ciclos, y orden de apagado
+        que deshabilita el accionamiento.
+\end{itemize}
+
+Estas medidas dependen del software y del enlace Modbus. En una máquina industrial, las normas de
+seguridad funcional exigirían una cadena de parada independiente del control \cite{iso13849}, por
+ejemplo cableando los finales de carrera a la entrada de desconexión segura del par (STO) del
+accionamiento \cite{iec61800}. Se recoge como trabajo futuro en el
+capítulo~\ref{chap:conclusiones}.

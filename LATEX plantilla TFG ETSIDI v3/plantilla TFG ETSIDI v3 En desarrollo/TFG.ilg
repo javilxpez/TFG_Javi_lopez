@@ -1,0 +1,205 @@
+This is makeindex, version 2.15 [TeX Live 2015] (kpathsea + Thai support).
+Scanning input file TFG.tex...
+!! Input index error (file = TFG.tex, line = 1):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 3):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 4):
+   -- Unknown index keyword \documentclass[10pt,a4paper].
+!! Input index error (file = TFG.tex, line = 6):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 7):
+   -- Unknown index keyword \usepackage[spanish,es-tabla].
+!! Input index error (file = TFG.tex, line = 8):
+   -- Unknown index keyword %\usepackage[latin1].
+!! Input index error (file = TFG.tex, line = 9):
+   -- Unknown index keyword \usepackage[utf8].
+!! Input index error (file = TFG.tex, line = 11):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 12):
+   -- Unknown index keyword \usepackage.
+!! Input index error (file = TFG.tex, line = 13):
+   -- Unknown index keyword \usepackage.
+!! Input index error (file = TFG.tex, line = 14):
+   -- Unknown index keyword \usepackage.
+!! Input index error (file = TFG.tex, line = 15):
+   -- Unknown index keyword \usepackage.
+!! Input index error (file = TFG.tex, line = 16):
+   -- Unknown index keyword \usepackage.
+!! Input index error (file = TFG.tex, line = 17):
+   -- Unknown index keyword \usepackage.
+!! Input index error (file = TFG.tex, line = 18):
+   -- Unknown index keyword \usepackage.
+!! Input index error (file = TFG.tex, line = 19):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 20):
+   -- Unknown index keyword \usepackage[left=3cm,top=3cm,right=3cm,bottom=3cm].
+!! Input index error (file = TFG.tex, line = 22):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 23):
+   -- Unknown index keyword \usepackage.
+!! Input index error (file = TFG.tex, line = 25):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 26):
+   -- Unknown index keyword \usepackage.
+!! Input index error (file = TFG.tex, line = 28):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 29):
+   -- Unknown index keyword \hypersetup.
+!! Input index error (file = TFG.tex, line = 30):
+   -- Unknown index keyword pdftitle=.
+!! Input index error (file = TFG.tex, line = 31):
+   -- Unknown index keyword pdfsubject=.
+!! Input index error (file = TFG.tex, line = 32):
+   -- Unknown index keyword pdfauthor=.
+!! Input index error (file = TFG.tex, line = 33):
+   -- Unknown index keyword pdfkeywords=.
+!! Input index error (file = TFG.tex, line = 34):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 35):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 36):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 37):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 38):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 39):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 41):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 42):
+   -- Unknown index keyword \usepackage.
+!! Input index error (file = TFG.tex, line = 43):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 44):
+   -- Unknown index keyword \renewcommand.
+!! Input index error (file = TFG.tex, line = 45):
+   -- Unknown index keyword \renewcommand.
+!! Input index error (file = TFG.tex, line = 46):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 48):
+   -- Unknown index keyword \usepackage[toc].
+!! Input index error (file = TFG.tex, line = 50):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 52):
+   -- Unknown index keyword %\include.
+!! Input index error (file = TFG.tex, line = 54):
+   -- Unknown index keyword \newglossaryentry.
+!! Input index error (file = TFG.tex, line = 55):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 56):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 57):
+   -- Unknown index keyword description=.
+!! Input index error (file = TFG.tex, line = 58):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 59):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 61):
+   -- Unknown index keyword \newglossaryentry.
+!! Input index error (file = TFG.tex, line = 62):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 63):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 64):
+   -- Unknown index keyword description=.
+!! Input index error (file = TFG.tex, line = 65):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 68):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 69):
+   -- Unknown index keyword \begin.
+!! Input index error (file = TFG.tex, line = 71):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 72):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 74):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 75):
+   -- Unknown index keyword \include.
+!! Input index error (file = TFG.tex, line = 77):
+   -- Unknown index keyword \include.
+!! Input index error (file = TFG.tex, line = 79):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 80):
+   -- Unknown index keyword \include.
+!! Input index error (file = TFG.tex, line = 82):
+   -- Unknown index keyword \include.
+!! Input index error (file = TFG.tex, line = 84):
+   -- Unknown index keyword \include.
+!! Input index error (file = TFG.tex, line = 86):
+   -- Unknown index keyword \include.
+!! Input index error (file = TFG.tex, line = 88):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 89):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 90):
+   -- Unknown index keyword \addcontentsline.
+!! Input index error (file = TFG.tex, line = 92):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 93):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 95):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 96):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 98):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 99):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 101):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 102):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 104):
+   -- Unknown index keyword \include.
+!! Input index error (file = TFG.tex, line = 106):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 108):
+   -- Unknown index keyword The\Gls.
+!! Input index error (file = TFG.tex, line = 109):
+   -- Unknown index keyword fordocumentsthatinclude\gls.
+!! Input index error (file = TFG.tex, line = 112):
+   -- Unknown index keyword \include.
+!! Input index error (file = TFG.tex, line = 114):
+   -- Unknown index keyword \include.
+!! Input index error (file = TFG.tex, line = 116):
+   -- Unknown index keyword \include.
+!! Input index error (file = TFG.tex, line = 118):
+   -- Unknown index keyword \include.
+!! Input index error (file = TFG.tex, line = 120):
+   -- Unknown index keyword \include.
+!! Input index error (file = TFG.tex, line = 122):
+   -- Unknown index keyword \include.
+!! Input index error (file = TFG.tex, line = 124):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 126):
+   -- Unknown index keyword \include.
+!! Input index error (file = TFG.tex, line = 128):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 129):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 131):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 132):
+   -- Unknown index keyword \bibliographystyle.
+!! Input index error (file = TFG.tex, line = 134):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 135):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 137):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 138):
+   -- Unknown index keyword \addcontentsline.
+!! Input index error (file = TFG.tex, line = 140):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 141):
+   -- Unknown index keyword \bibliography.
+!! Input index error (file = TFG.tex, line = 143):
+   -- Missing arguments -- need two (premature LFD).
+!! Input index error (file = TFG.tex, line = 144):
+   -- Unknown index keyword \end.
+done (0 entries accepted, 100 rejected).
+Nothing written in TFG.ind.
+Transcript written in TFG.ilg.

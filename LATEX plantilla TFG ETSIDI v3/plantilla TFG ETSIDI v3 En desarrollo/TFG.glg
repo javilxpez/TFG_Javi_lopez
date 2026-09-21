@@ -1,0 +1,18 @@
+
+
+*** Unable to execute: '"makeindex"  -s "TFG.ist" -t "TFG.glg" -o "TFG.gls" "TFG.glo"' ***
+
+Failed with error code 127.
+
+Status report:
+
+sh: makeindex: command not found
+
+makeindex didn't create a transcript.
+Check that makeindex has been installed and
+is on your system's PATH.
+Your PATH environment variable is set to: 
+/usr/bin:/bin:/usr/sbin:/sbin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin:/usr/texbin:/sw/bin
+Try manually running:
+"makeindex"  -s "TFG.ist" -t "TFG.glg" -o "TFG.gls" "TFG.glo"
+

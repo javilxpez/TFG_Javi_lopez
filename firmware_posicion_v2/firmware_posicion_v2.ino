@@ -201,13 +201,19 @@ enum State {
 #define MODE_MOVING_A 1
 #define MODE_MOVING_B 2
 
-// ── Ciclo A<->B ───────────────────────────────────
-// A es siempre el home (posRev = 0, que es donde deja el homing). B es o el final de
-// carrera, o una posición en revoluciones que elige el operario.
+// ── Ciclo del ensayo: B → A → B ───────────────────
+// A es el final de carrera de ARRIBA y B el de ABAJO. El ciclo natural del ensayo
+// arranca en B, con el mecanismo en extensión completa y la pesa en su punto más bajo,
+// sube tocando A y vuelve a bajar a B. A es el home (posRev = 0, donde deja el homing)
+// y B es o el final de carrera de abajo, o una posición en revoluciones que se elige.
+// Velocidad negativa = hacia A (arriba); positiva = hacia B (abajo).
+// El homing deja el eje en A, así que el ciclo se coloca primero en B. Ese tramo de
+// colocación no cuenta como repetición y el puente no lo graba: el ensayo empieza en B.
 enum CyclePhase : uint8_t {
   CYC_IDLE = 0,
-  CYC_TO_B,     // yendo hacia B
-  CYC_TO_A,     // volviendo a A (home)
+  CYC_POS_B,    // colocándose en B antes de empezar (no cuenta ni se graba)
+  CYC_TO_A,     // de B hacia A: la ida del ensayo
+  CYC_TO_B,     // de A de vuelta a B: cierra la repetición
   CYC_DONE,     // completadas las repeticiones pedidas
   CYC_FAIL      // abortado: servo caído, timeout o tope inesperado
 };
@@ -284,7 +290,8 @@ struct ControlState {
   // ── Ciclo A<->B ──
   CyclePhase cycPhase      = CYC_IDLE;
   bool     cycToLimitB     = true;   // true = B es el final de carrera; false = posición
-  float    cycTargetRev    = 0.0f;   // B cuando es una posición (rev desde el home)
+  float    cycTargetRev    = 0.0f;   // recorrido B→A pedido, cuando no se usa el final A
+  float    cycPosB         = 0.0f;   // posRev en B, fijado al colocarse: el ensayo se mide desde ahí
   int16_t  cycSpeed        = 30;     // RPM del ciclo
   uint16_t cycTarget       = 1;      // repeticiones pedidas (0 = sin fin)
   uint16_t cycDone         = 0;      // repeticiones completadas
@@ -520,6 +527,9 @@ void processCommand(const uint8_t *payload, uint8_t len) {
       sv.cfgRetries = 0; sv.speedCmd = 0;
       ctrl.errorCode = ERR_NONE;
       ctrl.posRev = 0.0f; ctrl.lastPosTime = 0;   // v2: reset de posición al inicializar
+      // Poner el cero donde esté el eje invalida la referencia: el recorrido A→B medido
+      // ya no dice dónde está A. Sin eso, el ciclo podría creer que A es el punto actual.
+      ctrl.homeRangeValid = false;
       ctrl.homePhase = HOME_IDLE;
       sv.phase = SV_CONFIGURING;                   // known address → connect directly, no scan
       break;
@@ -580,7 +590,8 @@ void processCommand(const uint8_t *payload, uint8_t len) {
       if (ctrl.cycSpeed == 0) ctrl.cycSpeed = ctrl.moveSpeed;
       ctrl.cycTarget    = rep;                      // 0 = sin fin, hasta que se pare
       ctrl.cycDone      = 0;
-      ctrl.cycPhase     = CYC_TO_B;
+      ctrl.cycPosB      = ctrl.posRev;              // provisional: se fija al llegar a B
+      ctrl.cycPhase     = CYC_POS_B;                // primero colocarse en B
       ctrl.cycPhaseStart = millis();
       break;
     }
@@ -1138,6 +1149,23 @@ void positionUpdate(){
 // No lleva control de posición fino: manda velocidad y mira la posición integrada, igual
 // que el homing. Los topes y el límite de fuerza siguen actuando en el loop como red de
 // seguridad, así que si algo se pasa de largo el eje se para de todas formas.
+// Los extremos del ensayo se reconocen por los FINALES DE CARRERA, no por posRev. Así el
+// ciclo funciona esté el cero donde esté —el homing puede dejarlo en B, en A o en medio— y
+// sin depender de que la escala de RPM del drive sea la correcta, que es de donde sale la
+// posición integrada. posRev sólo se usa si se pide un recorrido parcial, y aun entonces se
+// mide COMO DISTANCIA DESDE B (cycPosB), no como posición absoluta.
+//
+// B es el arranque del ensayo: el final de carrera de abajo.
+static bool cycleAtB(bool limB){
+  if(ctrl.cycToLimitB) return limB;
+  return limB || (ctrl.posRev >= ctrl.cycPosB - HOMING_TOL_REV);
+}
+// A es el otro extremo: el final de carrera de arriba, o la distancia pedida desde B.
+static bool cycleAtA(bool limA){
+  if(ctrl.cycToLimitB) return limA;
+  return limA || ((ctrl.cycPosB - ctrl.posRev) >= (ctrl.cycTargetRev - HOMING_TOL_REV));
+}
+
 void cycleUpdate(){
   if(ctrl.cycPhase==CYC_IDLE || ctrl.cycPhase==CYC_DONE || ctrl.cycPhase==CYC_FAIL) return;
 
@@ -1153,34 +1181,42 @@ void cycleUpdate(){
   bool limB = (digitalRead(PIN_LIMIT_B)==HIGH);
 
   switch(ctrl.cycPhase){
-    case CYC_TO_B: {
-      bool arrived = ctrl.cycToLimitB
-                   ? limB
-                   : (ctrl.posRev >= ctrl.cycTargetRev - HOMING_TOL_REV) || limB;
-      if(arrived){
+    // Colocación: bajar hasta B. No cuenta como repetición y el puente no la graba.
+    case CYC_POS_B: {
+      if(cycleAtB(limB)){
         sv.speedCmd = 0;
-        ctrl.cycPhase = CYC_TO_A;
+        ctrl.cycPosB = ctrl.posRev;                 // B fijado: el ensayo se mide desde aquí
+        ctrl.cycPhase = CYC_TO_A;                   // y aquí empieza
         ctrl.cycPhaseStart = now;
       } else {
-        sv.speedCmd = +ctrl.cycSpeed;
+        sv.speedCmd = +ctrl.cycSpeed;               // + es hacia B, abajo
       }
       break;
     }
 
     case CYC_TO_A: {
-      // A es el home: posRev = 0. El final de carrera A vale como tope de respaldo.
-      bool arrived = (ctrl.posRev <= HOMING_TOL_REV) || limA;
-      if(arrived){
+      if(cycleAtA(limA)){
         sv.speedCmd = 0;
-        ctrl.cycDone++;
+        ctrl.cycPhase = CYC_TO_B;
+        ctrl.cycPhaseStart = now;
+      } else {
+        sv.speedCmd = -ctrl.cycSpeed;               // − es hacia A, arriba
+      }
+      break;
+    }
+
+    case CYC_TO_B: {
+      if(cycleAtB(limB)){
+        sv.speedCmd = 0;
+        ctrl.cycDone++;                             // la repetición se cierra al volver a B
         if(ctrl.cycTarget && ctrl.cycDone >= ctrl.cycTarget){
           ctrl.cycPhase = CYC_DONE;                 // hechas las que se pedían
         } else {
-          ctrl.cycPhase = CYC_TO_B;                 // otra vuelta
+          ctrl.cycPhase = CYC_TO_A;                 // otra vuelta: B → A → B
           ctrl.cycPhaseStart = now;
         }
       } else {
-        sv.speedCmd = -ctrl.cycSpeed;
+        sv.speedCmd = +ctrl.cycSpeed;
       }
       break;
     }
@@ -1193,7 +1229,10 @@ void cycleUpdate(){
 void telemetryFlushCycle(){
   int32_t pm = (int32_t)(ctrl.posRev * 1000.0f);
   int32_t tm = (int32_t)(ctrl.cycTargetRev * 1000.0f);
-  uint8_t payload[14];
+  // cycPosB viaja también: es dónde ha quedado fijada B, y sin ese dato no se puede saber
+  // desde fuera contra qué está midiendo el ciclo el recorrido parcial.
+  int32_t bm = (int32_t)(ctrl.cycPosB * 1000.0f);
+  uint8_t payload[18];
   payload[0]  = PACKET_ID_CYCLE;
   payload[1]  = (uint8_t)ctrl.cycPhase;
   payload[2]  = (ctrl.cycDone  >>0)&0xFF; payload[3]  = (ctrl.cycDone  >>8)&0xFF;
@@ -1202,6 +1241,8 @@ void telemetryFlushCycle(){
   payload[8]  = (pm>>16)&0xFF; payload[9]  = (pm>>24)&0xFF;
   payload[10] = (tm>> 0)&0xFF; payload[11] = (tm>> 8)&0xFF;
   payload[12] = (tm>>16)&0xFF; payload[13] = (tm>>24)&0xFF;
+  payload[14] = (bm>> 0)&0xFF; payload[15] = (bm>> 8)&0xFF;
+  payload[16] = (bm>>16)&0xFF; payload[17] = (bm>>24)&0xFF;
   uint8_t frame[3 + sizeof(payload) + 1];
   frame[0]=SYNC_0; frame[1]=SYNC_1; frame[2]=(uint8_t)sizeof(payload);
   memcpy(&frame[3], payload, sizeof(payload));
@@ -1438,7 +1479,7 @@ void loop(){
     homingUpdate();                        // el homing manda: nunca los dos a la vez
   } else {
     homingUpdate();                        // deja que cierre DONE/FAIL
-    cycleUpdate();                         // ciclo A<->B
+    cycleUpdate();                         // ciclo B → A → B
   }
 
   // v2: cierra la ventana de reporte tras DONE/FAIL
@@ -1480,7 +1521,7 @@ void loop(){
   if(sampleCount>=MAX_SAMPLES || now-ctrl.lastTelemetryTime>=period){
     telemetryFlush();
     if(ctrl.homePhase!=HOME_IDLE) telemetryFlushHome();   // v2: estado de homing sólo si está activo
-    if(ctrl.cycPhase !=CYC_IDLE)  telemetryFlushCycle();  // ídem para el ciclo A<->B
+    if(ctrl.cycPhase !=CYC_IDLE)  telemetryFlushCycle();  // ídem para el ciclo B → A → B
     ctrl.lastTelemetryTime=now;
   }
 

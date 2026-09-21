@@ -1,0 +1,130 @@
+\chapter{Introducción}
+\label{chap:intro}
+
+\section{Motivación del proyecto}
+
+Muchos mecanismos de elevación no presentan una carga constante al actuador. En una barra
+articulada que se levanta tirando de un cable, la tensión necesaria para sostener la carga depende
+del ángulo que forman el cable y la barra; al girar la barra, esa geometría cambia y con ella la
+tensión. Si el cable se enrolla en un tambor cilíndrico, el par que el motor debe aportar, producto
+de la tensión por el radio, sigue fielmente esas variaciones, y el actuador hay que dimensionarlo
+para el peor punto del recorrido aunque la mayor parte del tiempo trabaje muy por debajo.
+
+Una solución clásica es cambiar la relación de transmisión a lo largo del recorrido haciendo que el
+radio del tambor no sea constante. Es la idea del \emph{fusee} de la relojería del siglo XV, un cono
+con una ranura helicoidal que compensaba la pérdida de par del muelle real a medida que se
+desenrollaba \cite{landes1983}. La misma idea reaparece hoy en los tambores de radio variable de la
+robótica de cables \cite{seriani2016,bieber2023} y en los sistemas pasivos de compensación de
+gravedad \cite{shen2022,endo2010}. En este trabajo, al tambor en espiral se le llama \emph{caracola}
+por su forma.
+
+El mecanismo objeto del proyecto es precisamente una caracola que, accionada por un servomotor paso
+a paso de lazo cerrado, enrolla un cable y levanta una barra articulada con una masa de
+\SI{2}{\kilo\gram}. La hipótesis de partida es que el perfil de radio variable aplana el par que ve
+el motor frente a la variación de la tensión del cable. Comprobarlo exige dos cosas: un modelo que
+diga qué cabe esperar y un sistema de medida capaz de registrar a la vez la posición del eje, la
+tensión del cable y el par del motor en ensayos repetibles. Construir ese sistema, y usarlo para
+contrastar el modelo, es el contenido de este Trabajo Fin de Grado.
+
+\section{Objetivos}
+
+El objetivo general es diseñar, construir y validar un banco de ensayos para el mecanismo de
+caracola: la electrónica de accionamiento, control y adquisición, el software de supervisión y el
+modelo con el que se interpretan las medidas.
+
+De él se derivan los siguientes objetivos específicos:
+
+\begin{enumerate}[label=\textbf{O\arabic*.}]
+  \item Desarrollar un modelo estático del mecanismo que relacione la geometría, la tensión del
+        cable y el par en el tambor, y deducir de él el perfil de radio que hace constante el par.
+  \item Diseñar una placa de circuito impreso que adapte el microcontrolador al entorno de la
+        máquina: bus RS-485, entradas digitales protegidas, entradas analógicas acondicionadas,
+        salidas de potencia y conexión de células de carga.
+  \item Desarrollar el firmware del microcontrolador, capaz de gobernar el servoaccionamiento por
+        Modbus RTU, leer la célula de carga, ejecutar el \emph{homing} y los ciclos de ensayo, y
+        vigilar los límites de seguridad con una temporización determinista.
+  \item Definir un protocolo de comunicación robusto entre el microcontrolador y el ordenador, que
+        transporte la telemetría por lotes y las órdenes con detección de errores.
+  \item Desarrollar una aplicación de supervisión web para operar la máquina, visualizar los datos
+        en tiempo real, grabar cada ensayo en un fichero reproducible, configurar la geometría del
+        mecanismo y comparar cada ensayo con el modelo.
+  \item Caracterizar el banco (temporización, repetibilidad y comportamiento de la medida) y
+        analizar los ensayos para contrastar el modelo y cuantificar el efecto de la caracola.
+  \item Documentar los problemas técnicos encontrados y las soluciones adoptadas, así como la
+        planificación, el presupuesto y el impacto del trabajo.
+\end{enumerate}
+
+\section{Materiales utilizados}
+
+\begin{itemize}
+  \item \textbf{Mecanismo}: caracola de radio variable, cable, barra articulada con una masa de
+        \SI{2}{\kilo\gram} y dos finales de carrera
+        \completar{indicar si la caracola y la estructura se han diseñado y fabricado en este TFG o
+        proceden de un trabajo previo}.
+  \item \textbf{Accionamiento}: servomotor paso a paso de lazo cerrado con accionamiento Modbus RTU
+        sobre RS-485 \completar{marca y modelo}.
+  \item \textbf{Electrónica}: placa adaptadora propia diseñada en KiCad \cite{kicad} alrededor de un
+        módulo Raspberry Pi Pico~2 \cite{rp2350}, con transceptor THVD1400 \cite{thvd1400},
+        interruptor de potencia TPS4H000-Q1 \cite{tps4h000} y amplificadores MCP6294
+        \cite{mcp629x}.
+  \item \textbf{Medida de fuerza}: célula de carga con acondicionador ZSC31014 \cite{zsc31014}
+        montado en una placa \emph{Load Cell 2 Click} \cite{mikroelc2}.
+  \item \textbf{Software}: entorno Arduino con el núcleo Arduino-Pico \cite{arduinopico} y la
+        biblioteca ModbusMaster \cite{modbusmaster} para el firmware; Python con FastAPI
+        \cite{fastapi}, pySerial \cite{pyserial} y Chart.js \cite{chartjs} para la supervisión;
+        matplotlib \cite{matplotlib} para el análisis, y git para el control de versiones.
+\end{itemize}
+
+\section{Alcance y limitaciones}
+
+Entra en el alcance todo el sistema electrónico y de software (placa, firmware, protocolo,
+supervisión y análisis), el modelo del mecanismo y la campaña de ensayos. El diseño mecánico se
+toma como dado.
+
+Las limitaciones conocidas, que se discuten en los capítulos correspondientes, son:
+
+\begin{itemize}
+  \item La posición del eje no se lee del codificador del accionamiento, sino que se obtiene
+        integrando la velocidad que devuelve el propio servo (sección~\ref{sec:fw-posicion}).
+  \item La célula de carga no está calibrada con masas patrón; los ensayos se guardan en cuentas
+        brutas y la conversión a newtons es provisional (sección~\ref{sec:res-limitaciones}).
+  \item El par se obtiene en las unidades internas del accionamiento, cuya escala física no se ha
+        confirmado, de modo que los resultados se expresan en variaciones relativas.
+  \item Las cotas del mecanismo no se han medido: los parámetros geométricos proceden de un ajuste
+        sobre los propios ensayos (capítulo~\ref{chap:resultados}).
+  \item Los finales de carrera y el límite de fuerza se implementan por software; no hay una cadena
+        de seguridad cableada (sección~\ref{sec:arq-seguridad}).
+\end{itemize}
+
+\section{Metodología}
+
+El desarrollo ha sido incremental y guiado por pruebas. Cada subsistema (bus RS-485, célula de
+carga, finales de carrera, entradas y salidas de la placa) se validó primero con un programa de
+prueba aislado, que se conserva en el repositorio (anexo~\ref{anx:repo}), antes de integrarlo en el
+firmware principal. El código se ha versionado con git desde el primer día, y ese historial ha
+servido además para reconstruir la planificación real (capítulo~\ref{chap:gestion}). Los ensayos se
+guardan en crudo, con las constantes de conversión en la cabecera de cada fichero, de modo que
+cualquier resultado puede recalcularse sin repetir el ensayo; las figuras de resultados de esta
+memoria se generan con programas reproducibles a partir de esos ficheros.
+
+\section{Estructura del documento}
+
+\begin{itemize}
+  \item El capítulo~\ref{chap:marco} resume los conceptos necesarios: accionamientos, medida de
+        fuerza con galgas, buses de campo y microcontroladores.
+  \item El capítulo~\ref{chap:estado} sitúa el trabajo frente a los tambores de radio variable y los
+        mecanismos de compensación publicados.
+  \item El capítulo~\ref{chap:modelo} desarrolla el modelo del mecanismo y el método experimental
+        con el que se contrasta.
+  \item El capítulo~\ref{chap:arquitectura} recoge los requisitos y la arquitectura del banco.
+  \item Los capítulos~\ref{chap:hardware} a~\ref{chap:software} describen el hardware, el firmware,
+        las comunicaciones y el software de supervisión.
+  \item El capítulo~\ref{chap:problemas} reúne los problemas técnicos y sus soluciones.
+  \item El capítulo~\ref{chap:resultados} presenta la caracterización del banco y los resultados de
+        las dos campañas de ensayos.
+  \item El capítulo~\ref{chap:gestion} trata el ciclo de vida, la planificación y el presupuesto, y
+        el capítulo~\ref{chap:conclusiones} las conclusiones y el trabajo futuro.
+\end{itemize}
+
+Los anexos contienen la asignación de pines, el protocolo, los registros Modbus, el formato de los
+ficheros de ensayo, el manual de uso y la estructura del repositorio.

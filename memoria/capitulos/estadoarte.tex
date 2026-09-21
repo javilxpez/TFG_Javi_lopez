@@ -1,0 +1,63 @@
+\chapter{Estado del arte}
+\label{chap:estado}
+
+Este capítulo sitúa el trabajo frente a lo publicado sobre tambores de radio variable y mecanismos
+de compensación, y frente a las plataformas con las que se ensayan.
+
+\section{Del \emph{fusee} a los tambores de radio variable}
+
+El problema de convertir una fuerza variable en un par constante es antiguo. En los relojes de
+muelle, el par del muelle real disminuye a medida que se desenrolla, y eso altera la marcha. El
+\emph{fusee} lo resolvió con un cono de perfil curvo y una ranura helicoidal por la que se enrolla
+una cadena: con el muelle tenso la cadena tira del radio pequeño, y al debilitarse pasa al radio
+grande, de manera que el par entregado al tren se mantiene aproximadamente constante
+\cite{landes1983}. La condición de diseño es simplemente que el producto fuerza por radio se
+conserve a lo largo del recorrido.
+
+La misma idea se ha formalizado en robótica con el nombre de tambores de radio variable
+(\emph{Variable Radius Drums}, VRD). Seriani y Gallina \cite{seriani2016} plantean la síntesis del
+perfil de un tambor para que la carga siga una ley prescrita y obtienen soluciones analíticas
+cerradas para varios casos. En los robots paralelos accionados por cables, Bieber \emph{et al.}
+\cite{bieber2023} diseñan el perfil a partir del perfil de carga máxima del espacio de trabajo, de
+modo que el par del motor no supere un valor dado para ninguna longitud de cable. La fabricación
+aditiva ha abaratado mucho estos perfiles, lo que explica el interés reciente.
+
+\section{Compensación de gravedad con poleas no circulares}
+
+Un segundo campo de aplicación es la compensación estática de peso. Herder \cite{herder2001} estudia
+de forma sistemática los mecanismos estáticamente equilibrados, en los que la energía potencial
+total se mantiene constante y el actuador sólo vence las pérdidas. Endo \emph{et al.}
+\cite{endo2010} proponen una polea no circular combinada con un muelle para compensar el par
+gravitatorio de un brazo, y deducen numéricamente la forma de la polea. Shen y Yano \cite{shen2022}
+refinan ese cálculo teniendo en cuenta la variación de la tensión del cable a lo largo del
+recorrido, y mejoran así la calidad de la compensación.
+
+El mecanismo de este trabajo comparte el principio, con una diferencia importante: aquí no hay
+muelle que almacene energía, sino un motor que aporta todo el trabajo de elevación. La caracola no
+ahorra energía, sino que reparte el par.
+
+\section{Bancos de ensayo y validación experimental}
+
+En los trabajos citados, la validación experimental suele consistir en medir el par o la corriente
+del actuador a lo largo del recorrido y compararlos con el perfil previsto. Esa comparación exige
+tres medidas sincronizadas: posición del eje, fuerza en el cable y par del actuador. Los equipos
+comerciales de adquisición que resuelven esto tienen un coste muy superior al del propio prototipo,
+y los accionamientos industriales modernos ya publican velocidad y par por bus de campo, de modo que
+buena parte de la instrumentación puede sustituirse por software.
+
+Ésa es la oportunidad que aprovecha este TFG: construir, con componentes comerciales de bajo coste y
+herramientas libres, un banco que registre las tres magnitudes con la misma base de tiempos, guarde
+los datos en bruto y permita contrastar el modelo del mecanismo con la medida. Un resultado
+colateral del trabajo, que se detalla en el capítulo~\ref{chap:resultados}, es que esa
+instrumentación completa resulta \emph{necesaria}: la medida de fuerza por sí sola no basta para
+determinar el perfil del tambor, porque la calibración desconocida de la célula admite soluciones
+con el signo invertido; es el par del accionamiento el que deshace la ambigüedad.
+
+\section{Conclusiones del estado del arte}
+
+Los tambores de radio variable están bien estudiados como principio y existen métodos de síntesis de
+su perfil. Lo que falta, y es lo que motiva este trabajo, es una plataforma asequible que permita
+medir en un prototipo real cómo se reparte el par y contrastarlo con el modelo. Para ello hay que
+integrar un accionamiento industrial por Modbus, un acondicionador de célula de carga con reglas de
+configuración estrictas y una cadena de adquisición con marcas de tiempo fiables, que es lo que
+desarrollan los capítulos siguientes.

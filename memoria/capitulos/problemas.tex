@@ -1,0 +1,236 @@
+\chapter{Problemas técnicos y soluciones}
+\label{chap:problemas}
+
+Este capítulo reúne los problemas más costosos del desarrollo. Para cada uno se describen el
+síntoma, la causa y la solución, tal como quedaron documentados en el código y en el repositorio.
+Muchos no se deben a un error de programación, sino a detalles de los componentes o del montaje que
+no son evidentes en una primera lectura.
+
+\section{UART sobre PIO y latencia del enlace Modbus}
+\label{sec:prob-uart}
+
+\paragraph{Síntoma.} Tras migrar el firmware del ESP32-S3 a la Pico 2, las órdenes tardaban entre 3 y
+\SI{4}{\second} en tener efecto.
+
+\paragraph{Causa.} En el ESP32-S3 la UART es un periférico hardware: los bytes de la respuesta llegan
+a una FIFO por interrupción y, cuando ModbusMaster los pide, ya están disponibles, así que cada
+transacción dura 1 a \SI{3}{\milli\second}. En la Pico, el trazado lleva la transmisión a GP14 y la
+recepción a GP13, y se usó \codigo{SerialPIO}, una UART implementada con una máquina de estado PIO
+que funciona en cualquier pin \verificar{confirmar si el RP2350 permite la función UART en GP14
+mediante su función alternativa}. Con \codigo{SerialPIO}, el bucle de espera de ModbusMaster agotaba
+su tiempo límite, de unos \SI{20}{\milli\second}, en muchas transacciones: diez escrituras
+consecutivas bloqueaban el núcleo \SI{200}{\milli\second}, y con las lecturas de supervisión se
+llegaba a varios segundos.
+
+Un segundo detalle afectaba al cambio de sentido del transceptor: llamar a \codigo{flush()} antes de
+desactivar el emisor, como se haría con una UART hardware, rompía la recepción inmediata de la
+respuesta. La solución fue esperar un tiempo fijo de \SI{200}{\micro\second} tras el último byte.
+
+\paragraph{Primera solución: doble núcleo.} La versión \fichero{firmwarerasp} dedicó el núcleo 1 al
+bus Modbus, con la consigna publicada en variables \codigo{volatile} y un protocolo de relevo para
+que el núcleo 0 pudiera tomar el bus. Funcionaba, pero con variables compartidas sin atomicidad,
+esperas de relevo y lecturas cuyo instante no estaba ligado al de la muestra de telemetría.
+
+\paragraph{Solución final: dueño único con lazo de periodo fijo.} Ajustados los tiempos de espera y
+el cambio de sentido, cada transacción volvió a durar pocos milisegundos y se pudo prescindir del
+segundo núcleo: un único lazo de \SI{50}{\milli\second} con exactamente tres transacciones por
+vuelta. El resultado es un tiempo de trabajo de \SI{11.0}{\milli\second} con \SI{0.2}{\milli\second}
+de dispersión (sección~\ref{sec:res-temporizacion}), sin condiciones de carrera y con lecturas,
+lógica y escritura en la misma vuelta.
+
+\section{Configuración del ZSC31014: la ventana del modo comando}
+\label{sec:prob-zsc}
+
+\paragraph{Contexto.} Para cambiar la ganancia o el cero del acondicionador hay que escribir en su
+EEPROM, y para ello entrar en modo comando. Según la hoja de datos \cite{zsc31014}, tras un reinicio
+por encendido (POR) el chip espera la orden Start\_CM durante \SI{6}{\milli\second} si la EEPROM no
+está bloqueada, o \SI{1.5}{\milli\second} si lo está. Pasada la ventana, ignora Start\_CM sin dar
+ninguna señal de error.
+
+\subsection{Primer obstáculo: provocar el reinicio}
+
+Tras reprogramar la Pico, la configuración nunca se aplicaba, porque la placa Click seguía
+alimentada y sin POR no se abre la ventana. La solución fue controlar su alimentación con el pin EN
+(GPIO1) y hacer un ciclo completo de apagado y encendido antes de cada intento.
+
+\subsection{Segundo obstáculo: alimentación parásita por el bus}
+
+\paragraph{Síntoma.} Con EN a nivel bajo, el chip seguía respondiendo por I\textsuperscript{2}C, y la
+tensión de la Click se quedaba en \SIrange{2.5}{2.7}{\volt} en lugar de caer a cero.
+
+\paragraph{Causa.} Las resistencias de \emph{pull-up} de SDA, SCL e INT cuelgan del
+\SI{3.3}{\volt} permanente del zócalo mikroBUS, no del carril gobernado por EN. Con el chip sin
+alimentar, la corriente entraba por esos pines, atravesaba los diodos de protección internos y
+alimentaba el carril. La hoja de datos sitúa el umbral de POR entre \num{1.8} y \SI{2.5}{\volt}:
+con \SIrange{2.5}{2.7}{\volt} parásitos, el chip nunca veía un reinicio.
+
+\paragraph{Diagnóstico y solución.} Se añadió la orden LC\_HOLD, que mantiene la célula sin
+alimentación \SI{8}{\second} sin bloquear el lazo, con dos modos para las líneas del bus. Las
+medidas con polímetro mostraron que sólo forzándolas a nivel bajo la tensión cae a cero, y así se
+dejó por defecto. Hubo además un error en el propio diagnóstico: la primera versión de la prueba
+dejaba las líneas en alto mientras medía, de modo que siempre ``detectaba'' realimentación y acusaba
+al pin EN sin motivo.
+
+\subsection{Tercer obstáculo: acertar la ventana}
+
+La orden tiene que llegar después de que el chip arranque y antes de que la ventana se cierre, y ese
+instante depende de los condensadores de la placa Click, así que los retardos copiados de otros
+controladores no servían. En lugar de adivinarlo, el firmware lo mide: sondea la dirección hasta que
+el chip responde, y a partir de ahí prueba retardos de \num{0} a \SI{1050}{\micro\second} en pasos
+de \SI{150}{\micro\second} a lo largo de hasta ocho ciclos de alimentación, confirmando la entrada
+con la lectura de B\_Config. El intento que funciona se devuelve a la interfaz para poder fijarlo
+más adelante.
+
+\subsection{Cuarto obstáculo: integridad de la EEPROM}
+
+La firma MISR que protege la EEPROM se recalcula al salir del modo comando con Start\_NOM y se
+comprueba en el siguiente POR: cortar la alimentación antes deja la firma a medias y el chip arranca
+desde entonces en estado de diagnóstico. Por eso, tras cualquier escritura se envía Start\_NOM y se
+espera diez veces el tiempo típico antes de cortar. Como ZMDI\_Config1 sólo se carga tras un POR, la
+verificación se hace en una segunda pasada desde un reinicio limpio.
+
+\section{Lecturas de la célula siempre ``antiguas''}
+
+En una versión del firmware no se registraba ni una sola muestra válida. La lectura se hacía en dos
+fases separadas \SI{2}{\milli\second}, quedándose con la segunda; como en modo de conversión
+continua leer no dispara una conversión y el chip no había producido un dato nuevo en ese tiempo, la
+segunda lectura venía siempre marcada como repetida. Una versión anterior funcionaba por casualidad,
+porque sus dos lecturas caían en vueltas distintas del lazo. La solución fue una única lectura por
+vuelta, aceptada sólo si el dato es nuevo.
+
+\section{Depuración del ciclo de ensayo}
+\label{sec:prob-ciclo}
+
+Al reorganizar el ciclo para que empezara en el extremo inferior (sección~\ref{sec:fw-ciclo})
+aparecieron tres problemas encadenados:
+
+\begin{description}[style=nextline,leftmargin=1.5em]
+  \item[El ciclo terminaba sin hacer nada] Con el eje ya en el final de carrera, la condición de
+        llegada se cumplía de inmediato y el ciclo recorría todas sus fases en un par de periodos.
+        No era un fallo de lógica, sino de arranque: faltaba la fase de colocación en B.
+  \item[No quedaba rastro en el registro] Un ciclo que empieza y acaba en \SI{200}{\milli\second} no
+        aparecía en el registro, porque sólo se escribía una línea por lote de telemetría y ninguna
+        al cambiar de fase. Ahora cada cambio de fase escribe su propia línea, y la línea de
+        telemetría incluye posición, finales de carrera y fase.
+  \item[La interfaz no mostraba la fase] El firmware había pasado a enviar una trama de ciclo de 18
+        bytes y el servidor, que esperaba 14, la descartaba entera. Se añadió la compatibilidad con
+        la trama antigua para que un desajuste de versiones degrade la información en lugar de
+        hacerla desaparecer.
+\end{description}
+
+Además, el ciclo pasó a reconocer los extremos por los finales de carrera en vez de por la posición
+integrada. Con la posición, cualquier error de escala del accionamiento o cualquier cero mal
+colocado desplazaba el recorrido; con los finales, el ensayo recorre siempre lo mismo.
+
+\section{El modelo que no cerraba: la salida del cable desplazada}
+\label{sec:prob-dx}
+
+\paragraph{Síntoma.} Con el primer modelo, que situaba la salida del cable justo encima de la
+articulación, la curva teórica no encajaba con los ensayos: el recorrido angular que predecía no era
+el que hacía la barra, y el ajuste sólo cuadraba forzando valores poco creíbles de la reducción.
+
+\paragraph{Causa.} La salida del cable no está sobre la vertical de la articulación, sino desplazada
+horizontalmente. Ese desplazamiento no es un detalle de dibujo: con la salida en la vertical, el
+coseno del ángulo de la barra se cancela con el seno del ángulo del cable y la tensión resulta
+proporcional a la longitud de cable, que es el resultado elegante de la
+ecuación~\eqref{eq:tension0}. Con la salida desplazada esa cancelación desaparece
+(sección~\ref{sec:mod-tension}).
+
+\paragraph{Solución.} Se reescribió el modelo con el desplazamiento $dx$ como parámetro y con el
+ángulo medido entre la línea que une articulación y salida y la propia barra, que además elimina la
+ambigüedad que tenía medir desde la horizontal. El modelo pasó a estar implementado una sola vez y a
+alimentarse de una configuración guardada en el servidor.
+
+\section{Lo que la fuerza no puede decidir}
+\label{sec:prob-signo}
+
+Al ajustar los parámetros del mecanismo contra la señal de la célula se obtuvieron coeficientes de
+determinación altos ($R^2 \approx 0{,}93$ en los ensayos limpios), lo que parecía confirmar la
+geometría. No lo confirmaba. Como la célula no está calibrada, el ajuste incluye la sensibilidad
+como incógnita, y $R^2$ es el cuadrado de la correlación: no distingue una sensibilidad positiva de
+una negativa. Dos geometrías que predicen tensiones con tendencias opuestas dan exactamente el mismo
+$R^2$ (sección~\ref{sec:mod-ambiguedad}).
+
+La consecuencia práctica llegó al añadir el par del accionamiento al contraste: con los mismos
+parámetros, el par medido y el del modelo resultaron \emph{anticorrelados}
+(capítulo~\ref{chap:resultados}). El análisis se reorganizó entonces alrededor del par, que no
+depende de ninguna calibración pendiente, y la señal de la célula quedó como comprobación
+secundaria.
+
+\section{Tramo inicial sin carga y calibraciones incoherentes}
+
+Los ensayos de la segunda campaña muestran que la primera media revolución de motor transcurre sin
+tensión en el cable y con un par casi nulo: el mecanismo recoge holgura antes de empezar a levantar
+la masa. No es un fallo, pero invalida ese tramo para el análisis y obliga a definir explícitamente
+el recorrido con carga.
+
+Por otra parte, la constante que relaciona cuentas y newtons ha resultado distinta en cada intento:
+\num{14.41} cuentas/N en la configuración de la interfaz, unas \num{20} al ajustar contra el
+modelo y \SIrange{27}{28}{} en los ensayos limpios; y en la campaña del 15 de septiembre el ajuste
+salía incluso con el signo contrario. Todo ello confirma que la célula necesita una calibración con
+masas patrón antes de dar valores absolutos de fuerza.
+
+\section{Segunda célula de carga en el mismo bus}
+\label{sec:prob-nau}
+
+Se evaluó añadir una segunda célula con una Load Cell 4 Click (NAU7802) en el mismo bus. Surgieron
+dos problemas. El primero, de convivencia: el ZSC31014 no toleraba transacciones ajenas entre la
+petición y la recogida del dato, y de ahí nació el árbitro de \fichero{i2c\_bus.h}. El segundo, de
+ruido: con ganancia 128 y en reposo se midieron unas 18.000 cuentas pico a pico con el regulador
+interno a \SI{4.5}{\volt}, unas 3.500 bajándolo a \SI{3.0}{\volt} con calibración interna de cero, y
+unas 350 al activar el \emph{chopper}, equivalentes a \SI{0.49}{\micro\volt} en la entrada. La
+segunda célula se retiró del firmware final.
+
+\section{Discrepancias con la hoja de datos}
+\label{sec:prob-estado}
+
+Al contrastar el firmware con la hoja de datos del ZSC31014 se encontraron dos discrepancias que no
+afectan a los ensayos, pero conviene corregir:
+
+\begin{enumerate}
+  \item \textbf{Bits de estado.} Según la hoja de datos, 00 = dato válido, 01 = modo comando,
+        10 = dato repetido y 11 = diagnóstico. El firmware define \codigo{LC\_STATUS\_STALE = 1} y
+        \codigo{LC\_STATUS\_COMMAND = 2}, intercambiados. En la lectura normal sólo se acepta 00, así
+        que no hay efecto; en la confirmación del modo comando la respuesta real (\codigo{0x5A}) se
+        acepta por la segunda condición del código.
+  \item \textbf{Codificación de la ganancia.} El campo PreAmp\_Gain no es lineal: 000 = ×1,5,
+        100 = ×3, 001 = ×6, 101 = ×12, 010 = ×24, 110 = ×48, 011 = ×96 y 111 = ×192, es decir, los
+        tres bits en orden inverso. El selector de la interfaz supone un código lineal, de modo que
+        para los códigos 1 a 6 la ganancia grabada no es la mostrada. Los códigos 0 y 7 coinciden.
+        \verificar{comprobar qué código de ganancia estaba grabado durante los ensayos}
+\end{enumerate}
+
+\section{Otros problemas}
+
+\begin{description}[style=nextline,leftmargin=1.5em]
+  \item[Órdenes perdidas por los atajos de teclado] Un byte de CRC igual a una letra de atajo hacía
+        que se perdiera la orden y se reiniciara el servo. Se resolvió aceptando los atajos sólo con
+        el decodificador en reposo.
+  \item[Frecuencia de muestreo imposible] La interfaz llegó a mostrar \SI{3813}{\hertz}: tras un
+        reinicio del microcontrolador su reloj volvía a cero y la ventana de medida no se podaba
+        nunca. Se detecta el salto de reloj y se reinicia la ventana.
+  \item[Desplazamientos fantasma] Tras la programación de la célula, que bloquea el lazo cerca de un
+        segundo, la integración multiplicaba ese hueco por la última velocidad. Se anula la base de
+        tiempo tras cada operación bloqueante.
+  \item[Órdenes que ``no hacían nada''] Una acción mal escrita en la interfaz se ignoraba sin avisar.
+        Se añadió una confirmación para toda orden, con el motivo del fallo cuando lo hay.
+  \item[Revisión A de la placa] Conflictos de red en el bloque RS-485, entradas analógicas en pines
+        sin ADC y amplificadores sin alimentar (tabla~\ref{tab:erratas}).
+\end{description}
+
+\section{Lecciones aprendidas}
+
+\begin{itemize}
+  \item \textbf{Leer la hoja de datos entera}: la ventana del modo comando, la firma de la EEPROM, el
+        umbral de POR y la codificación no lineal de la ganancia están en secciones distintas y todas
+        han resultado críticas.
+  \item \textbf{Medir antes de suponer}: la alimentación parásita sólo se descubrió con un polímetro,
+        y el retardo de la ventana, con un barrido.
+  \item \textbf{Un ajuste bueno no es una validación}: un $R^2$ alto puede esconder una ambigüedad de
+        signo. Hace falta una segunda magnitud, medida de forma independiente, para cerrar el
+        contraste.
+  \item \textbf{Cada operación debe responder}: las confirmaciones de órdenes y el registro por
+        cambio de fase convirtieron fallos silenciosos en diagnósticos claros.
+  \item \textbf{Conservar los datos brutos}: ha permitido recalibrar y reanalizar todos los ensayos
+        sin repetirlos, incluso después de cambiar el modelo por completo.
+\end{itemize}

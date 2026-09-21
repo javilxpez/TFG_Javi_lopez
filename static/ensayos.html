@@ -321,8 +321,9 @@ function resumenMec() {
   const q = Mec.q;
   el('e-mec').innerHTML = `Geometría de <a href="/sim">Configuración del mecanismo</a>: `
     + (q.tipo === 'car' ? `caracola ${q.r0}→${q.r1} mm en ${q.barr} rev de tambor` : `cilindro de ${q.L1} mm`)
-    + ` · L2 ${q.L2} · L3 ${q.L3} · L4 ${q.L4} mm · ${q.m} kg · home ${q.th0}°`
-    + ` · reducción ${q.red} · giro positivo ${q.sentido < 0 ? 'desenrolla' : 'enrolla'}`;
+    + ` · L2 ${q.L2} · dx ${q.dx} · L3 ${q.L3} · L4 ${q.L4} mm · ${q.m} kg · α en B ${q.a0}°`
+    + ` · reducción ${q.red} · al avanzar el cable ${q.sentido < 0 ? 'se alarga' : 'se acorta'}`
+    + (Mec.aviso() ? `<br><span class="err">⚠ ${Mec.aviso()}</span>` : '');
 }
 
 function teoSerie(filas) {
@@ -332,61 +333,56 @@ function teoSerie(filas) {
     el('e-aviso').textContent = 'faltan datos';
     el('e-angulo').textContent = ''; return null;
   }
-  // Longitud de cable en el home, que depende del ángulo en que arranca la barra:
-  //   c² = L2² + L3² − 2·L2·L3·sen θ0
-  // Suponer θ0 = 0 (barra horizontal) era lo que descuadraba el recorrido: si la pesa
-  // arranca arriba, el cable de partida es mucho más corto y el margen para bajarla es
-  // otro. Los límites cmin/cmax son los topes geométricos: barra vertical arriba y abajo.
+  // El cable en B, donde arranca el ensayo, sale del α0 configurado:
+  //   c² = |OD|² + L3² − 2·|OD|·L3·cos α0,   |OD| = √(L2² + dx²)
+  // Los límites cmin/cmax son los topes geométricos, con la barra plegada sobre la línea
+  // O→D (α = 0°) o alineada con ella (α = 180°).
   const cHome = Mec.cHome(q);
-  const cmin = Math.abs(q.L2 - q.L3), cmax = q.L2 + q.L3;
+  const { cmin, cmax } = Mec.limites(q);
   let fuera = 0;
   // pos_rev es la posición del EJE DEL MOTOR y es absoluta: arranca donde se quedó el
-  // encoder, no en cero. Lo que mueve el mecanismo es el giro del TAMBOR contado DESDE
-  // EL HOME, así que hay que restar la posición de la primera muestra del ensayo (que
-  // es el home, porque el ciclo arranca ahí) y dividir por la reducción:
+  // encoder, no en cero. El ensayo empieza en B, así que se resta la primera muestra y
+  // lo que queda es el AVANCE del ciclo. El ciclo B → A → B va hacia posiciones menores
+  // de pos_rev, de modo que el avance lleva signo contrario al de pos_rev.
   //
-  //   φ_tambor = (pos_rev − pos_rev_home) · 2π / reducción
+  // El sentido no se configura: se toma del propio ensayo, con el signo de la muestra
+  // más alejada del arranque. Así valen igual los ensayos viejos, que iban de A hacia B.
   //
-  // Antes se usaba Math.abs(pos_rev), que es dos errores a la vez: tomaba la posición
-  // absoluta del motor como si fuese el giro del tambor, y al plegar el signo convertía
-  // cualquier paso por cero en un pliegue de la curva —el escalón imposible que se veía
-  // en la gráfica de par—. Con el signo conservado la teórica es una función del giro y
-  // el camino de vuelta recorre exactamente el de ida.
-  const pHome = filas.length ? (filas[0].pos_rev || 0) : 0;
-  // Se guarda también el par teórico: τ = T·r(φ), con el radio instantáneo del tambor.
+  //   avance_tambor = (pos_rev − pos_rev_B) · dir · 2π / reducción
+  const pB = filas.length ? (filas[0].pos_rev || 0) : 0;
+  const rel = filas.map(x => (x.pos_rev || 0) - pB);
+  const iLejos = rel.reduce((b, v, i) => Math.abs(v) > Math.abs(rel[b]) ? i : b, 0);
+  const dir = rel[iLejos] < 0 ? -1 : 1;
+  const avance = rel.map(v => v * dir);
+  // Todo sale del modelo compartido, que devuelve tensión, par y ángulo de una vez.
   teoPar = [];
   teoAng = [];
-  const data = filas.map(x => {
-    const phi = ((x.pos_rev || 0) - pHome) * 2 * Math.PI / q.red;   // rad del tambor
-    const t   = Mec.tambor(q, phi);
-    const c   = cHome - q.sentido * t.s;                 // mm de cable que quedan
-    if (c < cmin || c > cmax) {
+  const data = filas.map((x, i) => {
+    const st = Mec.estado(q, avance[i]);
+    if (st.fuera) {
       fuera++; teoPar.push({ x: x.t_rel_s, y: null }); teoAng.push(null);
       return { x: x.t_rel_s, y: null };
     }
-    const T = q.m * q.g * (q.L3 + q.L4) * c / (q.L2 * q.L3);
-    teoPar.push({ x: x.t_rel_s, y: T * t.r / 1000 });    // N·m
-    teoAng.push(Mec.barraAng(q, c));
-    return { x: x.t_rel_s, y: T };
+    teoPar.push({ x: x.t_rel_s, y: st.tau });             // N·m
+    teoAng.push(st.a);
+    return { x: x.t_rel_s, y: st.T };
   });
   // Diagnóstico de escala: las dos cantidades que TIENEN que cuadrar. El cable que paga
   // el servo en todo el ensayo, y el que el mecanismo puede absorber entre la barra
   // horizontal y la vertical. Si no cuadran, no hay sentido de giro ni offset que salve
   // la curva: sobran o faltan milímetros, y es lo primero que hay que arreglar.
-  const rel = filas.map(x => (x.pos_rev || 0) - pHome);
-  const giro = Math.max(...rel) - Math.min(...rel);
+  const giro = Math.max(...avance) - Math.min(...avance);
   // Con la caracola el cable pagado no es proporcional al giro, así que el barrido real
   // es la diferencia de cable entre los dos extremos del recorrido, no s(giro).
-  const cableServo = Math.abs(Mec.tambor(q, Math.max(...rel) * 2 * Math.PI / q.red).s
-                            - Mec.tambor(q, Math.min(...rel) * 2 * Math.PI / q.red).s);
-  // El margen disponible depende del sentido: enrollando se va de cHome a cmin,
-  // desenrollando de cHome a cmax. Antes se comparaba siempre contra el recorrido
-  // completo, que es lo que hacía que el aviso no cuadrara con lo que se veía.
+  const cableServo = Math.abs(Mec.tambor(q, Math.max(...avance) * 2 * Math.PI / q.red).s
+                            - Mec.tambor(q, Math.min(...avance) * 2 * Math.PI / q.red).s);
+  // El margen disponible depende de hacia dónde va el cable: acortándose se va de cB a
+  // cmin, alargándose de cB a cmax.
   const cableMec = q.sentido > 0 ? (cHome - cmin) : (cmax - cHome);
   const ratio = cableMec > 0 ? cableServo / cableMec : 0;
   const esc = el('e-escala');
   // Sólo es un error pasarse: pedir más cable del que cabe obliga a la barra a cruzar la
-  // vertical. Quedarse corto es lo normal —el ciclo no tiene por qué llegar a ±90°— y
+  // vertical. Quedarse corto es lo normal —el ciclo no tiene por qué llegar a 0° o 180°— y
   // antes salía en rojo igual, contradiciendo al recorrido angular, que sí es correcto.
   if (ratio > 1.02) {
     esc.className = 'line err';
@@ -396,7 +392,7 @@ function teoSerie(filas) {
       + `) pero el mecanismo`
       + ` sólo admite <b>${cableMec.toFixed(0)} mm</b> en ese sentido`
       + ` (cable de ${cHome.toFixed(0)} a ${(q.sentido > 0 ? cmin : cmax).toFixed(0)} mm,`
-      + ` barra desde ${q.th0}° hasta ${q.sentido > 0 ? '+90' : '−90'}°) → factor <b>${ratio.toFixed(2)}×</b>.`
+      + ` α desde ${q.a0}° en B hasta ${q.sentido > 0 ? '0' : '180'}°) → factor <b>${ratio.toFixed(2)}×</b>.`
       + ` En <a href="/sim">Configuración</a>: prueba otro ángulo en el home o el otro sentido.`
       + ` Prueba reducción <b>${(q.red * ratio).toFixed(2)}</b>`
       + (q.tipo === 'car'
@@ -405,53 +401,46 @@ function teoSerie(filas) {
   } else {
     esc.className = 'line hint';
     esc.textContent = `El recorrido cabe: el tambor paga ${cableServo.toFixed(0)} mm de cable`
-      + ` de los ${cableMec.toFixed(0)} mm que hay hasta la barra a ${q.sentido > 0 ? '+90' : '−90'}°`
-      + ` (usa el ${(ratio * 100).toFixed(0)}%), con la barra saliendo de ${q.th0}° y el cable de ${cHome.toFixed(0)} mm.`;
+      + ` de los ${cableMec.toFixed(0)} mm que hay hasta α = ${q.sentido > 0 ? '0' : '180'}°`
+      + ` (usa el ${(ratio * 100).toFixed(0)}%), saliendo de B con α = ${q.a0}° y ${cHome.toFixed(0)} mm de cable.`;
   }
 
   // ── Recorrido angular de la barra ──────────────────────────────────────
   // El ángulo final no es un dato libre: sale del ángulo del home más el giro del
   // tambor. Se muestran los tres que importan —arranque, extremo del ciclo y final— y
   // el error de cierre, que es la comprobación directa contra el montaje real: si el
-  // ciclo vuelve al home en posición, la barra tiene que volver al ángulo de partida.
+  // ciclo vuelve a B en posición, la barra tiene que volver al ángulo de partida.
   const ang = el('e-angulo');
-  const iExt = rel.reduce((b, v, i) => Math.abs(v) > Math.abs(rel[b]) ? i : b, 0);
+  const iExt = iLejos;
   const aIni = teoAng[0], aExt = teoAng[iExt], aFin = teoAng[teoAng.length - 1];
   if (aIni == null || aFin == null) {
     ang.className = 'line err';
-    ang.textContent = 'La barra tendría que pasar de ±90°: con estos datos el ángulo no existe'
+    ang.textContent = 'La barra tendría que pasar de 0° o de 180°: con estos datos el ángulo no existe'
       + ' en algún punto del ensayo. El cable pedido no cabe en el mecanismo.';
   } else {
     const vistos = teoAng.filter(a => a != null);
     const recorr = Math.max(...vistos) - Math.min(...vistos);
     const cierre = aFin - aIni;
     // El cierre no es un error del modelo: el motor no acaba exactamente donde empezó,
-    // y ese resto de giro se traduce en ángulo. Lo que sí avisa es la cercanía a la
-    // vertical, donde cos θ → 0 y un milímetro de cable vale muchos grados: ahí el
-    // ángulo de partida es el parámetro más delicado de todos.
-    const drift = rel[rel.length - 1];
-    const cerca = Math.max(Math.abs(aIni), Math.abs(aFin)) > 80;
+    // y ese resto de giro se traduce en ángulo. Lo que sí avisa es la cercanía a 0° o a
+    // 180° (barra alineada con O→D), donde sen α → 0 y un milímetro de cable vale
+    // muchos grados: ahí el ángulo de partida es el parámetro más delicado de todos.
+    const drift = avance[avance.length - 1];
+    const cerca = Math.min(aIni, aFin) < 10 || Math.max(aIni, aFin) > 170;
     ang.className = cerca ? 'line warn' : 'line hint';
-    ang.innerHTML = `Barra: home <b>${aIni.toFixed(1)}°</b>`
+    ang.innerHTML = `α: en B <b>${aIni.toFixed(1)}°</b>`
       + ` → extremo <b>${aExt == null ? '—' : aExt.toFixed(1) + '°'}</b>`
-      + ` en t=${filas[iExt].t_rel_s.toFixed(2)} s (${rel[iExt].toFixed(2)} rev de motor,`
-      + ` ${(rel[iExt] / q.red).toFixed(3)} rev de tambor)`
+      + ` en t=${filas[iExt].t_rel_s.toFixed(2)} s (${avance[iExt].toFixed(2)} rev de avance,`
+      + ` ${(avance[iExt] / q.red).toFixed(3)} rev de tambor)`
       + ` → final <b>${aFin.toFixed(1)}°</b>`
       + `, recorrido <b>${recorr.toFixed(1)}°</b>.`
-      + ` El final lo predice el modelo: ${cierre >= 0 ? '+' : ''}${cierre.toFixed(1)}° respecto del home,`
-      + ` que es lo que dan los ${drift >= 0 ? '+' : ''}${drift.toFixed(3)} rev de motor que quedan sin devolver.`
+      + ` El final lo predice el modelo: ${cierre >= 0 ? '+' : ''}${cierre.toFixed(1)}° respecto de B,`
+      + ` que es lo que dan los ${drift >= 0 ? '+' : ''}${drift.toFixed(3)} rev de avance que quedan sin devolver.`
       + ` Compáralo con la barra real.`
       + (giro > 0 && q.tipo === 'car'
           ? ` · Si el ciclo barriera el tambor completo, la reducción saldría`
             + ` <b>${(giro / q.barr).toFixed(2)}</b>.` : '')
-      + (cerca ? ` Ojo: a más de 80° el ángulo es muy sensible al cable (cos θ → 0).` : '')
-      // El cable sólo depende de sen θ0, y el seno es simétrico respecto de 90°: meter
-      // 100° da exactamente el mismo cable que 80°. El rango físico de la barra es
-      // ±90°, así que pasarse no da error, da otro ángulo en silencio. Se avisa.
-      + (Math.abs(aIni - q.th0) > 0.5
-          ? ` Has puesto ${q.th0}° en el home, pero el cable que sale de ahí corresponde`
-            + ` a <b>${aIni.toFixed(1)}°</b>: la barra sólo llega a ±90° y sen θ es simétrico`
-            + ` respecto de la vertical.` : '');
+      + (cerca ? ` Ojo: con la barra casi alineada con O→D el ángulo es muy sensible al cable, y en α = 180° la tensión no tiene solución (sen α → 0).` : '');
   }
 
   const validos = data.filter(d => d.y !== null).map(d => d.y);

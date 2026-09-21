@@ -1,0 +1,709 @@
+This is pdfTeX, Version 3.14159265-2.6-1.40.16 (TeX Live 2015) (preloaded format=pdflatex 2015.9.15)  28 SEP 2016 17:23
+entering extended mode
+ restricted \write18 enabled.
+ %&-line parsing enabled.
+**estadoarte.tex
+(./estadoarte.tex
+LaTeX2e <2015/01/01>
+Babel <3.9l> and hyphenation patterns for 79 languages loaded.
+! Undefined control sequence.
+l.1 \chapter
+            {Estado del arte}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+! LaTeX Error: Missing \begin{document}.
+
+See the LaTeX manual or LaTeX Companion for explanation.
+Type  H <return>  for immediate help.
+ ...                                              
+                                                  
+l.1 \chapter{E
+              stado del arte}
+You're in trouble here.  Try typing  <return>  to proceed.
+If that doesn't work, type  X <return>  to quit.
+
+Missing character: There is no E in font nullfont!
+Missing character: There is no s in font nullfont!
+Missing character: There is no t in font nullfont!
+Missing character: There is no a in font nullfont!
+Missing character: There is no d in font nullfont!
+Missing character: There is no o in font nullfont!
+Missing character: There is no d in font nullfont!
+Missing character: There is no e in font nullfont!
+Missing character: There is no l in font nullfont!
+Missing character: There is no a in font nullfont!
+Missing character: There is no r in font nullfont!
+Missing character: There is no t in font nullfont!
+Missing character: There is no e in font nullfont!
+
+Overfull \hbox (20.0pt too wide) in paragraph at lines 1--2
+[]
+ []
+
+
+! LaTeX Error: Missing \begin{document}.
+
+See the LaTeX manual or LaTeX Companion for explanation.
+Type  H <return>  for immediate help.
+ ...                                              
+                                                  
+l.3 E
+     n este capÃ­tulo...
+You're in trouble here.  Try typing  <return>  to proceed.
+If that doesn't work, type  X <return>  to quit.
+
+Missing character: There is no E in font nullfont!
+Missing character: There is no n in font nullfont!
+Missing character: There is no e in font nullfont!
+Missing character: There is no s in font nullfont!
+Missing character: There is no t in font nullfont!
+Missing character: There is no e in font nullfont!
+Missing character: There is no c in font nullfont!
+Missing character: There is no a in font nullfont!
+Missing character: There is no p in font nullfont!
+Missing character: There is no Ã in font nullfont!
+Missing character: There is no ­ in font nullfont!
+Missing character: There is no t in font nullfont!
+Missing character: There is no u in font nullfont!
+Missing character: There is no l in font nullfont!
+Missing character: There is no o in font nullfont!
+Missing character: There is no . in font nullfont!
+Missing character: There is no . in font nullfont!
+Missing character: There is no . in font nullfont!
+
+Overfull \hbox (20.0pt too wide) in paragraph at lines 3--4
+[]
+ []
+
+! Undefined control sequence.
+l.6 \section
+            {Â¿En quÃ© consiste el Estado del Arte?}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+! LaTeX Error: Missing \begin{document}.
+
+See the LaTeX manual or LaTeX Companion for explanation.
+Type  H <return>  for immediate help.
+ ...                                              
+                                                  
+l.6 \section{Â
+              ¿En quÃ© consiste el Estado del Arte?}
+You're in trouble here.  Try typing  <return>  to proceed.
+If that doesn't work, type  X <return>  to quit.
+
+Missing character: There is no Â in font nullfont!
+Missing character: There is no ¿ in font nullfont!
+Missing character: There is no E in font nullfont!
+Missing character: There is no n in font nullfont!
+Missing character: There is no q in font nullfont!
+Missing character: There is no u in font nullfont!
+Missing character: There is no Ã in font nullfont!
+Missing character: There is no © in font nullfont!
+Missing character: There is no c in font nullfont!
+Missing character: There is no o in font nullfont!
+Missing character: There is no n in font nullfont!
+Missing character: There is no s in font nullfont!
+Missing character: There is no i in font nullfont!
+Missing character: There is no s in font nullfont!
+Missing character: There is no t in font nullfont!
+Missing character: There is no e in font nullfont!
+Missing character: There is no e in font nullfont!
+Missing character: There is no l in font nullfont!
+Missing character: There is no E in font nullfont!
+Missing character: There is no s in font nullfont!
+Missing character: There is no t in font nullfont!
+Missing character: There is no a in font nullfont!
+Missing character: There is no d in font nullfont!
+Missing character: There is no o in font nullfont!
+Missing character: There is no d in font nullfont!
+Missing character: There is no e in font nullfont!
+Missing character: There is no l in font nullfont!
+Missing character: There is no A in font nullfont!
+Missing character: There is no r in font nullfont!
+Missing character: There is no t in font nullfont!
+Missing character: There is no e in font nullfont!
+Missing character: There is no ? in font nullfont!
+
+Overfull \hbox (20.0pt too wide) in paragraph at lines 6--7
+[]
+ []
+
+
+! LaTeX Error: Missing \begin{document}.
+
+See the LaTeX manual or LaTeX Companion for explanation.
+Type  H <return>  for immediate help.
+ ...                                              
+                                                  
+l.8 T
+     al y como indica Wikipedia \footnote{\url{https://es.wikipedia.org/wiki...
+
+You're in trouble here.  Try typing  <return>  to proceed.
+If that doesn't work, type  X <return>  to quit.
+
+Missing character: There is no T in font nullfont!
+Missing character: There is no a in font nullfont!
+Missing character: There is no l in font nullfont!
+Missing character: There is no y in font nullfont!
+Missing character: There is no c in font nullfont!
+Missing character: There is no o in font nullfont!
+Missing character: There is no m in font nullfont!
+Missing character: There is no o in font nullfont!
+Missing character: There is no i in font nullfont!
+Missing character: There is no n in font nullfont!
+Missing character: There is no d in font nullfont!
+Missing character: There is no i in font nullfont!
+Missing character: There is no c in font nullfont!
+Missing character: There is no a in font nullfont!
+Missing character: There is no W in font nullfont!
+Missing character: There is no i in font nullfont!
+Missing character: There is no k in font nullfont!
+Missing character: There is no i in font nullfont!
+Missing character: There is no p in font nullfont!
+Missing character: There is no e in font nullfont!
+Missing character: There is no d in font nullfont!
+Missing character: There is no i in font nullfont!
+Missing character: There is no a in font nullfont!
+LaTeX Font Info:    External font `cmex10' loaded for size
+(Font)              <7> on input line 8.
+LaTeX Font Info:    External font `cmex10' loaded for size
+(Font)              <5> on input line 8.
+! Undefined control sequence.
+\@footnotetext ...tins {\reset@font \footnotesize 
+                                                  \interlinepenalty \interfo...
+l.8 ...s://es.wikipedia.org/wiki/Estado_del_arte}}
+                                                  , \textit{en el Ã¡mbito de...
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+! Undefined control sequence.
+\@footnotetext ...}\color@begingroup \@makefntext 
+                                                  {\rule \z@ \footnotesep \i...
+l.8 ...s://es.wikipedia.org/wiki/Estado_del_arte}}
+                                                  , \textit{en el Ã¡mbito de...
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+! Undefined control sequence.
+<argument> \url 
+                {https://es.wikipedia.org/wiki/Estado_del_arte}
+l.8 ...s://es.wikipedia.org/wiki/Estado_del_arte}}
+                                                  , \textit{en el Ã¡mbito de...
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+! Missing $ inserted.
+<inserted text> 
+                $
+l.8 ...s://es.wikipedia.org/wiki/Estado_del_arte}}
+                                                  , \textit{en el Ã¡mbito de...
+I've inserted a begin-math/end-math symbol since I think
+you left one out. Proceed, with fingers crossed.
+
+! Extra }, or forgotten $.
+<argument> ....wikipedia.org/wiki/Estado_del_arte}
+                                                  
+l.8 ...s://es.wikipedia.org/wiki/Estado_del_arte}}
+                                                  , \textit{en el Ã¡mbito de...
+I've deleted a group-closing symbol because it seems to be
+spurious, as in `$x}$'. But perhaps the } is legitimate and
+you forgot something else, as in `\hbox{$x}'. In such cases
+the way to recover is to insert both the forgotten and the
+deleted material, e.g., by typing `I$}'.
+
+! Extra }, or forgotten $.
+<recently read> }
+                 
+l.8 ...s://es.wikipedia.org/wiki/Estado_del_arte}}
+                                                  , \textit{en el Ã¡mbito de...
+I've deleted a group-closing symbol because it seems to be
+spurious, as in `$x}$'. But perhaps the } is legitimate and
+you forgot something else, as in `\hbox{$x}'. In such cases
+the way to recover is to insert both the forgotten and the
+deleted material, e.g., by typing `I$}'.
+
+! Extra }, or forgotten $.
+\@footnotetext ...rut \strutbox }\color@endgroup }
+                                                  
+l.8 ...s://es.wikipedia.org/wiki/Estado_del_arte}}
+                                                  , \textit{en el Ã¡mbito de...
+I've deleted a group-closing symbol because it seems to be
+spurious, as in `$x}$'. But perhaps the } is legitimate and
+you forgot something else, as in `\hbox{$x}'. In such cases
+the way to recover is to insert both the forgotten and the
+deleted material, e.g., by typing `I$}'.
+
+Missing character: There is no Ã in font cmti10!
+Missing character: There is no ¡ in font cmti10!
+Missing character: There is no Ã in font cmti10!
+Missing character: There is no ³ in font cmti10!
+Missing character: There is no Ã in font cmti10!
+Missing character: There is no ­ in font cmti10!
+Missing character: There is no Ã in font cmti10!
+Missing character: There is no © in font cmti10!
+Missing character: There is no Ã in font cmti10!
+Missing character: There is no º in font cmti10!
+Missing character: There is no Ã in font cmti10!
+Missing character: There is no © in font cmti10!
+Missing character: There is no Ã in font cmti10!
+Missing character: There is no © in font cmti10!
+Missing character: There is no Ã in font cmti10!
+Missing character: There is no ­ in font cmti10!
+Missing character: There is no Ã in font cmti10!
+Missing character: There is no º in font cmti10!
+! Missing $ inserted.
+<inserted text> 
+                $
+l.9 
+    
+I've inserted a begin-math/end-math symbol since I think
+you left one out. Proceed, with fingers crossed.
+
+
+Overfull \hbox (1133.90222pt too wide) in paragraph at lines 8--9
+[][]\OT1/cmr/m/n/10 https://es.wikipedia.org/wiki/Estado$[]\OML/cmm/m/it/10 el[
+]rte|; []$ 
+ []
+
+Missing character: There is no Ã in font cmti10!
+Missing character: There is no ³ in font cmti10!
+Missing character: There is no Ã in font cmti10!
+Missing character: There is no © in font cmti10!
+Missing character: There is no Ã in font cmti10!
+Missing character: There is no ³ in font cmti10!
+Missing character: There is no Ã in font cmti10!
+Missing character: There is no º in font cmti10!
+Missing character: There is no Ã in font cmti10!
+Missing character: There is no ­ in font cmti10!
+
+Overfull \hbox (29.91087pt too wide) in paragraph at lines 10--11
+[]\OT1/cmr/m/it/10 Dentro
+ []
+
+
+Overfull \hbox (12.26659pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 del
+ []
+
+
+Overfull \hbox (16.86656pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 am-
+ []
+
+
+Overfull \hbox (11.24435pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 bi-
+ []
+
+
+Overfull \hbox (18.1443pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 ente
+ []
+
+
+Overfull \hbox (15.58873pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 tec-
+ []
+
+
+Overfull \hbox (16.86656pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 nol-
+ []
+
+
+Overfull \hbox (16.86653pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 gico
+ []
+
+
+Overfull \hbox (12.26659pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 in-
+ []
+
+
+Overfull \hbox (18.14433pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 dus-
+ []
+
+
+Overfull \hbox (21.33875pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 trial,
+ []
+
+
+Overfull \hbox (8.68883pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 se
+ []
+
+
+Overfull \hbox (13.7999pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 en-
+ []
+
+
+Overfull \hbox (26.32204pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 tiende
+ []
+
+
+Overfull \hbox (22.48874pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 como
+ []
+
+
+Overfull \hbox (17.411pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 ``es-
+ []
+
+
+Overfull \hbox (18.65544pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 tado
+ []
+
+
+Overfull \hbox (12.26659pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 del
+ []
+
+
+Overfull \hbox (25.46094pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 arte'',
+ []
+
+
+Overfull \hbox (17.411pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 ``es-
+ []
+
+
+Overfull \hbox (18.65544pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 tado
+ []
+
+
+Overfull \hbox (9.71104pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 de
+ []
+
+
+Overfull \hbox (7.66663pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 la
+ []
+
+
+Overfull \hbox (11.4999pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 tc-
+ []
+
+
+Overfull \hbox (23.03319pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 nica''
+ []
+
+
+Overfull \hbox (5.11108pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 o
+ []
+
+
+Overfull \hbox (17.411pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 ``es-
+ []
+
+
+Overfull \hbox (18.65544pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 tado
+ []
+
+
+Overfull \hbox (9.71104pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 de
+ []
+
+
+Overfull \hbox (7.66663pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 la
+ []
+
+
+Overfull \hbox (37.85532pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 cuestin'',
+ []
+
+
+Overfull \hbox (12.01102pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 to-
+ []
+
+
+Overfull \hbox (14.31104pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 dos
+ []
+
+
+Overfull \hbox (23.25539pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 aque-
+ []
+
+
+Overfull \hbox (6.13329pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 l-
+ []
+
+
+Overfull \hbox (11.7555pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 los
+ []
+
+
+Overfull \hbox (13.28879pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 de-
+ []
+
+
+Overfull \hbox (16.99432pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 sar-
+ []
+
+
+Overfull \hbox (14.94987pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 rol-
+ []
+
+
+Overfull \hbox (11.7555pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 los
+ []
+
+
+Overfull \hbox (9.71104pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 de
+ []
+
+
+Overfull \hbox (22.2332pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 ltima
+ []
+
+
+Overfull \hbox (15.58873pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 tec-
+ []
+
+
+Overfull \hbox (27.59982pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 nologa
+ []
+
+
+Overfull \hbox (11.88321pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 re-
+ []
+
+
+Overfull \hbox (11.24437pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 al-
+ []
+
+
+Overfull \hbox (15.84435pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 iza-
+ []
+
+
+Overfull \hbox (14.31104pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 dos
+ []
+
+
+Overfull \hbox (5.11108pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 a
+ []
+
+
+Overfull \hbox (10.98883pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 un
+ []
+
+
+Overfull \hbox (17.50542pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 pro-
+ []
+
+
+Overfull \hbox (26.5776pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 ducto,
+ []
+
+
+Overfull \hbox (14.56656pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 que
+ []
+
+
+Overfull \hbox (15.84436pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 han
+ []
+
+
+Overfull \hbox (17.37769pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 sido
+ []
+
+
+Overfull \hbox (26.70534pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 proba-
+ []
+
+
+Overfull \hbox (14.31104pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 dos
+ []
+
+
+Overfull \hbox (10.22215pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 en
+ []
+
+
+Overfull \hbox (7.66663pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 la
+ []
+
+
+Overfull \hbox (12.26659pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 in-
+ []
+
+
+Overfull \hbox (18.14433pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 dus-
+ []
+
+
+Overfull \hbox (15.71655pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 tria
+ []
+
+
+Overfull \hbox (4.85551pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 y
+ []
+
+
+Overfull \hbox (15.84436pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 han
+ []
+
+
+Overfull \hbox (17.37769pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 sido
+ []
+
+
+Overfull \hbox (25.04424pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 acogi-
+ []
+
+
+Overfull \hbox (14.31104pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 dos
+ []
+
+
+Overfull \hbox (4.85551pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 y
+ []
+
+
+Overfull \hbox (22.48871pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 acep-
+ []
+
+
+Overfull \hbox (12.01102pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 ta-
+ []
+
+
+Overfull \hbox (14.31104pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 dos
+ []
+
+
+Overfull \hbox (13.92767pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 por
+ []
+
+
+Overfull \hbox (23.63872pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 difer-
+ []
+
+
+Overfull \hbox (22.23317pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 entes
+ []
+
+
+Overfull \hbox (16.35544pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 fab-
+ []
+
+
+Overfull \hbox (10.86102pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 ri-
+ []
+
+
+Overfull \hbox (29.89978pt too wide) in paragraph at lines 10--11
+\OT1/cmr/m/it/10 cantes. 
+ []
+
+Missing character: There is no Ã in font cmr10!
+Missing character: There is no ³ in font cmr10!
+Missing character: There is no Ã in font cmr10!
+Missing character: There is no ­ in font cmr10!
+Missing character: There is no Ã in font cmr10!
+Missing character: There is no ­ in font cmr10!
+Missing character: There is no Ã in font cmr10!
+Missing character: There is no º in font cmr10!
+Missing character: There is no Ã in font cmr10!
+Missing character: There is no ³ in font cmr10!
+Missing character: There is no Ã in font cmr10!
+Missing character: There is no ¡ in font cmr10!
+)
+! Emergency stop.
+<*> estadoarte.tex
+                  
+*** (job aborted, no legal \end found)
+
+ 
+Here is how much of TeX's memory you used:
+ 11 strings out of 493089
+ 195 string characters out of 6134842
+ 56199 words of memory out of 5000000
+ 3595 multiletter control sequences out of 15000+600000
+ 3986 words of font info for 15 fonts, out of 8000000 for 9000
+ 1141 hyphenation exceptions out of 8191
+ 24i,5n,14p,368b,148s stack positions out of 5000i,500n,10000p,200000b,80000s
+!  ==> Fatal error occurred, no output PDF file produced!

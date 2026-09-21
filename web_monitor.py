@@ -66,9 +66,13 @@ HOME_SIZE = struct.calcsize(HOME_FMT)
 # CMD_LC_QUERY devuelve exactamente un frame de estos, también cuando se rechaza.
 # Ciclo A<->B: A es el home, B el final de carrera o una posición elegida
 PACKET_ID_CYCLE = 0x05
-CYC_FMT  = "<BBHHii"   # id, fase, hechas, pedidas, pos_mrev, objetivo_mrev
+CYC_FMT  = "<BBHHiii"  # id, fase, hechas, pedidas, pos_mrev, objetivo_mrev, posB_mrev
 CYC_SIZE = struct.calcsize(CYC_FMT)
-CYC_PHASE_NAMES = {0: "—", 1: "hacia B", 2: "volviendo a A", 3: "completado", 4: "abortado"}
+CYC_FMT_V1  = "<BBHHii"          # firmware anterior: la misma trama sin posB
+CYC_SIZE_V1 = struct.calcsize(CYC_FMT_V1)
+# El ciclo es B → A → B: la fase 1 es la colocación inicial en B, que no se graba.
+CYC_PHASE_NAMES = {0: "—", 1: "colocándose en B", 2: "hacia A", 3: "volviendo a B",
+                   4: "completado", 5: "abortado"}
 
 PACKET_ID_LC = 0x04
 LC_FMT  = "<BBBBBHHBBH" # id, req, res, ganancia, offset, cfg_antes, cfg_después, ack, flags, cfg1
@@ -99,7 +103,7 @@ MB_STATUS   = {0x00:"OK",0x01:"IllegalFn",0x02:"IllegalAddr",0x03:"IllegalVal",0
 def mbst(s): return MB_STATUS.get(s, f"0x{s:02X}")
 
 # ── Grabación de ciclos ───────────────────────────────────
-# Un CSV por ciclo, abierto y cerrado por los frames PACKET_ID_CYCLE. Se escriben las
+# Un CSV por ensayo, abierto y cerrado por los frames PACKET_ID_CYCLE. Se escriben las
 # CUENTAS CRUDAS, no newtons: así el ensayo se puede recalibrar después sin repetirlo.
 # Las constantes que hagan falta para convertirlas van en la cabecera del propio fichero.
 CYCLE_DIR = Path(__file__).parent / "cycles"
@@ -170,6 +174,9 @@ shared = {
     "lc1_offset": 51.78,   # N reales en el punto donde se puso la tara
 }
 shared_lock = threading.Lock()
+# Última fase de ciclo registrada, para escribir una línea sólo cuando cambia. La escribe
+# únicamente el hilo del puerto serie.
+cyc_log = {"phase": None}
 ser_ref: list = [None]   # contenedor mutable para la referencia al puerto serie
 
 # ── Protocolo ─────────────────────────────────────────────
@@ -193,13 +200,25 @@ def decode_home(payload: bytes) -> dict | None:
             "home_phase": phase, "home_range_valid": bool(flags & 0x01)}
 
 def decode_cycle(payload: bytes) -> dict | None:
-    """Estado del ciclo A<->B (PACKET_ID_CYCLE)."""
-    if len(payload) < CYC_SIZE or payload[0] != PACKET_ID_CYCLE:
+    """Estado del ciclo B → A → B (PACKET_ID_CYCLE)."""
+    if payload[:1] != bytes([PACKET_ID_CYCLE]):
         return None
-    _pid, phase, done, target, pos_mrev, tgt_mrev = struct.unpack(CYC_FMT, payload[:CYC_SIZE])
+    # Se acepta la trama del firmware anterior (sin posB) para que un firmware desparejado
+    # siga informando de la fase en vez de quedarse mudo, que es justo lo que despistó al
+    # depurar el ciclo.
+    if len(payload) >= CYC_SIZE:
+        _pid, phase, done, target, pos_mrev, tgt_mrev, pos_b_mrev = \
+            struct.unpack(CYC_FMT, payload[:CYC_SIZE])
+    elif len(payload) >= CYC_SIZE_V1:
+        _pid, phase, done, target, pos_mrev, tgt_mrev = \
+            struct.unpack(CYC_FMT_V1, payload[:CYC_SIZE_V1])
+        pos_b_mrev = 0
+    else:
+        return None
     return {"cyc_phase": phase, "cyc_phase_name": CYC_PHASE_NAMES.get(phase, "?"),
             "cyc_done": done, "cyc_target": target,
-            "cyc_pos_rev": pos_mrev / 1000.0, "cyc_target_rev": tgt_mrev / 1000.0}
+            "cyc_pos_rev": pos_mrev / 1000.0, "cyc_target_rev": tgt_mrev / 1000.0,
+            "cyc_pos_b_rev": pos_b_mrev / 1000.0}
 
 
 def decode_lc(payload: bytes) -> dict | None:
@@ -297,12 +316,21 @@ def serial_thread(preferred: str | None):
                 if payload and payload[0] == PACKET_ID_CYCLE:  # estado del ciclo A<->B
                     cy = decode_cycle(payload)
                     if cy:
-                        ph = cy["cyc_phase"]                    # 1,2 = en marcha
-                        if ph in (1, 2) and rec["f"] is None:
+                        ph = cy["cyc_phase"]                    # 2,3 = ensayo en marcha
+                        # Una línea por cambio de fase: sin esto, un ciclo que arranca y
+                        # termina en 200 ms no deja ni rastro de por dónde pasó.
+                        if ph != cyc_log["phase"]:
+                            log.info("CYC   fase %d %-17s pos=%7.3f  B=%.3f  hechas=%d/%d  recorrido=%.2f rev",
+                                     ph, cy["cyc_phase_name"], cy["cyc_pos_rev"], cy["cyc_pos_b_rev"],
+                                     cy["cyc_done"], cy["cyc_target"], cy["cyc_target_rev"])
+                            cyc_log["phase"] = ph
+                        # La colocación en B (fase 1) no se graba: el ensayo empieza
+                        # cuando el eje ya está en B y arranca el tramo B → A.
+                        if ph in (2, 3) and rec["f"] is None:
                             rec_open(cy)
                         rec["fase"] = cy["cyc_phase_name"].replace(" ", "_")
                         rec["rep"]  = cy["cyc_done"] + 1
-                        if ph not in (1, 2) and rec["f"] is not None:
+                        if ph not in (2, 3) and rec["f"] is not None:
                             rec_close(cy["cyc_phase_name"])
                         msg = dict(cy); msg["type"] = "cycle"; msg["port"] = port
                         msg["rec"] = rec["path"].name if rec["f"] else None
@@ -344,9 +372,18 @@ def serial_thread(preferred: str | None):
 
                 last = samples[-1]
                 maxw = max(s["work_us"] for s in samples) / 1000.0
-                log.info("FRAME n=%d  st=%-11s rpm=%5d  trq=%6.1f  ref=%5d  id=%d  RPMrd=%-7s TRQrd=%-7s  loop_max=%.1fms",
+                # Con la posición, los finales de carrera y la fase del ciclo en la misma
+                # línea se puede reconstruir por qué un ensayo no avanza sin estar delante
+                # de la máquina: es lo que faltaba para diagnosticar el ciclo.
+                with shared_lock:
+                    pos_log = shared["pos_rev"]
+                fase_log = CYC_PHASE_NAMES.get(cyc_log["phase"], "?") if cyc_log["phase"] else "—"
+                log.info("FRAME n=%d  st=%-11s rpm=%5d  trq=%6.1f  ref=%5d  pos=%8.3f  "
+                         "limA=%d limB=%d  ciclo=%-17s id=%d  RPMrd=%-7s TRQrd=%-7s  loop_max=%.1fms",
                          len(samples), STATE_NAMES.get(last["servo_state"], "?"), last["rpm"],
-                         last["current_x10"] / 10.0, last["ref_cmd"], last["servo_id"],
+                         last["current_x10"] / 10.0, last["ref_cmd"], pos_log,
+                         1 if last["io"] & 0x01 else 0, 1 if last["io"] & 0x02 else 0,
+                         fase_log, last["servo_id"],
                          mbst(last["rpm_status"]), mbst(last["trq_status"]), maxw)
 
                 for data in samples:                       # one loop iteration per sample
@@ -442,24 +479,32 @@ app.mount("/fui", StaticFiles(directory=Path(__file__).parent / "static" / "fui"
 # para que el simulador y la curva teórica calculen con los mismos números. Las claves y
 # los rangos tienen que coincidir con MEC_DEFAULTS y Mec.validar en static/mecanismo.js.
 MECH_FILE = Path(__file__).parent / "mecanismo.json"
+# El recorrido A→B del motor no se guarda: sale de barr × red (Mec.recorridoMotor).
 MECH_DEFAULTS = {
-    "tipo": "car", "L1": 25.0, "r0": 25.0, "r1": 45.0, "barr": 0.5,
-    "L2": 290.0, "L3": 95.0, "L4": 110.0, "m": 2.0, "g": 9.81,
-    "th0": 90.0, "red": 4.0, "sentido": -1, "cicloRev": 1.78,
+    "tipo": "car", "L1": 25.0, "r0": 45.0, "r1": 25.0, "barr": 0.3,
+    "L2": 290.0, "dx": 65.0, "L3": 95.0, "L4": 110.0, "e1": 20.0, "e2": 20.0, "m": 2.0, "g": 9.81,
+    "a0": 114.0, "red": 5.5, "sentido": 1,
 }
-# (mínimo, máximo, mínimo excluido). th0 fuera de ±90 no es un error de tecleo inocente:
-# sen θ es simétrico y 100° daría en silencio el mismo cable que 80°.
+# (mínimo, máximo, mínimo excluido). a0 es el ángulo α entre mástil y barra en el home:
+# de 0° (plegada sobre O→D) a 180° (alineada con ella), fuera de ahí no hay barra. dx es
+# el desplazamiento horizontal de D respecto de O, y puede ser negativo (D a la derecha).
+# e1 es cuánto tira el cable por encima del eje de la barra y e2 cuánto cuelga la pesa por
+# debajo; negativos si van al otro lado.
 MECH_RANGOS = {
     "L1": (0, 1e4, True), "r0": (0, 1e4, True), "r1": (0, 1e4, True), "barr": (0, 100, True),
-    "L2": (0, 1e4, True), "L3": (0, 1e4, True), "L4": (0, 1e4, False),
-    "m": (0, 1e4, False), "g": (0, 100, False), "th0": (-90, 90, False),
-    "red": (0, 1e4, True), "cicloRev": (-1e4, 1e4, False),
+    "L2": (0, 1e4, True), "dx": (-1e4, 1e4, False), "L3": (0, 1e4, True), "L4": (0, 1e4, False),
+    "e1": (-1e4, 1e4, False), "e2": (-1e4, 1e4, False),
+    "m": (0, 1e4, False), "g": (0, 100, False), "a0": (0, 180, False),
+    "red": (0, 1e4, True),
 }
 
 
 def mech_load() -> dict:
     try:
         data = json.loads(MECH_FILE.read_text())
+        # Ficheros guardados con la convención anterior (θ desde la horizontal): α = 90 − θ.
+        if "a0" not in data and "th0" in data:
+            data["a0"] = 90.0 - float(data["th0"])
         return {**MECH_DEFAULTS, **{k: v for k, v in data.items() if k in MECH_DEFAULTS}}
     except FileNotFoundError:
         return dict(MECH_DEFAULTS)

@@ -1,0 +1,42 @@
+\chapter{Registros Modbus del accionamiento}
+\label{anx:modbus}
+
+Dirección = $256\cdot$grupo + índice (índice en hexadecimal). Esclavo 1, 115200 baudios, 8N1.
+\verificar{contrastar denominaciones y unidades con el manual del accionamiento}
+
+\begin{longtable}{@{}rllL{0.4\textwidth}r@{}}
+\caption{Registros utilizados por el firmware.}\label{tab:registros}\\
+\toprule
+Dirección & Parámetro & Acceso & Descripción & Valor escrito \\
+\midrule
+\endfirsthead
+\toprule
+Dirección & Parámetro & Acceso & Descripción & Valor escrito \\
+\midrule
+\endhead
+0     & C00.00 & E & Modo de control (1 = velocidad, 2 = par) & 1 \\
+5     & C00.05 & E & Nivel de rigidez & 10 \\
+16    & C00.10 & E & Selección de resistencia de frenado (1 = externa) & 1 \\
+17    & C00.11 & E & Potencia de la resistencia de frenado & 1000 \\
+18    & C00.12 & E & Valor óhmico de la resistencia de frenado & 235 \\
+19    & C00.13 & E & Disipación de la resistencia de frenado & 30 \\
+801   & C03.21 & E & Consigna de velocidad (rpm, con signo: negativa hacia A) & cada periodo \\
+802   & C03.22 & E & Aceleración & 5 \\
+804   & C03.24 & E & Deceleración & 5 \\
+1041  & C04.11 & E & Habilitación del servo (0/1) & 0 $\rightarrow$ 1 \\
+16385 & 0x4001 & L & Velocidad del motor (rpm) & -- \\
+16387 & 0x4003 & L & Par del motor (décimas de \ua) & -- \\
+\bottomrule
+\end{longtable}
+
+Registros usados en versiones anteriores, con el accionamiento en modo par: 833 (consigna de par,
+C03.41), 839 y 840 (límites de par), 1542 (C06.06, apantallamiento de STO) y 1576 (C06.28, retardo
+de desconexión tras STO).
+
+\section{Secuencia de configuración}
+
+Al recibir la orden INIT, el firmware escribe en este orden: C04.11 = 0 (deshabilitar), C00.00 = 1
+(modo velocidad), C03.21 = 0 (consigna nula), C00.05 (rigidez), C03.22 y C03.24 (rampas), C00.10 a
+C00.13 (resistencia de frenado) y C04.11 = 1 (habilitar). Entre escrituras se deja un silencio de
+\SI{700}{\micro\second}. Si falla una escritura esencial se repite la secuencia completa, y tras tres
+intentos el sistema pasa a estado de error con el código 0x03.

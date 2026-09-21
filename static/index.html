@@ -69,6 +69,8 @@
     .limit .led { width: 14px; height: 14px; border-radius: 1px; flex-shrink: 0;
                   background: var(--fui-off); box-shadow: inset 0 0 0 1px rgb(0 0 0 / .35); }
     .limit .lbl { color: var(--fui-ink-3); font: 20px/1 var(--fui-font-readout); }
+    /* "arriba" / "abajo" junto a la letra: sin el margen que lleva .sub en las tarjetas */
+    .limit .sub { margin-top: 0; }
     .limit.on .led { background: var(--fui-fail);
                      box-shadow: inset 0 0 0 1px rgb(0 0 0 / .3), 0 0 7px rgb(192 37 28 / .65); }
     .limit.on .lbl { color: var(--fui-fail); }
@@ -127,8 +129,10 @@
       <div class="card">
         <div class="card-title">Finales de carrera</div>
         <div class="limits">
-          <div class="limit" id="limit-a"><span class="led"></span><span class="lbl">A</span></div>
-          <div class="limit" id="limit-b"><span class="led"></span><span class="lbl">B</span></div>
+          <div class="limit" id="limit-a" title="Final de carrera A — arriba, donde queda el home">
+            <span class="led"></span><span class="lbl">A</span><span class="sub">arriba</span></div>
+          <div class="limit" id="limit-b" title="Final de carrera B — abajo, extensión completa: aquí arranca el ensayo">
+            <span class="led"></span><span class="lbl">B</span><span class="sub">abajo</span></div>
         </div>
         <div class="sub" style="margin-top:8px">Homing: <span id="v-home-phase" class="dim">—</span></div>
         <div class="sub">Recorrido A→B: <span id="v-home-range" class="dim">sin medir</span></div>
@@ -177,7 +181,7 @@
   <div class="tabs">
     <button class="tab active" data-tab="servo" onclick="showTab('servo')">Servo</button>
     <button class="tab"        data-tab="lc1"   onclick="showTab('lc1')">Célula 1 · ZSC31014</button>
-    <button class="tab"        data-tab="ciclo" onclick="showTab('ciclo')">Ciclo A↔B</button>
+    <button class="tab"        data-tab="ciclo" onclick="showTab('ciclo')">Ciclo B→A→B</button>
     <button class="tab"        data-tab="rec"   onclick="showTab('rec')">Ensayos grabados</button>
     <button class="btn-apply" style="align-self:center;margin-left:10px" onclick="tareLc1()"
             title="Pone la célula a cero con su lectura actual. La tara vive en el firmware.">⌀ Tara</button>
@@ -191,8 +195,8 @@
         <input type="number" id="p-addr" value="1" min="1" max="247" title="Dirección Modbus del drive"
                style="width:60px">
         <button class="b-init"  onclick="sendInit()">⟳ Init</button>
-        <button class="b-a"     onclick="cmd('move_a')">◄ Mov A</button>
-        <button class="b-b"     onclick="cmd('move_b')">Mov B ►</button>
+        <button class="b-a"     onclick="cmd('move_a')" title="Hacia A, arriba">▲ Mov A</button>
+        <button class="b-b"     onclick="cmd('move_b')" title="Hacia B, abajo">▼ Mov B</button>
         <button class="b-home"  onclick="cmd('home')">⌂ Home</button>
         <button class="b-stop"  onclick="cmd('stop')">■ Stop</button>
         <button class="b-reset" onclick="cmd('reset_pos')">↺ Reset pos</button>
@@ -336,22 +340,23 @@
     </details>
   </div>
 
-  <!-- ── Ciclo A↔B: A es el home, B el final de carrera o un punto elegido ── -->
+  <!-- ── Ciclo del ensayo B → A → B: A es el home, B el final de carrera o un punto ── -->
   <div class="panel" data-panel="ciclo" hidden>
     <div class="group">
-      <div class="group-title">Recorrido — A es siempre el home (posición 0)</div>
+      <div class="group-title">Recorrido — el ensayo baja a B, sube a A y vuelve a B</div>
       <div class="grid">
         <div class="param">
-          <label>Punto B</label>
-          <select id="c-mode" onchange="cycModeChanged()">
-            <option value="1">final de carrera</option>
-            <option value="0">posición elegida</option>
+          <label>Hasta dónde sube</label>
+          <select id="c-mode" onchange="cycModeChanged()"
+                  title="Con los finales de carrera el ensayo no depende de la posición integrada.">
+            <option value="1">final de carrera A (arriba)</option>
+            <option value="0">una distancia desde B</option>
           </select>
         </div>
         <div class="param" id="c-target-wrap">
-          <label>Posición de B (rev desde el home)</label>
+          <label>Recorrido B→A (rev de motor)</label>
           <input type="number" id="c-target" value="1" step="0.01" min="0"
-                 title="Distancia desde el home hacia B, en revoluciones.">
+                 title="Cuánto sube desde B, en revoluciones de motor contadas desde B. Sólo se usa si no se llega al final de carrera A.">
         </div>
         <div class="param">
           <label>Velocidad (RPM)</label>
@@ -363,7 +368,7 @@
         </div>
       </div>
       <div class="group-actions">
-        <button class="b-a"    onclick="cycleStart()">▶ Iniciar ciclo</button>
+        <button class="b-a"    onclick="cycleStart()">▶ Iniciar ensayo (B abajo → A arriba → B)</button>
         <button class="b-stop" onclick="cmd('cycle_stop')">■ Parar</button>
         <span id="v-cyc-ready" class="hint">—</span>
       </div>
@@ -633,10 +638,11 @@ function updateUI(d) {
   }
   const cr = el('v-cyc-ready');
   if (cr) {
-    // El firmware exige servo habilitado; y sin homing, "A = home" no significa nada
+    // El ensayo se apoya en los finales de carrera, así que no necesita homing: sólo
+    // servo habilitado.
     const run = (sn === 'STOPPED' || sn === 'MOVING_A' || sn === 'MOVING_B');
     cr.className = run ? 'ok' : 'err';
-    cr.textContent = run ? `${sn} · servo habilitado` : `${sn} · haz Init y Home primero`;
+    cr.textContent = run ? `${sn} · servo habilitado` : `${sn} · haz Init primero`;
   }
   const lr = el('v-lc-ready');
   if (lr) {
@@ -734,7 +740,7 @@ function updateUI(d) {
 }
 
 // ── Ciclo A↔B ────────────────────────────────────────────
-const CYC_CLS = { 0:'dim', 1:'info', 2:'info', 3:'ok', 4:'err' };
+const CYC_CLS = { 0:'dim', 1:'warn', 2:'info', 3:'info', 4:'ok', 5:'err' };
 
 // Con B en el final de carrera la posición no pinta nada: se esconde el campo para no
 // dar a entender que se está usando.
@@ -779,7 +785,7 @@ function updateCycle(d) {
   c.innerHTML = chip('posición', `${(d.cyc_pos_rev || 0).toFixed(3)} rev`)
               + chip('B', d.cyc_target_rev > 0 ? `${d.cyc_target_rev.toFixed(3)} rev` : 'final de carrera')
               + (d.rec ? chip('grabando', d.rec) : '');
-  if (!d.rec && (d.cyc_phase === 3 || d.cyc_phase === 4)) loadCycles();   // ha cerrado: refresca
+  if (!d.rec && d.cyc_phase >= 4) loadCycles();   // completado o abortado: refresca la lista
 }
 
 // ── Acuse de recibo de TODO comando ──────────────────────

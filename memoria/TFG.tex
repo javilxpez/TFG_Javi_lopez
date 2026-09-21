@@ -1,0 +1,181 @@
+% ════════════════════════════════════════════════════════════════════════
+%  Trabajo Fin de Grado — ETSIDI (UPM)
+%  Plantilla original de Alberto Brunete (UPM), versión 3.
+%  Sobre ella se han añadido sólo los paquetes que la memoria necesita
+%  (unidades, tablas largas, diagramas y código); la estructura, los
+%  márgenes y la portada son los de la plantilla.
+%
+%  Compilar:  latexmk -pdf TFG.tex     (pdfLaTeX + BibTeX)
+%             tectonic TFG.tex         (sin instalar TeX Live)
+%             o subir la carpeta a Overleaf
+%
+%  Las marcas \completar{...} (rojo) y \verificar{...} (naranja) señalan
+%  lo que queda pendiente de rellenar o de comprobar en el montaje.
+% ════════════════════════════════════════════════════════════════════════
+
+\documentclass[10pt,a4paper]{book}
+
+% ── Idioma y codificación ───────────────────────────────────────────────
+\usepackage[spanish, es-tabla]{babel}
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[utf8]{inputenc}
+  \usepackage[T1]{fontenc}
+  \usepackage{lmodern}
+  \usepackage{textcomp}
+\else
+  \usepackage{fontspec}
+\fi
+
+% ── Matemáticas y figuras (plantilla) ───────────────────────────────────
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\graphicspath{{figuras/}}
+\usepackage{subfigure}
+\usepackage{listings}
+\usepackage{appendix}
+\usepackage[left=3cm,top=3cm,right=3cm,bottom=3cm]{geometry}
+\usepackage{multicol}
+
+% ── Añadidos de esta memoria ────────────────────────────────────────────
+\usepackage{siunitx}
+\sisetup{output-decimal-marker={,}, group-separator={.}, per-mode=symbol,
+         range-phrase={ a }, list-final-separator={ y }}
+\DeclareSIUnit{\uacc}{u.a.}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage{array}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\usepackage{float}
+\usepackage[font=small,labelfont=bf]{caption}
+\usepackage{enumitem}
+\setlist{itemsep=2pt,topsep=4pt}
+\usepackage{xcolor}
+\usepackage{bytefield}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,shapes.misc,fit,calc,backgrounds,babel}
+\usepackage{pgfgantt}
+\usepackage{xurl}
+\usepackage{emptypage}
+\raggedbottom
+
+% ── Código ──────────────────────────────────────────────────────────────
+\definecolor{codebg}{RGB}{247,247,247}
+\definecolor{codecom}{RGB}{96,120,96}
+\definecolor{codekw}{RGB}{30,60,150}
+\definecolor{codestr}{RGB}{160,60,40}
+\lstset{
+  basicstyle=\ttfamily\footnotesize, backgroundcolor=\color{codebg},
+  keywordstyle=\color{codekw}\bfseries, commentstyle=\color{codecom}\itshape,
+  stringstyle=\color{codestr}, frame=single, rulecolor=\color{black!20},
+  breaklines=true, columns=fullflexible, keepspaces=true, showstringspaces=false,
+  numbers=left, numberstyle=\tiny\color{black!50}, xleftmargin=1.6em, framexleftmargin=1.4em,
+  captionpos=b,
+  literate={á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
+           {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
+           {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {ü}{{\"u}}1 {·}{{$\cdot$}}1 {→}{{$\rightarrow$}}1
+           {←}{{$\leftarrow$}}1 {µ}{{$\mu$}}1 {°}{{$^\circ$}}1 {≤}{{$\le$}}1 {×}{{$\times$}}1
+           {¿}{{?`}}1 {¡}{{!`}}1
+}
+\renewcommand{\lstlistingname}{Código}
+\renewcommand{\lstlistlistingname}{Lista de \lstlistingname s}
+
+% ── Enlaces ─────────────────────────────────────────────────────────────
+\usepackage{hyperref}
+\hypersetup{
+    pdftitle={Banco de ensayos para una caracola de radio variable - TFG - 2026},
+    pdfsubject={TFG - 2026},
+    pdfauthor={Javier López},
+    pdfkeywords={caracola} {tambor de radio variable} {Modbus RTU} {célula de carga},
+    colorlinks, citecolor=black, filecolor=black, linkcolor=black, urlcolor=black,
+}
+
+% ── Macros del documento ────────────────────────────────────────────────
+\DeclareRobustCommand{\completar}[1]{\textcolor{red!75!black}{\textbf{[COMPLETAR:} #1\textbf{]}}}
+\DeclareRobustCommand{\verificar}[1]{\textcolor{orange!80!black}{\textbf{[VERIFICAR:} #1\textbf{]}}}
+\newcommand{\codigo}[1]{\texttt{#1}}
+\newcommand{\fichero}[1]{\texttt{#1}}
+\newcommand{\ua}{u.\,a.}          % texto corrido; para \SI se usa \uacc
+\newcommand{\autortfg}{Javier López \completar{segundo apellido}}
+
+\begin{document}
+
+\frontmatter
+
+\include{capitulos/portada}
+
+\include{capitulos/firmas}
+
+\include{capitulos/licencia}
+
+\include{capitulos/evaluacion}
+
+\include{capitulos/agradecimientos}
+
+\include{capitulos/resumen}
+
+\tableofcontents
+\addcontentsline{toc}{chapter}{Índice}
+
+\listoffigures
+
+\listoftables
+
+\include{capitulos/acronimos}
+
+\mainmatter
+
+\include{capitulos/introduccion}
+
+\include{capitulos/marcoteorico}
+
+\include{capitulos/estadoarte}
+
+\include{capitulos/modelo}
+
+\include{capitulos/arquitectura}
+
+\include{capitulos/hardware}
+
+\include{capitulos/firmware}
+
+\include{capitulos/comunicaciones}
+
+\include{capitulos/software}
+
+\include{capitulos/problemas}
+
+\include{capitulos/resultados}
+
+\include{capitulos/gestion}
+
+\include{capitulos/conclusion}
+
+\appendix
+
+\include{capitulos/anexo_pines}
+
+\include{capitulos/anexo_protocolo}
+
+\include{capitulos/anexo_modbus}
+
+\include{capitulos/anexo_csv}
+
+\include{capitulos/anexo_manual}
+
+\include{capitulos/anexo_repositorio}
+
+\backmatter
+
+\bibliographystyle{plain}
+
+\cleardoublepage
+
+\addcontentsline{toc}{chapter}{Bibliografia}
+
+\bibliography{bibliografia/bibliografia}
+
+\end{document}

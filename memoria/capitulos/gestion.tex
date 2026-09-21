@@ -1,0 +1,252 @@
+\chapter{Gestión del proyecto}
+\label{chap:gestion}
+
+\section{Ciclo de vida}
+
+El proyecto ha seguido un ciclo de vida incremental, con siete iteraciones en las que cada una
+entrega algo utilizable y se valida antes de pasar a la siguiente. No es una elección de estilo: en
+un trabajo con tanta incertidumbre sobre el mecanismo y los componentes, cada iteración ha servido
+para descartar una hipótesis. Las fases de definición y análisis se concentraron en la primera
+iteración; el diseño, la construcción y las pruebas se repiten en todas.
+
+La validación se ha apoyado sistemáticamente en programas de prueba por subsistema
+(sección~\ref{sec:hw-validacion}), de modo que ningún fallo de integración obligara a depurar todo
+el sistema a la vez.
+
+\section{Planificación}
+
+\subsection{Planificación real}
+
+La planificación se ha reconstruido a partir del historial del repositorio: 36 \emph{commits} entre
+el 4 de marzo y el 21 de septiembre de 2026, concentrados en nueve semanas
+(figura~\ref{fig:actividad-git}). El historial sólo refleja el trabajo sobre código y diseño
+electrónico; los periodos sin \emph{commits} corresponden a montaje mecánico, pruebas sin cambios de
+código y periodo lectivo \completar{describir las actividades de abril a junio y de julio a agosto}.
+
+\begin{figure}[tbp]
+\centering
+\includegraphics[width=\textwidth]{actividad_git.pdf}
+\caption{\emph{Commits} por semana en el repositorio del proyecto.}
+\label{fig:actividad-git}
+\end{figure}
+
+\begin{description}[style=nextline,leftmargin=1.5em]
+  \item[F1. Exploración del accionamiento (2--10 de marzo)] Comunicación Modbus con una placa XIAO
+        ESP32-S3: escaneo de direcciones, modos par y velocidad, monitor de terminal, parámetros del
+        accionamiento y resistencia de frenado. Culmina en un firmware v1.0 con regulador de fuerza
+        en modo par.
+  \item[F2. Diseño de la placa adaptadora (12--17 de marzo)] Esquema y colocación de la revisión~A.
+  \item[F3. Migración a Raspberry Pi Pico 2 y validación de la placa (20--30 de junio)] Programas de
+        prueba de entradas y salidas, células de carga, RS-485 y escaneo Modbus. Versión de doble
+        núcleo.
+  \item[F4. Firmware de posición en modo velocidad (4 de julio)] Movimiento entre extremos con
+        integración de la posición y monitor asociado.
+  \item[F5. Firmware v2 y supervisión web (2--6 de septiembre)] \emph{Homing} con dos finales de
+        carrera, servidor FastAPI, página de supervisión, ciclos automáticos y grabación de ensayos.
+  \item[F6. Primera campaña de ensayos (14--15 de septiembre)] Quince ensayos con el ciclo
+        A$\rightarrow$B$\rightarrow$A, visor de ensayos con curva teórica y primer análisis.
+  \item[F7. Rediseño del ciclo y del modelo, y segunda campaña (21 de septiembre)] Ciclo
+        B$\rightarrow$A$\rightarrow$B con extremos por finales de carrera, modelo con la salida del
+        cable desplazada, configuración única del mecanismo con simulador, segunda campaña de
+        ensayos y análisis definitivo.
+\end{description}
+
+\begin{figure}[tbp]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{ganttchart}[
+    x unit=0.37cm, y unit chart=0.52cm, y unit title=0.55cm,
+    vgrid={*1{black!8, dotted}}, hgrid,
+    title label font=\scriptsize, bar label font=\scriptsize,
+    milestone label font=\scriptsize\itshape,
+    bar/.append style={fill=blue!45}, milestone/.append style={fill=red!70},
+    bar height=0.55, group label font=\scriptsize\bfseries,
+    inline=false
+  ]{1}{31}
+  \gantttitle{Mar}{5} \gantttitle{Abr}{4} \gantttitle{May}{4} \gantttitle{Jun}{5}
+  \gantttitle{Jul}{4} \gantttitle{Ago}{5} \gantttitle{Sep}{4} \\
+  \ganttbar{F1 Exploración accionamiento}{1}{2} \\
+  \ganttmilestone{Firmware v1.0}{2} \\
+  \ganttbar{F2 Diseño PCB rev. A}{2}{3} \\
+  \ganttbar[bar/.append style={fill=black!15}]{Actividad fuera de git}{4}{15} \\
+  \ganttbar{F3 Migración a Pico 2 y pruebas}{16}{18} \\
+  \ganttbar{F4 Firmware de posición}{18}{18} \\
+  \ganttbar[bar/.append style={fill=black!15}]{Actividad fuera de git}{19}{26} \\
+  \ganttbar{F5 Firmware v2 y web}{27}{28} \\
+  \ganttmilestone{Primer ciclo grabado}{28} \\
+  \ganttbar{F6 Primera campaña}{29}{29} \\
+  \ganttbar{F7 Ciclo y modelo nuevos, 2.ª campaña}{30}{30} \\
+  \ganttbar{Redacción de la memoria}{29}{31}
+\end{ganttchart}%
+}
+\caption{Diagrama de Gantt reconstruido (semanas desde el 2 de marzo de 2026).}
+\label{fig:gantt}
+\end{figure}
+
+\section{Presupuesto}
+
+\subsection{Personal}
+
+La dedicación de un TFG se fija en créditos ECTS, cada uno de 25 a 30 horas de trabajo
+\cite{rd1125}. La tabla~\ref{tab:horas} reparte una dedicación estimada por fases \verificar{ajustar
+las horas y los créditos del TFG en la titulación}. Para valorar el trabajo se toma como supuesto un
+coste de 30~€/h para un ingeniero o ingeniera junior y de 45~€/h para la tutoría.
+
+\begin{table}[H]
+\centering
+\caption{Dedicación estimada y coste de personal.}
+\label{tab:horas}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Actividad & Horas & €/h & Coste (€) \\
+\midrule
+Estudio y documentación & 30 & 30 & 900 \\
+Exploración del accionamiento (F1) & 35 & 30 & 1.050 \\
+Diseño de la placa (F2) & 45 & 30 & 1.350 \\
+Pruebas de placa y comunicaciones (F3) & 45 & 30 & 1.350 \\
+Firmware (F4--F5) & 70 & 30 & 2.100 \\
+Software de supervisión (F5, F7) & 60 & 30 & 1.800 \\
+Ensayos y análisis (F6, F7) & 40 & 30 & 1.200 \\
+Redacción de la memoria & 50 & 30 & 1.500 \\
+\midrule
+Subtotal trabajo técnico & 375 & & 11.250 \\
+Tutoría & 25 & 45 & 1.125 \\
+\midrule
+\textbf{Total recursos humanos} & & & \textbf{12.375} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Material}
+
+\begin{longtable}{@{}L{0.42\textwidth}rrr@{}}
+\caption{Material del sistema.}\label{tab:material}\\
+\toprule
+Elemento & Cant. & Precio unit. (€) & Total (€) \\
+\midrule
+\endfirsthead
+\toprule
+Elemento & Cant. & Precio unit. (€) & Total (€) \\
+\midrule
+\endhead
+Raspberry Pi Pico 2 & 1 & \completar{} & \\
+Transceptor RS-485 THVD1400 & 1 & \completar{} & \\
+Interruptor de lado alto TPS4H000-Q1 & 1 & \completar{} & \\
+Amplificador operacional MCP6294 & 1 & \completar{} & \\
+Diodos zéner BZX384 & 4 & \completar{} & \\
+Resistencias y condensadores SMD 0805 & 25 & \completar{} & \\
+Bornas de tornillo y tiras de pines & -- & \completar{} & \\
+Fabricación de la PCB & 1 & \completar{} & \\
+Load Cell 2 Click (ZSC31014) & 1 & \completar{} & \\
+Célula de carga & 1 & \completar{} & \\
+Servomotor paso a paso de lazo cerrado con accionamiento & 1 & \completar{} & \\
+Fuente de alimentación del accionamiento & 1 & \completar{} & \\
+Finales de carrera & 2 & \completar{} & \\
+Caracola, barra, cable, estructura y masa de \SI{2}{\kilo\gram} & -- & \completar{} & \\
+\midrule
+\textbf{Total material} & & & \completar{} \\
+\bottomrule
+\end{longtable}
+
+\subsection{Equipos y software}
+
+Todo el software empleado es libre o gratuito (KiCad, Arduino IDE con el núcleo Arduino-Pico,
+Python, FastAPI, Chart.js, git y \LaTeX), por lo que su coste es nulo. Los equipos se imputan por
+amortización lineal,
+\begin{equation}
+  A = C\,\frac{t_{\text{uso}}}{t_{\text{vida}}},
+\end{equation}
+con $C$ el coste de adquisición, $t_{\text{uso}}$ el tiempo de uso y $t_{\text{vida}}$ la vida útil.
+
+\begin{table}[H]
+\centering
+\caption{Amortización de equipos.}
+\label{tab:amortizacion}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Equipo & Coste (€) & Vida útil (meses) & Uso (meses) & Amortización (€) \\
+\midrule
+Ordenador portátil & \completar{} & 48 & 7 & \\
+Polímetro & \completar{} & 60 & 7 & \\
+Fuente de laboratorio & \completar{} & 60 & 7 & \\
+\midrule
+\textbf{Total} & & & & \completar{} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Resumen de costes}
+
+\begin{table}[H]
+\centering
+\caption{Presupuesto total.}
+\label{tab:presupuesto}
+\begin{tabular}{@{}lr@{}}
+\toprule
+Concepto & Importe (€) \\
+\midrule
+Recursos humanos & 12.375 \\
+Material & \completar{} \\
+Amortización de equipos & \completar{} \\
+\midrule
+Subtotal & \completar{} \\
+Costes indirectos (\SI{10}{\percent}, supuesto) & \completar{} \\
+\midrule
+Base imponible & \completar{} \\
+IVA (\SI{21}{\percent}) & \completar{} \\
+\midrule
+\textbf{Total} & \completar{} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Impacto}
+
+\subsection{Impacto técnico y económico}
+
+La consecuencia práctica del capítulo~\ref{chap:modelo} es de dimensionado: para un recorrido dado,
+un perfil de par constante reduce el par de pico que debe dar el motor. Sobre el recorrido con carga
+de los ensayos, el perfil ideal rebaja el pico un \SI{11}{\percent} respecto a un cilindro
+equivalente, lo que permitiría un motor y un accionamiento algo menores. A velocidad constante, las
+pérdidas por efecto Joule son proporcionales a $\int\tau^2\,\mathrm{d}\varphi$, mínima cuando el par
+es constante (desigualdad de Cauchy-Schwarz), aunque en este caso la mejora es de apenas un
+\SI{1}{\percent}.
+
+Esas cifras deben leerse junto con el resultado del capítulo~\ref{chap:resultados}: el tambor
+instalado no aplana el par, sino que lo empeora respecto a un cilindro. El margen de mejora que
+ofrece el rediseño del perfil es, por tanto, bastante mayor que ese \SI{11}{\percent}.
+
+La plataforma desarrollada es además reutilizable: la placa, el firmware y la aplicación web forman
+un banco genérico para cualquier eje accionado por Modbus con medida de fuerza, con un coste de
+material muy inferior al de un sistema de adquisición comercial.
+
+\subsection{Objetivos de Desarrollo Sostenible}
+
+\begin{table}[H]
+\centering
+\caption{Relación del trabajo con los Objetivos de Desarrollo Sostenible \cite{agenda2030}.}
+\label{tab:ods}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+ODS & Contribución \\
+\midrule
+4. Educación de calidad & Banco de ensayo abierto y documentado, útil como práctica de laboratorio de mecanismos, accionamientos y adquisición de datos. \\
+7. Energía asequible y no contaminante & Un perfil de par uniforme reduce las pérdidas en el motor. \\
+9. Industria, innovación e infraestructura & Integración de tecnologías industriales (Modbus, RS-485) con herramientas libres de bajo coste. \\
+12. Producción y consumo responsables & Dimensionado de actuadores más pequeños; módulo microcontrolador en zócalo, reutilizable; datos brutos conservados para no repetir ensayos. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Aspectos éticos, legales y de seguridad}
+
+El prototipo es un equipo de laboratorio que no se comercializa. Su evolución hacia una máquina de
+uso por terceros tendría que considerar la Directiva 2006/42/CE de máquinas, que el Reglamento (UE)
+2023/1230 sustituye a partir de enero de 2027, la Directiva 2014/30/UE de compatibilidad
+electromagnética y la Directiva 2011/65/UE sobre sustancias peligrosas (RoHS). La
+sección~\ref{sec:arq-seguridad} discute las limitaciones de seguridad del diseño actual frente a
+ISO 13849-1 \cite{iso13849}.
+
+En cuanto a la ética profesional, se ha priorizado la trazabilidad: se conservan las medidas brutas,
+las figuras se generan con programas reproducibles y las limitaciones se señalan de forma explícita,
+incluso cuando el resultado contradice la hipótesis de partida.

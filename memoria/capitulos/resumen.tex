@@ -1,0 +1,79 @@
+\chapter{Resumen}
+
+Este Trabajo Fin de Grado desarrolla el banco de ensayos de un mecanismo de elevación basado en una
+\emph{caracola}: un tambor de radio variable que, accionado por un servomotor paso a paso de lazo
+cerrado, enrolla un cable y levanta una barra articulada con una masa de \SI{2}{\kilo\gram}. La idea
+que se quiere contrastar es la del \emph{fusee} de la relojería: si el radio del tambor crece donde
+la tensión del cable es pequeña y decrece donde es grande, el par que ve el motor se mantiene
+aproximadamente constante a lo largo del recorrido.
+
+Para poder contrastarla se ha construido una plataforma completa: una placa adaptadora diseñada en
+KiCad alrededor de una Raspberry Pi Pico~2, con bus RS-485, entradas digitales protegidas, entradas
+analógicas acondicionadas, salidas de potencia y dos zócalos mikroBUS; un firmware en C++ que
+gobierna el accionamiento por Modbus RTU, lee la célula de carga a través de un acondicionador
+ZSC31014, hace el \emph{homing} con dos finales de carrera y ejecuta ciclos automáticos
+B$\rightarrow$A$\rightarrow$B; un protocolo binario propio con CRC-8; y una aplicación web (FastAPI
+y WebSocket) con tres páginas: monitor en tiempo real, configuración del mecanismo con simulador, y
+visor de ensayos que superpone la curva teórica a cada medida.
+
+El banco muestrea a \SI{20.0}{\hertz} con una dispersión del periodo de \SI{0.06}{\milli\second},
+graba cada ensayo en cuentas brutas y repite el recorrido con una desviación típica de
+\SI{11}{mrev} de motor. Se han analizado dos campañas de ensayos, la segunda con el
+ciclo de ensayo reorganizado para que arranque en el extremo inferior del recorrido.
+
+El resultado principal es metodológico y, en parte, negativo. El modelo estático reproduce bien la
+forma de la señal de la célula de carga ($R^2 = 0{,}97$), pero se demuestra que esa comparación es
+insuficiente: al no estar calibrada la célula, el ajuste absorbe un cambio de signo y el mismo
+$R^2$ admite dos geometrías opuestas. El par del accionamiento, que no necesita calibración, deshace
+la ambigüedad, y al hacerlo contradice la configuración vigente del mecanismo: sobre el tramo del
+recorrido en que el cable trabaja con carga, el modelo predice que la tensión \emph{baja} un
+\SI{20}{\percent} mientras que el par gravitatorio medido \emph{sube} un \SI{56}{\percent}. El radio
+efectivo deducido crece un \SI{93}{\percent}, cuando para mantener el par constante bastaría con que
+creciera un \SI{24}{\percent}. La caracola, tal y como está descrita en la configuración, no
+compensa: sobrecompensa, y con el sentido invertido respecto del que pide el modelo.
+
+El trabajo entrega, por tanto, un banco de ensayos reproducible, un modelo verificado en su
+formulación y un procedimiento de contraste, junto con un diagnóstico claro de lo que falta para
+cerrar la validación: medir las cotas reales del mecanismo y calibrar la célula con masas patrón.
+
+\paragraph{Palabras clave:} tambor de radio variable, caracola, compensación de par, servomotor paso
+a paso, Modbus RTU, RS-485, célula de carga, ZSC31014, Raspberry Pi Pico 2, adquisición de datos.
+
+\chapter{Abstract}
+
+This Bachelor's Thesis develops the test bench for a lifting mechanism based on a variable-radius
+spiral drum (a \emph{fusee}-like drum, here called \emph{caracola}): driven by a closed-loop stepper
+servomotor, it winds a cable that lifts a hinged bar carrying a \SI{2}{\kilo\gram} mass. The idea
+under test is the one behind the horological fusee: if the drum radius grows where the cable tension
+is small and shrinks where it is large, the motor torque stays roughly constant along the stroke.
+
+A complete platform was built to test it: a KiCad-designed adapter board around a Raspberry Pi
+Pico~2, with an RS-485 bus, protected digital inputs, conditioned analogue inputs, high-side outputs
+and two mikroBUS sockets; C++ firmware that commands the drive over Modbus RTU, reads the load cell
+through a ZSC31014 conditioner, performs homing with two limit switches and runs automatic
+B$\rightarrow$A$\rightarrow$B cycles; a custom binary protocol with CRC-8; and a web application
+(FastAPI and WebSocket) with three pages: real-time monitor, mechanism configuration with a
+simulator, and a test viewer that overlays the theoretical curve on each measurement.
+
+The bench samples at \SI{20.0}{\hertz} with a period spread of \SI{0.06}{\milli\second}, logs every
+test in raw counts and repeats the stroke with a standard deviation of \SI{11}{mrev} of
+motor shaft. Two test campaigns were analysed, the second one with the test cycle reorganised to
+start at the lower end of the stroke.
+
+The main result is methodological and partly negative. The static model reproduces the shape of the
+load-cell signal well ($R^2 = 0.97$), but that comparison is shown to be insufficient: since the
+cell is uncalibrated, the fit absorbs a sign change and the same $R^2$ admits two opposite
+geometries. The drive torque, which needs no calibration, resolves the ambiguity --- and in doing so
+contradicts the current configuration of the mechanism: over the loaded part of the stroke the model
+predicts the tension to \emph{fall} by \SI{20}{\percent} while the measured gravitational torque
+\emph{rises} by \SI{56}{\percent}. The implied effective radius grows by \SI{93}{\percent}, whereas
+a \SI{24}{\percent} growth would suffice for constant torque. The spiral drum, as configured, does
+not compensate: it overcompensates, and in the opposite sense to the one the model requires.
+
+The thesis therefore delivers a reproducible test bench, a model verified in its formulation and a
+contrast procedure, together with a clear diagnosis of what remains in order to close the
+validation: measuring the real dimensions of the mechanism and calibrating the load cell with
+reference masses.
+
+\paragraph{Keywords:} variable radius drum, fusee, torque compensation, closed-loop stepper servo,
+Modbus RTU, RS-485, load cell, ZSC31014, Raspberry Pi Pico 2, data acquisition.

@@ -1,0 +1,192 @@
+\chapter{Especificación del protocolo binario}
+\label{anx:protocolo}
+
+Formato común: \codigo{0xAA 0x55 LEN carga\_útil[LEN] CRC8}. Enteros en \emph{little-endian}. CRC-8
+con polinomio 0x07 y valor inicial 0x00 sobre la carga útil. Los desplazamientos se dan en bytes
+dentro de la carga útil.
+
+\section{Paquete 0x02: telemetría por lotes}
+
+\begin{table}[H]
+\centering
+\caption{Cabecera del lote (14 bytes).}
+\begin{tabularx}{\textwidth}{@{}rllX@{}}
+\toprule
+Despl. & Campo & Tipo & Descripción \\
+\midrule
+0 & packet\_id & u8 & 0x02 \\
+1 & base\_t & u32 & \codigo{millis()} de la primera muestra del lote \\
+5 & bridge & u16 & Lectura bruta del ZSC31014 (14 bits) \\
+7 & lc\_status & u8 & Bits de estado de la última lectura \\
+8 & flags & u8 & b0: célula válida; b1: servo conectado; b2: configuración aplicada \\
+9 & error & u8 & Código de error (tabla~\ref{tab:errores}) \\
+10 & servo\_id & u8 & Dirección Modbus en uso \\
+11 & rpm\_status & u8 & Resultado de la lectura de velocidad (tabla~\ref{tab:mbstatus}) \\
+12 & trq\_status & u8 & Resultado de la lectura de par \\
+13 & n & u8 & Número de muestras (1--8) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Muestra (14 bytes), repetida $n$ veces.}
+\begin{tabularx}{\textwidth}{@{}rllX@{}}
+\toprule
+Despl. & Campo & Tipo & Descripción \\
+\midrule
++0 & dt\_ms & u16 & Milisegundos desde base\_t \\
++2 & rpm & i16 & Velocidad del motor (registro 16385) \\
++4 & current\_x10 & i16 & Par (registro 16387), décimas de \ua \\
++6 & ref\_cmd & i16 & Consigna de velocidad escrita (rpm); negativa hacia A \\
++8 & base\_read & i16 & Lectura filtrada menos tara (cuentas) \\
++10 & io & u8 & b0: final A (arriba); b1: final B (abajo) \\
++11 & state & u8 & Estado de la máquina (tabla~\ref{tab:estados}) \\
++12 & work\_us & u16 & Tiempo de trabajo de la vuelta (µs, saturado a 65535) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Paquete 0x03: estado de \emph{homing} (11 bytes)}
+
+\noindent\begin{tabularx}{\textwidth}{@{}rllX@{}}
+\toprule
+0 & packet\_id & u8 & 0x03 \\
+1 & pos\_mrev & i32 & Posición × 1000 \\
+5 & range\_mrev & i32 & Recorrido A$\rightarrow$B medido × 1000 \\
+9 & home\_phase & u8 & 0 reposo, 1 buscando A, 2 buscando B, 3 yendo al origen, 4 completado, 5 fallo \\
+10 & flags & u8 & b0: recorrido válido \\
+\bottomrule
+\end{tabularx}
+
+\section{Paquete 0x04: resultado de la célula (13 bytes)}
+
+\noindent\begin{tabularx}{\textwidth}{@{}rllX@{}}
+\toprule
+0 & packet\_id & u8 & 0x04 \\
+1 & req & u8 & Orden respondida (0x09, 0x0A o 0x0B) \\
+2 & result & u8 & Resultado (tabla~\ref{tab:lcres}) \\
+3 & gain & u8 & Ganancia grabada (código 0--7, no lineal: sección~\ref{sec:prob-estado}) \\
+4 & offset & u8 & Cero del A/D grabado (0--15) \\
+5 & cfg\_before & u16 & B\_Config antes \\
+7 & cfg\_after & u16 & B\_Config después \\
+9 & ack & u8 & Primer byte devuelto por el chip \\
+10 & diag & u8 & b0: el reinicio corta; b1: hubo ACK a Start\_CM; b7--b4: intento del barrido \\
+11 & cfg1 & u16 & ZMDI\_Config1 \\
+\bottomrule
+\end{tabularx}
+
+\section{Paquete 0x05: estado del ciclo (18 bytes)}
+
+\noindent\begin{tabularx}{\textwidth}{@{}rllX@{}}
+\toprule
+0 & packet\_id & u8 & 0x05 \\
+1 & phase & u8 & 0 reposo, 1 colocándose en B, 2 hacia A, 3 volviendo a B, 4 completado, 5 abortado \\
+2 & done & u16 & Repeticiones completadas \\
+4 & target & u16 & Repeticiones pedidas (0 = sin fin) \\
+6 & pos\_mrev & i32 & Posición actual × 1000 \\
+10 & target\_mrev & i32 & Recorrido B$\rightarrow$A pedido × 1000 \\
+14 & pos\_b\_mrev & i32 & Posición en la que ha quedado fijado B × 1000 \\
+\bottomrule
+\end{tabularx}
+
+\medskip
+\noindent La versión anterior de este paquete ocupaba 14 bytes y no llevaba el último campo. El
+servidor acepta las dos longitudes: con la trama corta asume \codigo{pos\_b\_mrev = 0}, de modo que
+un firmware y un servidor desparejados siguen informando de la fase
+(sección~\ref{sec:prob-ciclo}).
+
+\section{Órdenes}
+
+\noindent\begin{tabularx}{\textwidth}{@{}llX@{}}
+\toprule
+Orden & Carga útil & Notas \\
+\midrule
+INIT & \codigo{01 [addr]} & addr opcional, 1--247 \\
+STOP & \codigo{02} & \\
+SET\_PARAM & \codigo{03 id vv vv} & valor i16 \\
+MOVE\_A / MOVE\_B & \codigo{04} / \codigo{05} & A es arriba; B, abajo \\
+SHUTDOWN & \codigo{06} & \\
+SCAN & \codigo{07} & bloqueante \\
+HOME & \codigo{08} & \\
+LC\_PROGRAM & \codigo{09 bb bb cc cc} & B\_Config u16, ZMDI\_Config1 u16 \\
+LC\_QUERY & \codigo{0A} & \\
+LC\_HOLD & \codigo{0B park} & 0: alta impedancia; 1: líneas a masa \\
+CYCLE\_START & \codigo{0C mm tt tt vv vv rr rr} & mm = 0: hasta el final de carrera; 1: hasta la distancia indicada. Recorrido i16 (centi-rev), velocidad i16, repeticiones u16 \\
+CYCLE\_STOP & \codigo{0D} & \\
+\bottomrule
+\end{tabularx}
+
+\medskip
+\noindent Atajos de terminal (sólo con el decodificador en reposo): \codigo{i} INIT, \codigo{a}
+MOVE\_A, \codigo{b} MOVE\_B, \codigo{x} STOP, \codigo{h} HOME, \codigo{q} SHUTDOWN.
+
+\section{Tablas de códigos}
+
+\begin{table}[H]
+\centering
+\begin{minipage}[t]{0.47\textwidth}
+\centering
+\captionof{table}{Estados de la máquina.}\label{tab:estados}
+\begin{tabular}{@{}rl@{}}
+\toprule
+0 & IDLE (servo sin habilitar) \\
+1 & SCANNING \\
+2 & CONFIGURING \\
+3 & STOPPED (habilitado, consigna 0) \\
+4 & MOVING\_A \\
+5 & MOVING\_B \\
+6 & ERROR \\
+7 & HOMING \\
+8 & PROGRAMMING (célula) \\
+\bottomrule
+\end{tabular}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.47\textwidth}
+\centering
+\captionof{table}{Códigos de error.}\label{tab:errores}
+\begin{tabular}{@{}rl@{}}
+\toprule
+0x00 & Sin error \\
+0x01 & Célula no encontrada \\
+0x02 & Fallo en el escaneo del servo \\
+0x03 & Fallo al configurar el servo \\
+0x04 & Límite de fuerza \\
+\bottomrule
+\end{tabular}
+
+\vspace{4mm}
+\captionof{table}{Resultados de ModbusMaster.}\label{tab:mbstatus}
+\begin{tabular}{@{}rl@{}}
+\toprule
+0x00 & Correcto \\
+0x01--0x04 & Excepción del esclavo \\
+0xE0 & Dirección de esclavo incorrecta \\
+0xE1 & Función incorrecta \\
+0xE2 & Tiempo de espera agotado \\
+0xE3 & CRC incorrecto \\
+\bottomrule
+\end{tabular}
+\end{minipage}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Resultados de las órdenes de la célula.}
+\label{tab:lcres}
+\begin{tabular}{@{}rl@{}}
+\toprule
+0 & Nunca se ha intentado \\
+1 & Grabado y verificado tras un ciclo de alimentación \\
+2 & Ya estaba así: no se ha escrito la EEPROM \\
+3 & Rechazado: el eje no está parado \\
+4 & Rechazado: bus ocupado \\
+5 & El chip se reinicia pero no entra en modo comando \\
+6 & Escrito, pero la relectura no coincide \\
+7 & Sólo lectura de la configuración \\
+8 & Sigue alimentada con el reinicio activo: hay otro camino de alimentación \\
+9 & La célula no contesta: sin tensión o sin bus \\
+10 & Reinicio mantenido para medir \\
+\bottomrule
+\end{tabular}
+\end{table}

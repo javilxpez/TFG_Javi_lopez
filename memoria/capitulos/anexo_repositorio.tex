@@ -1,0 +1,60 @@
+\chapter{Estructura del repositorio}
+\label{anx:repo}
+
+\begin{longtable}{@{}L{0.38\textwidth}L{0.56\textwidth}@{}}
+\toprule
+Ruta & Contenido \\
+\midrule
+\endhead
+\multicolumn{2}{@{}l}{\textbf{Firmware}} \\
+\fichero{firmware\_posicion\_v2/} & Firmware final (Pico 2): Modbus, célula, \emph{homing}, ciclo B$\rightarrow$A$\rightarrow$B y protocolo. \fichero{i2c\_bus.h}: árbitro del bus I\textsuperscript{2}C. \\
+\fichero{firmware\_posicion/} & Versión anterior en modo velocidad entre extremos. \\
+\fichero{firmwarerasp/} & Primera versión para Pico 2, con doble núcleo. \\
+\fichero{firmware/} & Versión para XIAO ESP32-S3 con regulador de fuerza en modo par. \\
+\midrule
+\multicolumn{2}{@{}l}{\textbf{Programas de prueba}} \\
+\fichero{pcbtest/} & Entradas analógicas, entradas digitales y salidas de potencia. \\
+\fichero{test\_limit\_switches/} & Finales de carrera. \\
+\fichero{test\_rs485*/}, \fichero{test\_modbus\_scan/} & Bucle local PIO, transmisión, recepción y comunicación Modbus. \\
+\fichero{test\_loadcell*/} & ZSC31014 y lectura dual con NAU7802. \\
+\fichero{test\_servo\_modbus.py} & Barrido Modbus desde el PC con adaptador USB-RS485. \\
+\midrule
+\multicolumn{2}{@{}l}{\textbf{Ordenador}} \\
+\fichero{web\_monitor.py} & Servidor FastAPI: puente serie-WebSocket, grabación y configuración del mecanismo. \\
+\fichero{mecanismo.json} & Geometría del mecanismo (la escribe el servidor). \\
+\fichero{static/index.html} & Monitor en tiempo real. \\
+\fichero{static/ensayos.html} & Visor de ensayos con curva teórica y ajuste. \\
+\fichero{static/sim.html} & Configuración del mecanismo y simulador. \\
+\fichero{static/mecanismo.js} & Modelo del mecanismo compartido por las páginas. \\
+\fichero{static/tema.css}, \fichero{tema.js}, \fichero{nav.js} & Tema visual, colores de las gráficas y navegación común. \\
+\fichero{static/fui/} & Kit de interfaz externo (copia sin modificar). \\
+\fichero{leer\_ciclo.py} & Resumen de un ensayo en consola. \\
+\fichero{monitor.py}, \fichero{monitor\_posicion.py} & Monitores de terminal de versiones anteriores. \\
+\fichero{cycles/} & Ficheros de ensayo (CSV). \\
+\midrule
+\multicolumn{2}{@{}l}{\textbf{Hardware y documentación}} \\
+\fichero{tfg\_adaptador/} & Proyecto KiCad de la placa (revisión A) y copias de seguridad. \\
+\fichero{image (1).png} & Esquema de la revisión B. \\
+\fichero{README.MD} & Notas sobre la UART de la Pico y el doble núcleo. \\
+\fichero{memoria/} & Esta memoria: \fichero{TFG.tex}, \fichero{capitulos/}, \fichero{figuras/} y \fichero{bibliografia/}. \\
+\fichero{figuras/generar\_figuras.py} & Figuras y cifras de la campaña preliminar. \\
+\fichero{figuras/generar\_figuras21.py} & Figuras y cifras de la campaña del 21 de septiembre. \\
+\fichero{figuras/modelo\_mecanismo.py} & Modelo del capítulo~\ref{chap:modelo} portado a Python. \\
+\fichero{memoria/\_v1/} & Versión anterior de la memoria, antes de adoptar la plantilla de la ETSIDI. \\
+\fichero{old/} & Pruebas iniciales en modo par. \\
+\bottomrule
+\end{longtable}
+
+\section{Reproducción de los resultados}
+
+Con el repositorio y Python con \codigo{numpy}, \codigo{scipy} y \codigo{matplotlib} instalados:
+
+\begin{lstlisting}[language=bash,numbers=none]
+python memoria/figuras/generar_figuras.py     # campaña preliminar
+python memoria/figuras/generar_figuras21.py   # campaña del 21 de septiembre
+\end{lstlisting}
+
+Ambos programas leen \fichero{cycles/*.csv}, escriben las figuras en \fichero{memoria/figuras/} y
+dejan las cifras en \fichero{datos.json} y \fichero{datos21.json}, que son las que cita el
+capítulo~\ref{chap:resultados}. Los parámetros del mecanismo están al principio de
+\fichero{modelo\_mecanismo.py} y deben coincidir con los de \fichero{mecanismo.json}.

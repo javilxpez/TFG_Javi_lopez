@@ -54,43 +54,53 @@
             </select></label>
           <label id="w-L1" class="ancho">radio del cilindro (mm)
             <input type="number" id="f-L1" step="0.1" min="0.1" oninput="editado()"></label>
-          <label id="w-r0">radio al empezar r0 (mm)
-            <input type="number" id="f-r0" step="0.1" min="0.1" oninput="editado()"></label>
-          <label id="w-r1">radio al acabar r1 (mm)
-            <input type="number" id="f-r1" step="0.1" min="0.1" oninput="editado()"></label>
-          <label id="w-barr" class="ancho">la espiral dura (rev de tambor)
-            <input type="number" id="f-barr" step="0.01" min="0.01" oninput="editado()"></label>
+          <label id="w-r0">radio en el home r0 (mm)
+            <input type="number" id="f-r0" step="0.1" min="0.1" oninput="editado()"
+                   title="Radio de la espiral donde trabaja el cable con el motor en el home."></label>
+          <label id="w-r1">radio al final r1 (mm)
+            <input type="number" id="f-r1" step="0.1" min="0.1" oninput="editado()"
+                   title="Radio al final de la espiral, girando el motor en positivo. Puede ser mayor o menor que r0: menor es la caracola montada al revés."></label>
+          <label id="w-barr" class="ancho"><span id="t-barr">de r0 a r1 hay (rev de tambor)</span>
+            <input type="number" id="f-barr" step="0.01" min="0.01" oninput="editado()"
+                   title="Vueltas de tambor del barrido A→B, en sentido positivo. En la caracola es lo que dura la espiral de r0 a r1; fuera de ese tramo el radio se queda en el extremo."></label>
 
           <div class="sub">Transmisión</div>
           <label>reducción (rev motor / rev tambor)
             <input type="number" id="f-red" step="0.01" min="0.01" oninput="editado()"
                    title="Vueltas del eje del motor por cada vuelta del tambor de salida."></label>
-          <label>giro positivo del motor
+          <label>al avanzar el ciclo el cable
             <select id="f-sentido" onchange="editado()">
-              <option value="-1">desenrolla (cable más largo)</option>
-              <option value="1">enrolla (cable más corto)</option>
+              <option value="1">se acorta (recoge de B hacia A)</option>
+              <option value="-1">se alarga</option>
             </select></label>
+          <div class="ancho line hint" id="s-recorrido" style="margin-top:0"></div>
 
           <div class="sub">Barra y mástil</div>
-          <label>L2 mástil vertical (mm)
+          <label>L2 altura de D sobre O (mm)
             <input type="number" id="f-L2" step="1" min="0.1" oninput="editado()"
-                   title="De la articulación O, en vertical, hasta la salida del cable D."></label>
+                   title="Altura vertical de la salida del cable D sobre la articulación O."></label>
+          <label>dx · D a la izquierda de O (mm)
+            <input type="number" id="f-dx" step="1" oninput="editado()"
+                   title="Desplazamiento horizontal entre D y O: 25 mm que D está a la izquierda del centro más 40 mm que O está a la derecha. Negativo si D queda a la derecha de O."></label>
           <label>L3 de O al cable (mm)
             <input type="number" id="f-L3" step="1" min="0.1" oninput="editado()"></label>
           <label>L4 del cable a la pesa (mm)
             <input type="number" id="f-L4" step="1" min="0" oninput="editado()"></label>
-          <label>barra en el home θ0 (°)
-            <input type="number" id="f-th0" step="1" min="-90" max="90" oninput="editado()"
-                   title="Desde la horizontal: +90 barra vertical hacia arriba por el mástil, 0 horizontal, −90 colgando."></label>
+          <label>e1 · cable sobre el eje (mm)
+            <input type="number" id="f-e1" step="1" oninput="editado()"
+                   title="El cable tira este tanto por encima del eje de la barra, en perpendicular. Negativo si tira por debajo."></label>
+          <label>e2 · pesa bajo el eje (mm)
+            <input type="number" id="f-e2" step="1" oninput="editado()"
+                   title="La pesa cuelga este tanto por debajo del eje de la barra, en perpendicular. Negativo si va por encima."></label>
+          <label>α en B (°)
+            <input type="number" id="f-a0" step="1" min="0" max="180" oninput="editado()"
+                   title="Ángulo en O entre el mástil L2 y la barra: 0 = barra plegada sobre el mástil, 90 = perpendicular, 180 = barra en prolongación del mástil."></label>
 
-          <div class="sub">Carga y ciclo</div>
+          <div class="sub">Carga</div>
           <label>masa (kg)
             <input type="number" id="f-m" step="0.01" min="0" oninput="editado()"></label>
           <label>g (m/s²)
             <input type="number" id="f-g" step="0.01" min="0" oninput="editado()"></label>
-          <label class="ancho">recorrido A→B del motor (rev)
-            <input type="number" id="f-cicloRev" step="0.01" oninput="editado()"
-                   title="Sólo para simular sin un ensayo cargado. Con un ensayo se usa su posición real."></label>
         </div>
         <div class="acciones">
           <button id="b-guardar" class="primario" onclick="guardar()" disabled>Guardar y propagar</button>
@@ -104,8 +114,8 @@
         <div class="title">Comprobación del recorrido</div>
         <div class="line hint" id="s-comprob" style="margin-top:0"></div>
         <div class="grid" style="margin-top:9px">
-          <label class="ancho">¿cuánto motor hace falta para llevar la barra a…? (°)
-            <input type="number" id="s-obj" value="10" step="1" min="-90" max="90" oninput="pintarTodo()"></label>
+          <label class="ancho">¿cuánto motor hace falta para llevar α a…? (°)
+            <input type="number" id="s-obj" value="80" step="1" min="0" max="180" oninput="pintarTodo()"></label>
         </div>
         <div class="line hint" id="s-inv"></div>
       </div>
@@ -129,7 +139,7 @@
         <canvas id="gTau" class="graf"></canvas>
       </div>
       <div class="card">
-        <div class="title">Ángulo de la barra frente al giro del motor</div>
+        <div class="title">Ángulo α entre la línea O→D y la barra frente al giro del motor</div>
         <canvas id="gAng" class="graf"></canvas>
       </div>
     </div>
@@ -146,7 +156,7 @@
 const TEMA = coloresTema();
 temaGraficas();
 const el = id => document.getElementById(id);
-const NUM = ['L1', 'r0', 'r1', 'barr', 'L2', 'L3', 'L4', 'm', 'g', 'th0', 'red', 'cicloRev'];
+const NUM = ['L1', 'r0', 'r1', 'barr', 'L2', 'dx', 'L3', 'L4', 'e1', 'e2', 'm', 'g', 'a0', 'red'];
 const GRAD = Math.PI / 180;
 
 let guardado = null;   // lo que hay ahora mismo en el servidor
@@ -169,7 +179,13 @@ function escribirForm(q) {
 function visibilidad() {
   const car = el('f-tipo').value === 'car';
   el('w-L1').hidden = car;
-  el('w-r0').hidden = el('w-r1').hidden = el('w-barr').hidden = !car;
+  el('w-r0').hidden = el('w-r1').hidden = !car;
+  el('t-barr').textContent = car ? 'de r0 a r1 hay (rev de tambor)' : 'el ciclo gira el tambor (rev)';
+  // El recorrido del motor no se pide: sale del barrido del tambor y la reducción.
+  const q = leerForm(), rv = Mec.recorridoMotor(q);
+  el('s-recorrido').innerHTML = Number.isFinite(rv)
+    ? `recorrido A→B del motor = ${q.barr} rev de tambor × reducción ${q.red} = <b>${rv.toFixed(2)} rev</b>`
+    : 'recorrido A→B del motor: falta el barrido o la reducción';
 }
 const normal = q => Object.fromEntries(Object.keys(MEC_DEFAULTS).map(k => [k, q[k]]));
 const sucio = () => guardado && JSON.stringify(normal(leerForm())) !== JSON.stringify(normal(guardado));
@@ -185,6 +201,7 @@ function estadoGuardado(msg, cls) {
   const hay = sucio();
   el('b-guardar').disabled = !hay || !!err;
   el('b-descartar').disabled = !hay;
+  if (Mec.aviso() && !hay) { s.className = 'line err'; s.textContent = Mec.aviso(); return; }
   if (msg)       { s.className = 'line ' + cls; s.textContent = msg; }
   else if (err)  { s.className = 'line err';  s.textContent = err; }
   else if (hay)  { s.className = 'line warn'; s.textContent = 'cambios sin guardar: Ensayos sigue con los anteriores'; }
@@ -208,31 +225,33 @@ function porDefecto() { escribirForm(MEC_DEFAULTS); editado(); }
 
 window.addEventListener('beforeunload', e => { if (sucio()) { e.preventDefault(); e.returnValue = ''; } });
 
-// ── Cursor: dónde está el motor ───────────────────────────────────────────
-// Sin ensayo, el cursor recorre A→B→A sobre el recorrido configurado. Con un ensayo,
-// recorre sus muestras y usa la posición medida, contada desde la primera (el home).
+// ── Cursor: por dónde va el ciclo ─────────────────────────────────────────
+// Sin ensayo, el cursor recorre B→A→B sobre el recorrido que da la mecánica. Con un
+// ensayo, recorre sus muestras y usa el avance medido desde la primera, que es B.
 function posCursor(q) {
   const f = parseInt(el('s-cursor').value) / 1000;
   if (ensayo) {
-    const i = Math.round(f * (ensayo.rel.length - 1));
-    return { rel: ensayo.rel[i], i, t: ensayo.t[i] };
+    const i = Math.round(f * (ensayo.av.length - 1));
+    return { av: ensayo.av[i], i, t: ensayo.t[i] };
   }
-  return { rel: q.cicloRev * (f < 0.5 ? 2 * f : 2 - 2 * f), tramo: f < 0.5 ? 'ida A→B' : 'vuelta B→A' };
+  const rec = Mec.recorridoMotor(q);
+  return { av: rec * (f < 0.5 ? 2 * f : 2 - 2 * f), tramo: f < 0.5 ? 'ida B→A' : 'vuelta A→B' };
 }
 
-// Rango de giro que se dibuja y se grafica: el del ensayo si lo hay, si no 0..cicloRev.
+// Rango de avance que se dibuja y se grafica: el del ensayo si lo hay, si no 0..barr·red.
 function rangoRev(q) {
-  if (ensayo) return [Math.min(...ensayo.rel), Math.max(...ensayo.rel)];
-  return [Math.min(0, q.cicloRev), Math.max(0, q.cicloRev)];
+  if (ensayo) return [Math.min(...ensayo.av), Math.max(...ensayo.av)];
+  const rec = Mec.recorridoMotor(q);
+  return [Math.min(0, rec), Math.max(0, rec)];
 }
 
 function moverCursor() {
   const q = leerForm();
   if (Mec.validar(q)) return;
-  const p = posCursor(q), st = Mec.estado(q, p.rel);
+  const p = posCursor(q), st = Mec.estado(q, p.av);
   dibujar(q, st, p);
   chipsEstado(q, st, p);
-  for (const g of [gTau, gAng]) if (g) { g.$cursorX = p.rel; g.draw(); }
+  for (const g of [gTau, gAng]) if (g) { g.$cursorX = p.av; g.draw(); }
 }
 
 function play() {
@@ -252,7 +271,7 @@ function play() {
 
 // ── Dibujo del mecanismo ──────────────────────────────────────────────────
 // Coordenadas del mundo en mm con O en el origen, y fijas mientras no cambie la
-// geometría: el encuadre cubre todo lo que la barra PODRÍA hacer (de −90 a +90°),
+// geometría: el encuadre cubre todo lo que la barra PODRÍA hacer (α de 0 a 180°),
 // no sólo lo que hace en el ciclo, para que la escala no salte al mover el cursor.
 function dibujar(q, st, p) {
   const cv = el('mec'), dpr = window.devicePixelRatio || 1;
@@ -266,7 +285,7 @@ function dibujar(q, st, p) {
 
   const R = q.L3 + q.L4;
   const rmax = q.tipo === 'car' ? Math.max(q.r0, q.r1) : q.L1;
-  const xmin = -Math.max(rmax * 1.6, 70), xmax = R + 30;
+  const xmin = Math.min(-q.dx - rmax * 1.6, -Math.max(rmax * 1.6, 70)), xmax = R + 30;
   const ymin = -R - 80, ymax = Math.max(q.L2 + rmax + 30, R + 20);
   const k = Math.min((W - 30) / (xmax - xmin), (H - 30) / (ymax - ymin));
   const ox = 15 + (W - 30 - (xmax - xmin) * k) / 2 - xmin * k;
@@ -300,7 +319,7 @@ function dibujar(q, st, p) {
     if (etiqueta) texto(etiqueta, x2 + 6 * Math.cos(a), y2 + 10 * Math.sin(a) + (dy > 0 ? 8 : -8), color, dx < 0 ? 'right' : 'left');
   };
 
-  // Referencias: horizontal por O y la zona que la barra puede barrer (±90°).
+  // Referencias: horizontal por O y la zona que la barra puede barrer (α de 0 a 180°).
   linea(xmin + 10, 0, xmax - 5, 0, TEMA.rejilla, 1, [5, 4]);
   ctx.save(); ctx.strokeStyle = TEMA.reglaSuave; ctx.lineWidth = 1; ctx.setLineDash([3, 4]);
   ctx.beginPath(); ctx.arc(X(0), Y(0), R * k, Math.PI / 2, -Math.PI / 2, true); ctx.stroke(); ctx.restore();
@@ -317,12 +336,19 @@ function dibujar(q, st, p) {
       linea(0, 0, R * Math.cos(a * GRAD), R * Math.sin(a * GRAD), TEMA.regla, 3, [6, 4]);
   }
 
-  // Mástil vertical O→D y base.
-  const D = { x: 0, y: q.L2 };
-  linea(0, 0, 0, q.L2, TEMA.tinta2, 4);
+  // Salida del cable: D sube L2 y queda dx a la izquierda de O. Se dibuja el triángulo
+  // L2 / dx en trazo fino, porque esa inclinación es la que cambia la tensión.
+  const D = { x: -q.dx, y: q.L2 };
+  linea(0, 0, D.x, D.y, TEMA.tinta2, 4);
   ctx.save(); ctx.fillStyle = TEMA.rejilla; ctx.fillRect(X(0) - 16, Y(0) + 6, 32, 7); ctx.restore();
-  texto('L2 = ' + q.L2 + ' mm', X(0) - 10, Y(q.L2 / 2), TEMA.tinta, 'right');
-  texto('(vertical)', X(0) - 10, Y(q.L2 / 2) + 13, TEMA.tinta2, 'right', 10);
+  if (q.dx) {
+    linea(0, 0, 0, q.L2, TEMA.rejilla, 1, [4, 4]);          // la vertical de O
+    linea(0, q.L2, D.x, D.y, TEMA.rejilla, 1, [4, 4]);      // el desplazamiento dx
+    texto(`dx = ${q.dx} mm`, X(D.x / 2), Y(q.L2) - 8, TEMA.tinta2, 'center', 10);
+  }
+  texto(`|OD| = ${Mec.od(q).toFixed(1)} mm`, X(D.x) - 10, Y(q.L2 / 2), TEMA.tinta, 'right');
+  texto(`L2 ${q.L2} · ${(90 - Mec.incD(q)).toFixed(1)}° de la vertical`,
+        X(D.x) - 10, Y(q.L2 / 2) + 13, TEMA.tinta2, 'right', 10);
 
   // Tambor en D, girando con φ. La espiral se dibuja entera, y el radio que trabaja
   // ahora mismo se marca: es el brazo del par.
@@ -350,34 +376,43 @@ function dibujar(q, st, p) {
     const { cmin, cmax } = Mec.limites(q);
     texto(`Fuera del mecanismo: el tambor pide c = ${st.c.toFixed(0)} mm de cable`,
           W / 2, 22, TEMA.rojo, 'center', 12);
-    texto(`y sólo caben entre ${cmin.toFixed(0)} (barra a +90°) y ${cmax.toFixed(0)} mm (barra a −90°)`,
+    texto(`y sólo caben entre ${cmin.toFixed(0)} (α = 0°) y ${cmax.toFixed(0)} mm (α = 180°), o la barra pasa de ±90°`,
           W / 2, 38, TEMA.rojo, 'center', 12);
     return;
   }
 
-  // Barra, cable, pesa.
+  // Barra, cable y pesa. El cable no tira del eje sino de A' (e1 por encima, en
+  // perpendicular), y la pesa cuelga de P' (e2 por debajo): los dos desvíos se dibujan.
   const t = st.th * GRAD, cs = Math.cos(t), sn = Math.sin(t);
+  const nx = -sn, ny = cs;                                  // perpendicular a la barra
   const A = { x: q.L3 * cs, y: q.L3 * sn }, P = { x: R * cs, y: R * sn };
-  linea(D.x, D.y, A.x, A.y, TEMA.azul, 2);
+  const Ap = { x: A.x + q.e1 * nx, y: A.y + q.e1 * ny };
+  const Pp = { x: P.x - q.e2 * nx, y: P.y - q.e2 * ny };
+  linea(D.x, D.y, Ap.x, Ap.y, TEMA.azul, 2);
   linea(0, 0, P.x, P.y, TEMA.texto, 5);
+  if (q.e1) linea(A.x, A.y, Ap.x, Ap.y, TEMA.azul, 1, [2, 2]);
+  if (q.e2) linea(P.x, P.y, Pp.x, Pp.y, TEMA.ambar, 1, [2, 2]);
   const hilo = 45;
-  linea(P.x, P.y, P.x, P.y - hilo, TEMA.tinta, 1.2);
+  linea(Pp.x, Pp.y, Pp.x, Pp.y - hilo, TEMA.tinta, 1.2);
   ctx.save(); ctx.fillStyle = TEMA.ambar;
-  ctx.fillRect(X(P.x) - 14, Y(P.y - hilo), 28, 20); ctx.restore();
+  ctx.fillRect(X(Pp.x) - 14, Y(Pp.y - hilo), 28, 20); ctx.restore();
   punto(0, 0, 6, TEMA.tinta);
-  punto(A.x, A.y, 4.5, TEMA.azul);
-  punto(P.x, P.y, 3.5, TEMA.ambar);
-  texto('A', X(A.x) + 8, Y(A.y) + 12, TEMA.azul);
-  texto(`c = ${st.c.toFixed(1)} mm`, X((D.x + A.x) / 2) + 8, Y((D.y + A.y) / 2), TEMA.azul);
-  texto(`${q.m} kg`, X(P.x) + 18, Y(P.y - hilo) + 10, TEMA.ambar);
+  punto(A.x, A.y, 3, TEMA.tinta2);
+  punto(Ap.x, Ap.y, 4.5, TEMA.azul);
+  punto(Pp.x, Pp.y, 3.5, TEMA.ambar);
+  texto("A'", X(Ap.x) + 8, Y(Ap.y) - 8, TEMA.azul);
+  texto(`c = ${st.c.toFixed(1)} mm`, X((D.x + Ap.x) / 2) + 8, Y((D.y + Ap.y) / 2), TEMA.azul);
+  texto(`${q.m} kg`, X(Pp.x) + 18, Y(Pp.y - hilo) + 10, TEMA.ambar);
+  texto(`brazos: cable ${st.brazoCable.toFixed(1)} · peso ${st.brazoPeso.toFixed(1)} mm`,
+        12, 61, TEMA.tinta, 'left', 10);
 
   // Ángulos. θ desde la horizontal (el que se configura), α entre mástil y barra, y β
   // entre barra y cable en A: son los tres "90°" que se pueden estar diciendo.
   arco(0, 0, 38, 0, st.th, TEMA.verde);
   texto(`θ = ${st.th.toFixed(1)}°`, X(0) + 44 * Math.cos(-t / 2), Y(0) + 44 * Math.sin(-t / 2) + (st.th >= 0 ? -2 : 10), TEMA.verde);
-  arco(0, 0, 24, 90, st.th, TEMA.morado);
-  const aMid = (90 + st.th) / 2 * GRAD;
-  texto(`α = ${(90 - st.th).toFixed(1)}°`, X(0) + 30 * Math.cos(-aMid) - 4, Y(0) + 30 * Math.sin(-aMid) - 10, TEMA.morado, 'right');
+  arco(0, 0, 24, Mec.incD(q), st.th, TEMA.morado);
+  const aMid = (Mec.incD(q) + st.th) / 2 * GRAD;
+  texto(`α = ${st.a.toFixed(1)}°`, X(0) + 30 * Math.cos(-aMid) - 4, Y(0) + 30 * Math.sin(-aMid) - 10, TEMA.morado, 'right');
   const aAO = Math.atan2(-A.y, -A.x) / GRAD, aAD = Math.atan2(D.y - A.y, D.x - A.x) / GRAD;
   let beta = Math.abs(aAD - aAO); if (beta > 180) beta = 360 - beta;
   let a1 = aAO, a2 = aAD; if (Math.abs(a2 - a1) > 180) { if (a2 < a1) a2 += 360; else a1 += 360; }
@@ -387,23 +422,25 @@ function dibujar(q, st, p) {
 
   // Fuerzas a escala entre sí: la tensión en A hacia D y el peso en la pesa.
   const peso = q.m * q.g, escN = 70 / Math.max(st.T, peso, 1e-9);
-  const ux = (D.x - A.x) / st.c, uy = (D.y - A.y) / st.c;
-  flecha(A.x, A.y, ux * st.T * escN, -uy * st.T * escN, TEMA.rojo, `T = ${st.T.toFixed(1)} N`);
-  flecha(P.x, P.y - hilo - 20 / k, 0, peso * escN, TEMA.ambar, `m·g = ${peso.toFixed(1)} N`);
+  const ux = (D.x - Ap.x) / st.c, uy = (D.y - Ap.y) / st.c;
+  flecha(Ap.x, Ap.y, ux * st.T * escN, -uy * st.T * escN, TEMA.rojo, `T = ${st.T.toFixed(1)} N`);
+  flecha(Pp.x, Pp.y - hilo - 20 / k, 0, peso * escN, TEMA.ambar, `m·g = ${peso.toFixed(1)} N`);
 
   texto(p.t != null ? `t = ${p.t.toFixed(2)} s` : p.tramo, 12, 16, TEMA.tinta);
-  texto(`motor ${p.rel >= 0 ? '+' : ''}${p.rel.toFixed(3)} rev desde el home`, 12, 31, TEMA.texto);
+  texto(`avance ${p.av >= 0 ? '+' : ''}${p.av.toFixed(3)} rev de motor desde B`, 12, 31, TEMA.texto);
   texto(`τ = T·r = ${st.tau.toFixed(3)} N·m`, 12, 46, TEMA.rojo);
 }
 
 function chipsEstado(q, st, p) {
   const c = (k, v) => `<span class="chip">${k} <b>${v}</b></span>`;
-  let h = c('motor', (p.rel >= 0 ? '+' : '') + p.rel.toFixed(3) + ' rev')
+  let h = c('avance', (p.av >= 0 ? '+' : '') + p.av.toFixed(3) + ' rev')
         + c('tambor', (st.phi / (2 * Math.PI)).toFixed(3) + ' rev')
         + c('r', st.r.toFixed(1) + ' mm') + c('cable pagado', st.s.toFixed(1) + ' mm')
         + c('c', st.c.toFixed(1) + ' mm');
   if (!st.fuera)
-    h += c('θ', st.th.toFixed(1) + '°') + c('α', (90 - st.th).toFixed(1) + '°')
+    h += c('α', st.a.toFixed(1) + '°') + c('θ desde la horizontal', st.th.toFixed(1) + '°')
+       + c('brazo del cable', st.brazoCable.toFixed(1) + ' mm')
+       + c('brazo del peso', st.brazoPeso.toFixed(1) + ' mm')
        + c('T', st.T.toFixed(2) + ' N') + c('τ', st.tau.toFixed(3) + ' N·m');
   else h += '<span class="chip" style="color:var(--red)">fuera del mecanismo</span>';
   if (ensayo && p.i != null)
@@ -415,35 +452,52 @@ function chipsEstado(q, st, p) {
 // ── Comprobación: lo que el modelo dice del recorrido ─────────────────────
 function comprobar(q) {
   const cmp = el('s-comprob');
-  const home = Mec.estado(q, 0);
+  const enB = Mec.estado(q, 0);
   const [ra, rb] = rangoRev(q);
   const extremo = Math.abs(rb) >= Math.abs(ra) ? rb : ra;
   const eB = Mec.estado(q, extremo);
   const { cmin, cmax } = Mec.limites(q);
-  // Topes: cuánto motor hay hasta que la barra llega a la vertical por cada lado.
-  const aTop = Mec.revParaAngulo(q, 90), aBot = Mec.revParaAngulo(q, -90);
+  // Topes: cuánto motor hay hasta que la barra se pliega sobre el mástil o queda en su prolongación.
+  const aPleg = Mec.revParaAngulo(q, 0), aProl = Mec.revParaAngulo(q, 180);
   // Redondeo antes del signo: la bisección deja −1e-12 en el home y saldría "-0.00".
   const fmt = v => { if (v == null) return '—'; const r = Math.round(v * 100) / 100 || 0;
                      return (r >= 0 ? '+' : '') + r.toFixed(2); };
-  let h = `Home: barra a <b>${home.th.toFixed(1)}°</b> desde la horizontal, cable <b>${home.c.toFixed(1)} mm</b>`
-        + ` (entre ${cmin.toFixed(0)} y ${cmax.toFixed(0)}).<br>`;
+  // Un estado fuera del mecanismo no trae ángulo: se escribe una raya, no se llama a
+  // toFixed sobre null, que es lo que tiraba la página entera al arrancar.
+  const ang = e => e.a == null ? '—' : e.a.toFixed(1) + '°';
+  const gr  = (x, y) => (x == null || y == null) ? '—' : Math.abs(x - y).toFixed(1) + '°';
+  if (enB.fuera && enB.a == null) {
+    cmp.className = 'line err';
+    cmp.innerHTML = `Con α = ${q.a0}° el cable en B (${enB.c.toFixed(1)} mm) cae en el límite`
+      + ` geométrico: no hay ángulo. Baja α en B —con dx = ${q.dx} mm, α = 180° es singular—.`;
+    el('s-inv').textContent = '';
+    return;
+  }
+  let h = `Salida del cable D: |OD| = <b>${Mec.od(q).toFixed(1)} mm</b>,`
+        + ` ${(90 - Mec.incD(q)).toFixed(1)}° inclinada de la vertical (L2 ${q.L2}, dx ${q.dx}).`
+        + ` Tiro a <b>${Mec.L3ef(q).toFixed(1)} mm</b> de O,`
+        + ` ${Mec.delta(q).toFixed(1)}° adelantado del eje (e1 ${q.e1}, e2 ${q.e2}).<br>`
+        + `En B, donde arranca el ensayo: α = <b>${ang(enB)}</b>,`
+        + ` barra a ${enB.th == null ? '—' : enB.th.toFixed(1) + '°'} de la horizontal,`
+        + ` cable <b>${enB.c.toFixed(1)} mm</b> (entre ${cmin.toFixed(0)} y ${cmax.toFixed(0)}).<br>`;
   if (eB.fuera) {
     cmp.className = 'line err';
-    h += `En ${fmt(extremo)} rev de motor el tambor pide <b>${eB.c.toFixed(0)} mm</b> de cable: la barra`
-       + ` tendría que pasar de la vertical. El recorrido no cabe en el mecanismo.<br>`;
+    h += `Con ${fmt(extremo)} rev de avance el tambor pide <b>${eB.c.toFixed(0)} mm</b> de cable: la barra`
+       + ` tendría que pasar de 0° o de 180°. El recorrido no cabe en el mecanismo.<br>`;
   } else {
     cmp.className = 'line hint';
-    h += `${ensayo ? 'Extremo del ensayo' : 'En B'} (${fmt(extremo)} rev de motor, ${(extremo / q.red).toFixed(3)} rev de tambor):`
-       + ` barra a <b>${eB.th.toFixed(1)}°</b>, cable ${eB.c.toFixed(1)} mm,`
-       + ` recorrido de <b>${Math.abs(eB.th - home.th).toFixed(1)}°</b>.<br>`;
+    h += `${ensayo ? 'Extremo del ensayo' : 'En A'} (${fmt(extremo)} rev de avance, ${(extremo / q.red).toFixed(3)} rev de tambor):`
+       + ` α = <b>${ang(eB)}</b>, cable ${eB.c.toFixed(1)} mm,`
+       + ` recorrido de <b>${gr(eB.a, enB.a)}</b>.<br>`;
   }
-  h += `Topes: barra vertical arriba (+90°) a ${fmt(aTop)} rev de motor, colgando (−90°) a ${fmt(aBot)} rev.`;
+  h += `Topes: α = 0° con ${fmt(aPleg)} rev de avance, α = 180° con ${fmt(aProl)} rev`
+     + ` (α = 180° es singular: el cable se alinea con la barra y la tensión no tiene solución).`;
   if (ensayo) {
-    const eF = Mec.estado(q, ensayo.rel[ensayo.rel.length - 1]);
+    const eF = Mec.estado(q, ensayo.av[ensayo.av.length - 1]);
     if (!eF.fuera)
-      h += `<br>Final del ensayo: barra a <b>${eF.th.toFixed(1)}°</b>`
-         + ` (${(eF.th - home.th >= 0 ? '+' : '')}${(eF.th - home.th).toFixed(1)}° respecto del home,`
-         + ` con ${fmt(ensayo.rel[ensayo.rel.length - 1])} rev de motor sin devolver).`;
+      h += `<br>Final del ensayo: α = <b>${ang(eF)}</b>`
+         + ` (${gr(eF.a, enB.a)} respecto de B,`
+         + ` con ${fmt(ensayo.av[ensayo.av.length - 1])} rev de avance sin devolver).`;
   }
   cmp.innerHTML = h;
 
@@ -451,8 +505,8 @@ function comprobar(q) {
   const rv = Number.isFinite(obj) ? Mec.revParaAngulo(q, obj) : null;
   inv.innerHTML = rv == null
     ? 'ese ángulo no se alcanza con esta geometría'
-    : `Barra a ${obj}°: <b>${fmt(rv)} rev de motor</b> desde el home (${(rv / q.red).toFixed(3)} rev de tambor).`
-      + ` Es la posición B que habría que poner en el ciclo.`;
+    : `α = ${obj}°: <b>${fmt(rv)} rev de avance</b> desde B (${(rv / q.red).toFixed(3)} rev de tambor).`
+      + ` Es el recorrido B→A que tendría que hacer el ciclo.`;
 }
 
 // ── Gráficas contra el giro del motor ─────────────────────────────────────
@@ -478,11 +532,11 @@ function graficas(q) {
     const rv = a + (b - a) * i / n, st = Mec.estado(q, rv);
     T.push({ x: rv, y: st.fuera ? null : st.T });
     tau.push({ x: rv, y: st.fuera ? null : st.tau });
-    ang.push({ x: rv, y: st.fuera ? null : st.th });
+    ang.push({ x: rv, y: st.fuera ? null : st.a });
   }
   const base = { responsive: true, animation: false,
     plugins: { legend: { labels: { color: TEMA.tinta, boxWidth: 10, font: { size: 10 } } } } };
-  const ejeX = { type: 'linear', min: a, max: b, title: { display: true, text: 'giro del motor desde el home (rev)', color: TEMA.tinta },
+  const ejeX = { type: 'linear', min: a, max: b, title: { display: true, text: 'avance del motor desde B (rev)', color: TEMA.tinta },
                  ticks: { color: TEMA.tinta }, grid: { color: TEMA.rejilla } };
   const lin = (label, color, data, yAxisID) =>
     ({ label, data, yAxisID, showLine: true, pointRadius: 0, borderWidth: 1.8, borderColor: color, spanGaps: false });
@@ -490,12 +544,12 @@ function graficas(q) {
     gTau = new Chart(el('gTau'), { type: 'scatter', data: { datasets: [] }, options: { ...base,
       scales: { x: ejeX, y: eje('tensión (N)', TEMA.azul), y2: eje('par (N·m)', TEMA.rojo, 'right') } } });
     gAng = new Chart(el('gAng'), { type: 'scatter', data: { datasets: [] }, options: { ...base,
-      scales: { x: { ...ejeX }, y: { ...eje('θ desde la horizontal (°)', TEMA.verde), min: -90, max: 90 } } } });
+      scales: { x: { ...ejeX }, y: { ...eje('α entre O→D y la barra (°)', TEMA.verde), min: 0, max: 180 } } } });
   }
   gTau.options.scales.x.min = gAng.options.scales.x.min = a;
   gTau.options.scales.x.max = gAng.options.scales.x.max = b;
   gTau.data.datasets = [lin('tensión T', TEMA.azul, T, 'y'), lin('par τ = T·r', TEMA.rojo, tau, 'y2')];
-  gAng.data.datasets = [lin('ángulo θ', TEMA.verde, ang, 'y')];
+  gAng.data.datasets = [lin('ángulo α', TEMA.verde, ang, 'y')];
   gTau.update('none'); gAng.update('none');
 }
 
@@ -526,7 +580,7 @@ async function cargarEnsayo() {
   el('estado').textContent = 'leyendo ' + nombre + '…';
   const texto = await (await fetch('/cycles/' + encodeURIComponent(nombre))).text();
   let cols = null;
-  const e = { nombre, t: [], rel: [], par: [], lc1: [] };
+  const e = { nombre, t: [], rel: [], av: [], par: [], lc1: [] };
   let p0 = null;
   for (const linea of texto.split('\n')) {
     if (!linea.trim() || linea.startsWith('#')) continue;
@@ -538,10 +592,14 @@ async function cargarEnsayo() {
     e.par.push(f.par_x10 || 0); e.lc1.push(f.lc1_base || 0);
   }
   if (!e.t.length) { el('estado').textContent = nombre + ' está vacío'; return; }
-  ensayo = e;
-  el('estado').textContent = `${nombre} · ${e.t.length} muestras · posición contada desde la primera`;
-  // Con un ensayo se arranca en su extremo, que es donde más se ve si la geometría cuadra.
+  // El avance se cuenta desde la primera muestra (B) y con el signo del propio ensayo:
+  // el ciclo B → A → B va hacia pos_rev menores, y los ensayos viejos iban al contrario.
   const iExt = e.rel.reduce((b, v, i) => Math.abs(v) > Math.abs(e.rel[b]) ? i : b, 0);
+  const dir = e.rel[iExt] < 0 ? -1 : 1;
+  e.av = e.rel.map(v => v * dir);
+  ensayo = e;
+  el('estado').textContent = `${nombre} · ${e.t.length} muestras · avance ${dir < 0 ? 'hacia pos_rev menores (B→A)' : 'hacia pos_rev mayores'}`;
+  // Se arranca en el extremo del ensayo, que es donde más se ve si la geometría cuadra.
   el('s-cursor').value = Math.round(iExt / Math.max(1, e.rel.length - 1) * 1000);
   pintarTodo();
 }
@@ -559,8 +617,14 @@ Mec.alCambiar(q => {
   guardado = await Mec.cargar();
   escribirForm(guardado);
   estadoGuardado();
-  pintarTodo();
+  // Primero la lista y luego el dibujo, y el dibujo protegido: un fallo pintando dejaba
+  // la página a medias —sin ensayos en el desplegable— y parecía que no había ficheros.
   listarEnsayos();
+  try {
+    pintarTodo();
+  } catch (e) {
+    el('estado').textContent = 'no se pudo pintar el mecanismo: ' + e.message;
+  }
   if (document.fonts) document.fonts.ready.then(moverCursor);
 })();
 </script>
