@@ -12,6 +12,7 @@ import asyncio
 import glob
 import json
 import logging
+import math
 import os
 import struct
 import sys
@@ -170,8 +171,12 @@ shared = {
     "home_range_valid": False,
     "lc_gain": None,       # lo que el firmware dice que hay grabado en la célula
     "lc_offset": None,
-    "lc1_calib": 14.41,    # cuentas/N (positiva: las cuentas crecen con la tensión)
-    "lc1_offset": 51.78,   # N reales en el punto donde se puso la tara
+    # Medido colgando y descolgando la pesa de 2 kg en los dos extremos del recorrido:
+    # abajo 8325 → 8275 cuentas, arriba 8330 → 7900. Son 50 y 430 cuentas para los mismos
+    # 19.6 N, y dan la misma constante con un 1% de diferencia. Las cuentas BAJAN al tirar,
+    # de ahí el signo. El 14.41 anterior venía de un ajuste y comprimía la curva 5 veces.
+    "lc1_calib": -10.2,    # cuentas/N (negativa: las cuentas bajan al aumentar la tensión)
+    "lc1_offset": 0.0,     # N reales en el punto donde se puso la tara (tara sin pesa)
 }
 shared_lock = threading.Lock()
 # Última fase de ciclo registrada, para escribir una línea sólo cuando cambia. La escribe
@@ -481,12 +486,13 @@ app.mount("/fui", StaticFiles(directory=Path(__file__).parent / "static" / "fui"
 MECH_FILE = Path(__file__).parent / "mecanismo.json"
 # El recorrido A→B del motor no se guarda: sale de barr × red (Mec.recorridoMotor).
 MECH_DEFAULTS = {
-    "tipo": "car", "L1": 25.0, "r0": 45.0, "r1": 25.0, "barr": 0.3,
+    "tipo": "car", "L1": 25.0, "r0": 28.18, "r1": 56.0, "barr": 0.367,
     "L2": 290.0, "dx": 65.0, "L3": 95.0, "L4": 110.0, "e1": 20.0, "e2": 20.0, "m": 2.0, "g": 9.81,
-    "a0": 114.0, "red": 5.5, "sentido": 1,
+    "th0": -80.0, "red": 5.0, "sentido": 1,
 }
-# (mínimo, máximo, mínimo excluido). a0 es el ángulo α entre mástil y barra en el home:
-# de 0° (plegada sobre O→D) a 180° (alineada con ella), fuera de ahí no hay barra. dx es
+# (mínimo, máximo, mínimo excluido). th0 es la barra desde la horizontal en el home, y el
+# rango de aquí es el del par de ángulos posible; el límite fino (el punto muerto, ≈ −89°)
+# depende de la geometría y lo comprueba Mec.thMuerto en el cliente. dx es
 # el desplazamiento horizontal de D respecto de O, y puede ser negativo (D a la derecha).
 # e1 es cuánto tira el cable por encima del eje de la barra y e2 cuánto cuelga la pesa por
 # debajo; negativos si van al otro lado.
@@ -494,7 +500,7 @@ MECH_RANGOS = {
     "L1": (0, 1e4, True), "r0": (0, 1e4, True), "r1": (0, 1e4, True), "barr": (0, 100, True),
     "L2": (0, 1e4, True), "dx": (-1e4, 1e4, False), "L3": (0, 1e4, True), "L4": (0, 1e4, False),
     "e1": (-1e4, 1e4, False), "e2": (-1e4, 1e4, False),
-    "m": (0, 1e4, False), "g": (0, 100, False), "a0": (0, 180, False),
+    "m": (0, 1e4, False), "g": (0, 100, False), "th0": (-90, 90, False),
     "red": (0, 1e4, True),
 }
 
@@ -502,9 +508,14 @@ MECH_RANGOS = {
 def mech_load() -> dict:
     try:
         data = json.loads(MECH_FILE.read_text())
-        # Ficheros guardados con la convención anterior (θ desde la horizontal): α = 90 − θ.
-        if "a0" not in data and "th0" in data:
-            data["a0"] = 90.0 - float(data["th0"])
+        # Ficheros guardados con la convención anterior (α entre mástil y barra). La
+        # conversión exacta es θ = incD − α, con incD = atan2(L2, −dx) la inclinación de
+        # O→D; con dx = 0 se reduce a θ = 90 − α, que era lo que hacía la versión de antes
+        # y fallaba en cuanto D se desplazaba.
+        if "th0" not in data and "a0" in data:
+            L2 = float(data.get("L2", MECH_DEFAULTS["L2"]))
+            dx = float(data.get("dx", MECH_DEFAULTS["dx"]))
+            data["th0"] = math.degrees(math.atan2(L2, -dx)) - float(data["a0"])
         return {**MECH_DEFAULTS, **{k: v for k, v in data.items() if k in MECH_DEFAULTS}}
     except FileNotFoundError:
         return dict(MECH_DEFAULTS)

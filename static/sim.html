@@ -92,9 +92,9 @@
           <label>e2 · pesa bajo el eje (mm)
             <input type="number" id="f-e2" step="1" oninput="editado()"
                    title="La pesa cuelga este tanto por debajo del eje de la barra, en perpendicular. Negativo si va por encima."></label>
-          <label>α en B (°)
-            <input type="number" id="f-a0" step="1" min="0" max="180" oninput="editado()"
-                   title="Ángulo en O entre el mástil L2 y la barra: 0 = barra plegada sobre el mástil, 90 = perpendicular, 180 = barra en prolongación del mástil."></label>
+          <label>θ en B (°)
+            <input type="number" id="f-th0" step="1" min="-90" max="90" oninput="editado()"
+                   title="Barra desde la horizontal en el home: −90 = colgando recta hacia abajo, 0 = horizontal, +90 = vertical hacia arriba. Se mide con un nivel sobre la barra. El mínimo real es el punto muerto, algo por encima de −90."></label>
 
           <div class="sub">Carga</div>
           <label>masa (kg)
@@ -156,7 +156,7 @@
 const TEMA = coloresTema();
 temaGraficas();
 const el = id => document.getElementById(id);
-const NUM = ['L1', 'r0', 'r1', 'barr', 'L2', 'dx', 'L3', 'L4', 'e1', 'e2', 'm', 'g', 'a0', 'red'];
+const NUM = ['L1', 'r0', 'r1', 'barr', 'L2', 'dx', 'L3', 'L4', 'e1', 'e2', 'm', 'g', 'th0', 'red'];
 const GRAD = Math.PI / 180;
 
 let guardado = null;   // lo que hay ahora mismo en el servidor
@@ -458,18 +458,19 @@ function comprobar(q) {
   const eB = Mec.estado(q, extremo);
   const { cmin, cmax } = Mec.limites(q);
   // Topes: cuánto motor hay hasta que la barra se pliega sobre el mástil o queda en su prolongación.
-  const aPleg = Mec.revParaAngulo(q, 0), aProl = Mec.revParaAngulo(q, 180);
+  const aArriba = Mec.revParaTheta(q, 90), aMuerto = Mec.revParaTheta(q, Mec.thMuerto(q));
   // Redondeo antes del signo: la bisección deja −1e-12 en el home y saldría "-0.00".
   const fmt = v => { if (v == null) return '—'; const r = Math.round(v * 100) / 100 || 0;
                      return (r >= 0 ? '+' : '') + r.toFixed(2); };
   // Un estado fuera del mecanismo no trae ángulo: se escribe una raya, no se llama a
   // toFixed sobre null, que es lo que tiraba la página entera al arrancar.
-  const ang = e => e.a == null ? '—' : e.a.toFixed(1) + '°';
+  const ang = e => e.th == null ? '—' : e.th.toFixed(1) + '°';
   const gr  = (x, y) => (x == null || y == null) ? '—' : Math.abs(x - y).toFixed(1) + '°';
-  if (enB.fuera && enB.a == null) {
+  if (enB.fuera && enB.th == null) {
     cmp.className = 'line err';
-    cmp.innerHTML = `Con α = ${q.a0}° el cable en B (${enB.c.toFixed(1)} mm) cae en el límite`
-      + ` geométrico: no hay ángulo. Baja α en B —con dx = ${q.dx} mm, α = 180° es singular—.`;
+    cmp.innerHTML = `Con θ = ${q.th0}° el cable en B (${enB.c.toFixed(1)} mm) cae en el límite`
+      + ` geométrico: no hay ángulo. Sube θ en B —el punto muerto está en`
+      + ` ${Mec.thMuerto(q).toFixed(1)}°—.`;
     el('s-inv').textContent = '';
     return;
   }
@@ -477,35 +478,36 @@ function comprobar(q) {
         + ` ${(90 - Mec.incD(q)).toFixed(1)}° inclinada de la vertical (L2 ${q.L2}, dx ${q.dx}).`
         + ` Tiro a <b>${Mec.L3ef(q).toFixed(1)} mm</b> de O,`
         + ` ${Mec.delta(q).toFixed(1)}° adelantado del eje (e1 ${q.e1}, e2 ${q.e2}).<br>`
-        + `En B, donde arranca el ensayo: α = <b>${ang(enB)}</b>,`
-        + ` barra a ${enB.th == null ? '—' : enB.th.toFixed(1) + '°'} de la horizontal,`
+        + `En B, donde arranca el ensayo: barra a <b>${ang(enB)}</b> de la horizontal,`
         + ` cable <b>${enB.c.toFixed(1)} mm</b> (entre ${cmin.toFixed(0)} y ${cmax.toFixed(0)}).<br>`;
   if (eB.fuera) {
     cmp.className = 'line err';
     h += `Con ${fmt(extremo)} rev de avance el tambor pide <b>${eB.c.toFixed(0)} mm</b> de cable: la barra`
-       + ` tendría que pasar de 0° o de 180°. El recorrido no cabe en el mecanismo.<br>`;
+       + ` tendría que pasar del punto muerto (${Mec.thMuerto(q).toFixed(1)}°) o de +90°.`
+       + ` El recorrido no cabe en el mecanismo.<br>`;
   } else {
     cmp.className = 'line hint';
     h += `${ensayo ? 'Extremo del ensayo' : 'En A'} (${fmt(extremo)} rev de avance, ${(extremo / q.red).toFixed(3)} rev de tambor):`
-       + ` α = <b>${ang(eB)}</b>, cable ${eB.c.toFixed(1)} mm,`
-       + ` recorrido de <b>${gr(eB.a, enB.a)}</b>.<br>`;
+       + ` barra a <b>${ang(eB)}</b>, cable ${eB.c.toFixed(1)} mm,`
+       + ` recorrido de <b>${gr(eB.th, enB.th)}</b>.<br>`;
   }
-  h += `Topes: α = 0° con ${fmt(aPleg)} rev de avance, α = 180° con ${fmt(aProl)} rev`
-     + ` (α = 180° es singular: el cable se alinea con la barra y la tensión no tiene solución).`;
+  h += `Topes: θ = +90° (barra vertical) con ${fmt(aArriba)} rev de avance; punto muerto en`
+     + ` θ = ${Mec.thMuerto(q).toFixed(1)}° con ${fmt(aMuerto)} rev (ahí el cable se alinea`
+     + ` con la barra, el brazo se anula y la tensión no tiene solución).`;
   if (ensayo) {
     const eF = Mec.estado(q, ensayo.av[ensayo.av.length - 1]);
     if (!eF.fuera)
-      h += `<br>Final del ensayo: α = <b>${ang(eF)}</b>`
-         + ` (${gr(eF.a, enB.a)} respecto de B,`
+      h += `<br>Final del ensayo: barra a <b>${ang(eF)}</b>`
+         + ` (${gr(eF.th, enB.th)} respecto de B,`
          + ` con ${fmt(ensayo.av[ensayo.av.length - 1])} rev de avance sin devolver).`;
   }
   cmp.innerHTML = h;
 
   const obj = parseFloat(el('s-obj').value), inv = el('s-inv');
-  const rv = Number.isFinite(obj) ? Mec.revParaAngulo(q, obj) : null;
+  const rv = Number.isFinite(obj) ? Mec.revParaTheta(q, obj) : null;
   inv.innerHTML = rv == null
     ? 'ese ángulo no se alcanza con esta geometría'
-    : `α = ${obj}°: <b>${fmt(rv)} rev de avance</b> desde B (${(rv / q.red).toFixed(3)} rev de tambor).`
+    : `θ = ${obj}°: <b>${fmt(rv)} rev de avance</b> desde B (${(rv / q.red).toFixed(3)} rev de tambor).`
       + ` Es el recorrido B→A que tendría que hacer el ciclo.`;
 }
 
@@ -532,7 +534,7 @@ function graficas(q) {
     const rv = a + (b - a) * i / n, st = Mec.estado(q, rv);
     T.push({ x: rv, y: st.fuera ? null : st.T });
     tau.push({ x: rv, y: st.fuera ? null : st.tau });
-    ang.push({ x: rv, y: st.fuera ? null : st.a });
+    ang.push({ x: rv, y: st.fuera ? null : st.th });
   }
   const base = { responsive: true, animation: false,
     plugins: { legend: { labels: { color: TEMA.tinta, boxWidth: 10, font: { size: 10 } } } } };

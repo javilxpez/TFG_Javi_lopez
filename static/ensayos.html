@@ -321,7 +321,7 @@ function resumenMec() {
   const q = Mec.q;
   el('e-mec').innerHTML = `Geometría de <a href="/sim">Configuración del mecanismo</a>: `
     + (q.tipo === 'car' ? `caracola ${q.r0}→${q.r1} mm en ${q.barr} rev de tambor` : `cilindro de ${q.L1} mm`)
-    + ` · L2 ${q.L2} · dx ${q.dx} · L3 ${q.L3} · L4 ${q.L4} mm · ${q.m} kg · α en B ${q.a0}°`
+    + ` · L2 ${q.L2} · dx ${q.dx} · L3 ${q.L3} · L4 ${q.L4} mm · ${q.m} kg · θ en B ${q.th0}°`
     + ` · reducción ${q.red} · al avanzar el cable ${q.sentido < 0 ? 'se alarga' : 'se acorta'}`
     + (Mec.aviso() ? `<br><span class="err">⚠ ${Mec.aviso()}</span>` : '');
 }
@@ -364,7 +364,7 @@ function teoSerie(filas) {
       return { x: x.t_rel_s, y: null };
     }
     teoPar.push({ x: x.t_rel_s, y: st.tau });             // N·m
-    teoAng.push(st.a);
+    teoAng.push(st.th);
     return { x: x.t_rel_s, y: st.T };
   });
   // Diagnóstico de escala: las dos cantidades que TIENEN que cuadrar. El cable que paga
@@ -392,7 +392,7 @@ function teoSerie(filas) {
       + `) pero el mecanismo`
       + ` sólo admite <b>${cableMec.toFixed(0)} mm</b> en ese sentido`
       + ` (cable de ${cHome.toFixed(0)} a ${(q.sentido > 0 ? cmin : cmax).toFixed(0)} mm,`
-      + ` α desde ${q.a0}° en B hasta ${q.sentido > 0 ? '0' : '180'}°) → factor <b>${ratio.toFixed(2)}×</b>.`
+      + ` θ desde ${q.th0}° en B hasta ${q.sentido > 0 ? '+90' : Mec.thMuerto(q).toFixed(1)}°) → factor <b>${ratio.toFixed(2)}×</b>.`
       + ` En <a href="/sim">Configuración</a>: prueba otro ángulo en el home o el otro sentido.`
       + ` Prueba reducción <b>${(q.red * ratio).toFixed(2)}</b>`
       + (q.tipo === 'car'
@@ -401,8 +401,8 @@ function teoSerie(filas) {
   } else {
     esc.className = 'line hint';
     esc.textContent = `El recorrido cabe: el tambor paga ${cableServo.toFixed(0)} mm de cable`
-      + ` de los ${cableMec.toFixed(0)} mm que hay hasta α = ${q.sentido > 0 ? '0' : '180'}°`
-      + ` (usa el ${(ratio * 100).toFixed(0)}%), saliendo de B con α = ${q.a0}° y ${cHome.toFixed(0)} mm de cable.`;
+      + ` de los ${cableMec.toFixed(0)} mm que hay hasta θ = ${q.sentido > 0 ? '+90' : Mec.thMuerto(q).toFixed(1)}°`
+      + ` (usa el ${(ratio * 100).toFixed(0)}%), saliendo de B con θ = ${q.th0}° y ${cHome.toFixed(0)} mm de cable.`;
   }
 
   // ── Recorrido angular de la barra ──────────────────────────────────────
@@ -415,20 +415,22 @@ function teoSerie(filas) {
   const aIni = teoAng[0], aExt = teoAng[iExt], aFin = teoAng[teoAng.length - 1];
   if (aIni == null || aFin == null) {
     ang.className = 'line err';
-    ang.textContent = 'La barra tendría que pasar de 0° o de 180°: con estos datos el ángulo no existe'
-      + ' en algún punto del ensayo. El cable pedido no cabe en el mecanismo.';
+    ang.textContent = `La barra tendría que pasar del punto muerto (${Mec.thMuerto(q).toFixed(1)}°) o de`
+      + ' +90°: con estos datos el ángulo no existe en algún punto del ensayo.'
+      + ' El cable pedido no cabe en el mecanismo.';
   } else {
     const vistos = teoAng.filter(a => a != null);
     const recorr = Math.max(...vistos) - Math.min(...vistos);
     const cierre = aFin - aIni;
     // El cierre no es un error del modelo: el motor no acaba exactamente donde empezó,
-    // y ese resto de giro se traduce en ángulo. Lo que sí avisa es la cercanía a 0° o a
-    // 180° (barra alineada con O→D), donde sen α → 0 y un milímetro de cable vale
-    // muchos grados: ahí el ángulo de partida es el parámetro más delicado de todos.
+    // y ese resto de giro se traduce en ángulo. Lo que sí avisa es la cercanía al punto
+    // muerto, donde el brazo del cable → 0 y un milímetro de cable vale muchos grados:
+    // ahí el ángulo de partida es el parámetro más delicado de todos. El montaje real
+    // arranca a unos 9° del punto muerto, así que este aviso sale a menudo y es correcto.
     const drift = avance[avance.length - 1];
-    const cerca = Math.min(aIni, aFin) < 10 || Math.max(aIni, aFin) > 170;
+    const cerca = Math.min(aIni, aFin) < Mec.thMuerto(q) + 10;
     ang.className = cerca ? 'line warn' : 'line hint';
-    ang.innerHTML = `α: en B <b>${aIni.toFixed(1)}°</b>`
+    ang.innerHTML = `θ desde la horizontal: en B <b>${aIni.toFixed(1)}°</b>`
       + ` → extremo <b>${aExt == null ? '—' : aExt.toFixed(1) + '°'}</b>`
       + ` en t=${filas[iExt].t_rel_s.toFixed(2)} s (${avance[iExt].toFixed(2)} rev de avance,`
       + ` ${(avance[iExt] / q.red).toFixed(3)} rev de tambor)`

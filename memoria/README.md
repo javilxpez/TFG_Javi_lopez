@@ -5,8 +5,13 @@ y unas 106 páginas.
 
 ## Compilar
 
-- **Overleaf**: sube la carpeta `memoria/` y compila `TFG.tex` (pdfLaTeX + BibTeX).
 - **Local**: `latexmk -pdf TFG.tex`, o bien `tectonic TFG.tex`, que no necesita TeX Live instalado.
+- **Overleaf**: usa el zip `TFG_overleaf.zip` de la raíz del repositorio, no esta carpeta. En el
+  plan gratuito el compilado se corta a los pocos segundos, y esta versión tarda unos 16 s: las
+  figuras `tikz`/`pgfgantt` se redibujan en cada pasada y BibTeX obliga a tres pasadas de pdfLaTeX.
+  El zip lleva esas figuras ya rasterizadas y la bibliografía ya resuelta (`\input` de un `.bbl`
+  en vez de `\bibliography`), con lo que baja a unos 5 s dando el mismo PDF. Su propio `README.md`
+  explica cómo regenerar la bibliografía si añades referencias.
 
 La estructura, los márgenes y la portada son los de la plantilla. Sobre ella sólo se han añadido los
 paquetes que la memoria necesita (`siunitx`, `booktabs`, `tabularx`, `tikz`, `pgfgantt`, `bytefield`

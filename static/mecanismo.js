@@ -9,11 +9,12 @@
 //   O   articulación de la barra, en el origen.
 //   D   salida del cable: NO está encima de O. Sube L2 y queda dx a la izquierda,
 //       D = (−dx, L2). Con dx = 0 se recupera el mástil vertical de antes.
-//   α   ángulo en O entre la línea O→D y la barra, de 0° a 180°. Es el ángulo con
-//       el que se configura el home: 0° barra plegada sobre el mástil, 90° perpendicular,
-//       180° barra en prolongación del mástil. En ese rango cada α da un cable distinto:
-//       no hay dos ángulos con el mismo cable, así que el ángulo nunca es ambiguo.
-//   θ   = 90° − α, la misma barra medida desde la horizontal. Sólo se usa para dibujar.
+//   θ   barra medida desde la horizontal. Es lo que se configura (th0 en B), porque es
+//       lo que se puede medir con un nivel sobre la barra. Va del punto muerto (≈ −89°,
+//       ver thMuerto) a +90°.
+//   α   = incD − θ, el ángulo en O entre la línea O→D y la barra. Interno: es el que
+//       entra en la ley del coseno. Ojo, llega hasta 180° + δ, NO hasta 180°; acotarlo
+//       a 180° era lo que impedía representar la barra colgando.
 //   A   punto del EJE de la barra a L3 de O. El cable no tira de ahí: tira de A' , que
 //       está e1 por encima en perpendicular a la barra. Y la pesa no cuelga del eje,
 //       sino de P' , e2 por debajo, a L3+L4 de O.
@@ -42,10 +43,11 @@
 const MEC_DEFAULTS = {
   tipo: 'car',        // 'car' caracola de radio variable, 'cil' cilindro de radio fijo
   L1: 25,             // radio del cilindro (mm), sólo con tipo 'cil'
-  // Valores del ajuste sobre los ensayos limpios del 21-09 (R² 0.93 en los dos, con
-  // dx = 65): radio grande en B y decreciendo al subir. Conviene confirmarlos midiendo.
-  r0: 45, r1: 25,     // radio de la caracola en B y al final del barrido (mm)
-  barr: 0.3,          // vueltas de tambor del barrido (en la caracola, lo que dura la espiral)
+  // Medidos sobre el CAD de la caracola: el radio CRECE al subir. El ajuste anterior los
+  // daba al revés (45 → 25) porque el modelo no podía representar la barra colgando y
+  // compensaba con la caracola. Ver la nota de validación al final del fichero.
+  r0: 28.18, r1: 56,  // radio de la caracola en B y al final del barrido (mm)
+  barr: 0.367,        // vueltas de tambor del barrido = 1.835 rev de motor medidas / 5
   L2: 290,            // altura de D sobre O (mm)
   dx: 65,             // D desplazada a la izquierda de O (mm): 25 de D + 40 de O
   L3: 95,             // de O al punto del eje donde tira el cable (mm)
@@ -53,8 +55,9 @@ const MEC_DEFAULTS = {
   e1: 20,             // el cable tira e1 por encima del eje de la barra (mm)
   e2: 20,             // la pesa cuelga e2 por debajo del eje (mm)
   m: 2, g: 9.81,
-  a0: 114,            // α al empezar el ensayo, en B (°); del ajuste. 180 es singular con dx ≠ 0
-  red: 5.5,           // vueltas de motor por vuelta de tambor (del ajuste; la 3:15 daría 5)
+  th0: -80,           // barra desde la horizontal al empezar el ensayo, en B (°). Medido:
+                      // arranca colgando casi vertical. Ver thMuerto() para el límite.
+  red: 5,             // vueltas de motor por vuelta de tambor: la reducción 3:15
   sentido: 1          // +1: avanzar el ciclo acorta el cable (B → A), −1: lo alarga
 };
 
@@ -150,12 +153,28 @@ const Mec = {
   L3ef(q) { return Math.hypot(q.L3, q.e1 || 0); },
   delta(q) { return Math.atan2(q.e1 || 0, q.L3) * 180 / Math.PI; },
 
+  // θ (barra desde la horizontal) ↔ α (ángulo en O entre O→D y la barra). Se configura θ
+  // porque es lo que se mide, con un nivel sobre la barra; α es interno a la ley del coseno.
+  alfaDe(q, th) { return this.incD(q) - th; },
+  thDe(q, a)    { return this.incD(q) - a; },
+
+  // Punto muerto: β = 180°, el cable alineado con O→A'. El brazo del cable se anula y la
+  // barra no se puede levantar. No es un parámetro, es una propiedad de la geometría, y
+  // marca el θ mínimo del mecanismo. Con los valores medidos cae en −89.3°, así que la
+  // barra colgando a −80° entra por 9°: justo, pero dentro.
+  //
+  // Antes esto se configuraba con α acotado a [0°, 180°], y ahí estaba el fallo de fondo:
+  // con la línea O→D inclinada 102.6°, α = 180° es θ = −77.4°, o sea que el modelo no
+  // llegaba a representar la barra colgando y el ajuste tenía que sacar α a 114° (θ = −11°).
+  // De ahí salía una curva de par decreciente, justo al revés que la medida.
+  thMuerto(q) { return this.incD(q) - this.delta(q) - 180; },
+
   cable(q, aDeg) {
     const L = this.od(q), Le = this.L3ef(q);
     const co = Math.cos((aDeg - this.delta(q)) * Math.PI / 180);
     return Math.sqrt(L * L + Le * Le - 2 * L * Le * co);
   },
-  cHome(q)   { return this.cable(q, q.a0); },   // cable en B, donde empieza el ensayo
+  cHome(q)   { return this.cable(q, this.alfaDe(q, q.th0)); },   // cable en B, donde empieza
   limites(q) { const L = this.od(q), Le = this.L3ef(q); return { cmin: Math.abs(L - Le), cmax: L + Le }; },
 
   // α a partir del cable. cos α es monótono en [0°, 180°]: un cable, un ángulo.
@@ -205,7 +224,8 @@ const Mec = {
   // Inversa: avance en vueltas de motor desde B para llevar la barra a α = aDeg. El cable
   // pagado es monótono en φ, así que basta una bisección. null si no se llega.
   revParaAngulo(q, aDeg) {
-    if (aDeg < 0 || aDeg > 180) return null;
+    // α llega hasta 180 + δ, no hasta 180: β = α − δ es el que la ley del coseno acota.
+    if (aDeg < 0 || aDeg > 180 + this.delta(q)) return null;
     const sObj = (this.cHome(q) - this.cable(q, aDeg)) / q.sentido;
     const lim = 20 * 2 * Math.PI;                       // ±20 vueltas de tambor
     let a = -lim, b = lim;
@@ -218,19 +238,43 @@ const Mec = {
     return (a + b) / 2 * q.red / (2 * Math.PI);
   },
 
+  // Lo mismo pidiendo θ, que es como se habla del mecanismo fuera de aquí.
+  revParaTheta(q, thDeg) {
+    if (!(thDeg >= this.thMuerto(q) && thDeg <= 90)) return null;
+    return this.revParaAngulo(q, this.alfaDe(q, thDeg));
+  },
+
   // Recorrido entre B y A en vueltas de motor. No es un parámetro: lo fija la mecánica,
   // el barrido del tambor por la reducción entre el eje del motor y el tambor.
   recorridoMotor(q) { return q.barr * q.red; },
 
   // Lo que el servidor también rechaza, para avisar antes de enviar.
   validar(q) {
-    const num = ['L1', 'r0', 'r1', 'barr', 'L2', 'dx', 'L3', 'L4', 'e1', 'e2', 'm', 'g', 'a0', 'red'];
+    const num = ['L1', 'r0', 'r1', 'barr', 'L2', 'dx', 'L3', 'L4', 'e1', 'e2', 'm', 'g', 'th0', 'red'];
     for (const k of num) if (!Number.isFinite(q[k])) return `${k} no es un número`;
-    if (q.a0 < 0 || q.a0 > 180)
-      return 'α en el home va de 0° (barra plegada sobre el mástil) a 180° (barra en prolongación del mástil)';
+    const tm = this.thMuerto(q);
+    if (!(q.th0 > tm && q.th0 <= 90))
+      return `θ en B va de ${tm.toFixed(1)}° (punto muerto: el cable se alinea con la barra`
+           + ` y el brazo se anula) a 90° (barra vertical hacia arriba)`;
     for (const k of ['L1', 'r0', 'r1', 'barr', 'L2', 'L3', 'red'])
       if (!(q[k] > 0)) return `${k} tiene que ser mayor que 0`;
     if (q.L4 < 0 || q.m < 0 || q.g < 0) return 'L4, masa y g no pueden ser negativos';
     return null;
   }
 };
+
+// ── Validación contra el ensayo del 30-09 ────────────────────────────────
+// Dos comprobaciones independientes, sin ajustar ningún parámetro:
+//
+//  1. Cable. La caracola medida (28.18 → 56 mm sobre 0.367 vueltas de tambor) recoge
+//     97.1 mm. La barra subiendo de −80° a +10° pide 95.9 mm. Difieren un 1.2%.
+//
+//  2. Par. Separando el par medido en gravedad (subida+bajada)/2 y fricción
+//     (subida−bajada)/2, la fricción sale plana en ~6.2 unidades de drive —rozamiento
+//     seco, como debe ser— y la gravedad queda con un error rms del 10% frente a este
+//     modelo en la zona de velocidad constante, con la escala de unidades del drive como
+//     único grado de libertad (1 unidad ≈ 0.055 N·m).
+//
+// La tensión del cable sale casi constante (≈ 43-48 N) en todo el recorrido: el brazo de
+// la pesa y el brazo del cable crecen a la vez y se cancelan. O sea que la forma de la
+// curva de par la pone la caracola, no la barra. Que es para lo que sirve una caracola.

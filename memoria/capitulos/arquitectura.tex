@@ -82,7 +82,7 @@ La figura~\ref{fig:arquitectura} muestra la arquitectura, organizada en tres niv
   \node[blk, fill=blue!6] (pico) at (5,-3) {Raspberry Pi Pico 2\\ \scriptsize firmware\_posicion\_v2};
   \node[blk] (rs) at (10,-3) {Transceptor RS-485\\ \scriptsize THVD1400};
   \node[blk] (io) at (5,-4.6) {E/S de la placa\\ \scriptsize DI1--4, AIN1--3, DO1--4};
-  \draw[bus] (pico) -- node[below,font=\scriptsize] {I\textsuperscript{2}C} (click);
+  \draw[bus] (pico) -- node[below,font=\scriptsize] {I$^2$C} (click);
   \draw[bus] (pico) -- node[below,font=\scriptsize,align=center] {UART\\PIO} (rs);
   \draw[bus] (pico) -- (io);
   \node[grp, fit=(click)(pico)(rs)(io), label={[font=\scriptsize\bfseries,anchor=south west]north west:Placa adaptadora}] {};
