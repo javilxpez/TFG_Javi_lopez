@@ -12,15 +12,26 @@ muelle, el par del muelle real disminuye a medida que se desenrolla, y eso alter
 una cadena: con el muelle tenso la cadena tira del radio pequeño, y al debilitarse pasa al radio
 grande, de manera que el par entregado al tren se mantiene aproximadamente constante
 \cite{landes1983}. La condición de diseño es simplemente que el producto fuerza por radio se
-conserve a lo largo del recorrido.
+conserve a lo largo del recorrido. Lloyd \cite{lloyd1951} sitúa su origen en el siglo XV, y resulta
+llamativo que el dispositivo estuviera en uso casi cinco siglos antes de recibir un tratamiento
+teórico riguroso: Weaver \cite{weaver1980} es quien plantea por primera vez la ecuación diferencial
+del perfil y discute las condiciones en que admite solución. Aquel análisis y el de este trabajo son
+formalmente el mismo problema, con la diferencia de que allí la fuerza variable la da un muelle que
+se relaja y aquí la da el peso de una barra que cambia de brazo.
 
 La misma idea se ha formalizado en robótica con el nombre de tambores de radio variable
 (\emph{Variable Radius Drums}, VRD). Seriani y Gallina \cite{seriani2016} plantean la síntesis del
 perfil de un tambor para que la carga siga una ley prescrita y obtienen soluciones analíticas
 cerradas para varios casos. En los robots paralelos accionados por cables, Bieber \emph{et al.}
 \cite{bieber2023} diseñan el perfil a partir del perfil de carga máxima del espacio de trabajo, de
-modo que el par del motor no supere un valor dado para ninguna longitud de cable. La fabricación
-aditiva ha abaratado mucho estos perfiles, lo que explica el interés reciente.
+modo que el par del motor no supere un valor dado para ninguna longitud de cable. Arsenault
+\cite{arsenault2018} aborda el problema desde la fabricación y la cinemática del enrollado, y
+establece las condiciones de \emph{convexidad} que debe cumplir el perfil para que el cable se
+apoye sobre él sin despegarse ---una restricción que, como se verá, es la que acota la excentricidad
+admisible en el tambor de este trabajo---. Ludovico \emph{et al.} \cite{ludovico2021} formulan la
+síntesis del perfil como un problema de optimización convexa, con lo que la obtención del perfil
+deja de depender de un buen punto de partida. La fabricación aditiva ha abaratado mucho estas
+piezas, lo que explica el interés reciente.
 
 \section{Compensación de gravedad con poleas no circulares}
 
@@ -33,8 +44,83 @@ refinan ese cálculo teniendo en cuenta la variación de la tensión del cable a
 recorrido, y mejoran así la calidad de la compensación.
 
 El mecanismo de este trabajo comparte el principio, con una diferencia importante: aquí no hay
-muelle que almacene energía, sino un motor que aporta todo el trabajo de elevación. La caracola no
+muelle que almacene energía, sino un motor que aporta todo el trabajo de elevación. El tambor no
 ahorra energía, sino que reparte el par.
+
+\section{El tambor excéntrico como caso particular}
+\label{sec:arte-excentrico}
+
+La literatura anterior sintetiza perfiles \emph{libres}: dada una ley de par, se obtiene la curva
+$r(\varphi)$ que la produce, y se fabrica. Ese planteamiento es general pero caro, porque exige
+mecanizar o imprimir un perfil a medida y, como muestra Johnston \emph{et al.} \cite{johnston2023}
+al analizar la sensibilidad de estos mecanismos a las tolerancias, la ventaja teórica se degrada con
+los errores de fabricación. Gao \emph{et al.} \cite{gao2018} plantean el mismo problema inverso
+---del par deseado al perfil de la leva--- en mecanismos leva-muelle.
+
+Existe, sin embargo, un caso degenerado que la literatura de tambores de radio variable apenas
+recoge: el de un \emph{cilindro con el eje desplazado}. Su brazo efectivo es exactamente sinusoidal,
+$r(\varphi) = R - e\cos(\varphi+\varphi_0)$ ---el primer armónico de cualquier perfil periódico---,
+y no requiere mecanizar forma alguna: basta con taladrar el alojamiento del eje fuera del centro. La
+idea de modular la relación de transmisión con una excentricidad es antigua en el campo de los
+engranajes no circulares, donde Litvin \emph{et al.} \cite{litvin2008} la usan para generar
+funciones de transmisión variables, pero no se ha encontrado un trabajo que la aplique a un tambor
+de cable para compensar una barra articulada, ni que cuantifique lo bien que un único armónico
+aproxima al perfil de par constante.
+
+Ése es el hueco que aborda el capítulo~\ref{chap:modelo}, y la respuesta resulta favorable: sobre el
+recorrido de este mecanismo la aproximación sinusoidal deja un rizado de par inferior al
+\SI{1}{\percent}. El resultado interesa más allá del prototipo, porque convierte un problema de
+mecanizado de perfil en un problema de taladrado y calado.
+
+\section{Transmisiones por cable: el \emph{capstan drive}}
+\label{sec:arte-capstan}
+
+La reducción entre el motor y el tambor se resuelve en este trabajo con una transmisión por cable.
+Su fundamento es la ecuación del cabrestante, que relaciona exponencialmente las tensiones a ambos
+lados de un arrollamiento con el ángulo abrazado; Levin \cite{levin1991} la contrasta
+experimentalmente, y Jung \emph{et al.} \cite{jung2008} la extienden para incluir la rigidez a
+flexión de la cuerda y un rozamiento no lineal, efectos que la formulación clásica ignora y que
+importan cuando el radio del cabrestante es pequeño.
+
+Sobre ese principio, Werkmeister y Slocum \cite{werkmeister2007} caracterizan teórica y
+experimentalmente la rigidez de un \emph{capstan drive}, y Baser y Konukseven \cite{baser2010} hacen
+lo propio con su error de deslizamiento, las dos magnitudes que deciden si la transmisión sirve para
+posicionar. En robótica, Mazumdar \emph{et al.} \cite{mazumdar2017} demuestran que una transmisión
+de este tipo con fibra sintética alcanza rendimientos en torno al \SI{95}{\percent} y un ancho de
+banda en par muy superior al de un reductor de engranajes, lo que la hace idónea para control de par
+---que es justamente el uso que aquí se le da a la lectura del accionamiento---. Hwangbo \emph{et
+al.} \cite{hwangbo2018} la llevan a robots de alta dinámica.
+
+La configuración concreta que sigue este trabajo está tomada de un proyecto abierto de Musa
+\cite{musa2024}, que documenta una reducción de \num{8.55}:1 con cuerda de Dyneema y recorrido
+limitado a \SI{120}{\degree}. Conviene señalar que se trata de literatura gris, sin revisión por
+pares; se cita por la utilidad de sus detalles constructivos, apoyándose para las afirmaciones de
+fondo en las referencias académicas anteriores.
+
+Las ventajas que importan aquí son la holgura nula y la transparencia de par: cualquier holgura o
+rozamiento del reductor contaminaría precisamente la señal que el banco quiere medir. Las
+limitaciones ---recorrido acotado y necesidad de retensado--- son asumibles en un mecanismo que
+trabaja entre dos finales de carrera.
+
+\section{Cuerda sintética frente a cable de acero}
+\label{sec:arte-dyneema}
+
+La elección del material de la cuerda no es accesoria. El criterio determinante en una transmisión
+de radio pequeño es la relación entre el diámetro del tambor y el del cable, $D/d$: por debajo de
+cierto valor, el cable de acero falla por fatiga de flexión en muy pocos ciclos, y Feyrer
+\cite{feyrer2007} recoge el tratamiento canónico de esa vida a fatiga. Las fibras de polietileno de
+ultra alto peso molecular (UHMWPE, comercialmente Dyneema) toleran radios mucho menores, lo que
+permite cabrestantes pequeños y, con ellos, reducciones altas en poco espacio. McKenna \emph{et al.}
+\cite{mckenna2004} es la referencia general de mecánica de cuerda de fibra, y Davies \emph{et al.}
+\cite{davies2015} proponen un modelo empírico de vida bajo flexión cíclica sobre polea que permite
+dimensionar $D/d$ con criterio.
+
+El punto débil de estas fibras es la fluencia: un alargamiento permanente bajo carga mantenida que
+se traduce en pérdida de tensión y, por tanto, en error de posicionamiento. Vlasblom y Bosman
+\cite{vlasblom2006} modelan la vida por fluencia y muestran su fuerte dependencia del grado de fibra
+y de la temperatura. De ahí que una transmisión de este tipo necesite un tensor y un retensado
+periódico, y que el modelo del capítulo~\ref{chap:modelo} advierta de que la hipótesis de cable
+inextensible sólo vale entre retensados.
 
 \section{Bancos de ensayo y validación experimental}
 
@@ -56,8 +142,18 @@ con el signo invertido; es el par del accionamiento el que deshace la ambigüeda
 \section{Conclusiones del estado del arte}
 
 Los tambores de radio variable están bien estudiados como principio y existen métodos de síntesis de
-su perfil. Lo que falta, y es lo que motiva este trabajo, es una plataforma asequible que permita
-medir en un prototipo real cómo se reparte el par y contrastarlo con el modelo. Para ello hay que
-integrar un accionamiento industrial por Modbus, un acondicionador de célula de carga con reglas de
-configuración estrictas y una cadena de adquisición con marcas de tiempo fiables, que es lo que
-desarrollan los capítulos siguientes.
+su perfil, igual que están bien caracterizadas las transmisiones por cable y las fibras sintéticas
+que las hacen viables. De ese panorama se desprenden las dos líneas que sigue este trabajo.
+
+La primera es de diseño: frente al perfil libre que propone la literatura, se estudia si basta el
+caso más simple de todos ---un cilindro con el eje desplazado, cuyo brazo efectivo es el primer
+armónico--- para obtener prácticamente toda la compensación. No se ha encontrado un trabajo previo
+que lo cuantifique para un tambor de cable, y el capítulo~\ref{chap:modelo} muestra que la
+aproximación es excelente sobre recorridos limitados como el de este mecanismo.
+
+La segunda es experimental: falta una plataforma asequible que permita medir en un prototipo real
+cómo se reparte el par y contrastarlo con el modelo. Para ello hay que integrar un accionamiento
+industrial por Modbus, un acondicionador de célula de carga con reglas de configuración estrictas y
+una cadena de adquisición con marcas de tiempo fiables, que es lo que desarrollan los capítulos
+siguientes. El capítulo~\ref{chap:resultados} muestra además por qué esa instrumentación tiene que
+ser completa: la fuerza sola no determina la geometría.

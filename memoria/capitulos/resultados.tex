@@ -147,18 +147,23 @@ las dos orientaciones posibles de la caracola.}
 \label{fig:descomposicion}
 \end{figure}
 
-\section{Contraste con el modelo: cilindro frente a caracola}
+\section{Contraste con el modelo: qué perfil explica la medida}
 \label{sec:res-contraste}
 
-Éste es el núcleo del trabajo experimental. Se comparan tres hipótesis de tambor, todas con la misma
-geometría del mecanismo y el mismo recorrido de cable:
+Éste es el núcleo del trabajo experimental. Se comparan cuatro hipótesis de tambor, todas con la
+misma geometría del mecanismo y todas obligadas a pagar el mismo cable en el mismo giro
+(ecuación~\eqref{eq:restriccion}), de modo que sólo se diferencian en la \emph{forma} de
+$r(\varphi)$:
 
 \begin{enumerate}
-  \item \textbf{cilindro} de radio constante $r = \SI{34.2}{\milli\metre}$, el que paga el mismo
-        cable en el mismo giro;
+  \item \textbf{cilindro} de radio constante $r = \SI{30.3}{\milli\metre}$;
   \item \textbf{caracola configurada}, con el radio decreciendo de \num{45} a \SI{25}{\milli\metre};
-  \item \textbf{caracola invertida}, con el radio creciendo de \num{25} a \SI{45}{\milli\metre}.
+  \item \textbf{caracola invertida}, con el radio creciendo de \num{25} a \SI{45}{\milli\metre};
+  \item \textbf{tambor excéntrico}, con $e$ y $\varphi_0$ ajustados a la medida.
 \end{enumerate}
+
+Las tres primeras no tienen ningún parámetro libre de forma; la cuarta tiene dos, así que parte con
+ventaja y hay que juzgarla con ese descuento.
 
 \subsection{Lo que dice la fuerza: nada concluyente}
 
@@ -171,25 +176,35 @@ curva queda por debajo del ruido y del retardo del filtro.
 
 \begin{table}[H]
 \centering
-\caption{Contraste de las tres hipótesis de tambor sobre el tramo con carga. El $R^2$ del par no
-distingue el signo; la columna de la pendiente sí: un valor negativo significa que el modelo y la
-medida evolucionan en sentidos opuestos.}
+\caption{Contraste de las cuatro hipótesis de tambor sobre el tramo con carga. Para el par se dan
+las dos métricas de la sección~\ref{sec:mod-metrica}: $R^2$ ajustando una única escala positiva, que
+es la legítima, y $\rho^2$, ciega al signo. Las dos últimas columnas son la variación que predice
+cada modelo a lo largo del tramo.}
 \label{tab:contraste}
 \small
 \begin{tabularx}{\textwidth}{@{}Xccccc@{}}
 \toprule
-Hipótesis & \multicolumn{2}{c}{Fuerza} & \multicolumn{2}{c}{Par} & Variación de $\tau$ \\
-\cmidrule(lr){2-3}\cmidrule(lr){4-5}
- & $R^2$ & pendiente & $R^2$ & pendiente & del modelo \\
+Hipótesis & Fuerza & \multicolumn{2}{c}{Par} & \multicolumn{2}{c}{Variación del modelo} \\
+\cmidrule(lr){2-2}\cmidrule(lr){3-4}\cmidrule(lr){5-6}
+ & $R^2$ & $R^2$ ($k>0$) & $\rho^2$ & $\tau$ & $r$ \\
 \midrule
-Cilindro, $r=\SI{34.2}{\milli\metre}$ & 0,947 & $+$ & 0,780 & $-$ & \SI{-22}{\percent} \\
-Caracola configurada, 45$\to$25 mm & 0,966 & $+$ & 0,809 & $-$ & \SI{-45}{\percent} \\
-Caracola invertida, 25$\to$45 mm & 0,930 & $+$ & 0,673 & $+$ & \SI{+2}{\percent} \\
+Cilindro, $r=\SI{30.3}{\milli\metre}$ & \num{0.947} & \num{-1.44} & \num{0.777} & \SI{-20}{\percent} & \SI{0}{\percent} \\
+Caracola configurada, 45$\to$25 mm & \num{0.966} & \num{-6.10} & \num{0.809} & \SI{-45}{\percent} & \SI{-32}{\percent} \\
+Caracola invertida, 25$\to$45 mm & \num{0.930} & \num{0.19} & \num{0.534} & \SI{+1}{\percent} & \SI{+36}{\percent} \\
+Excéntrico ajustado, $e/R=\num{0.90}$ & --- & \textbf{\num{0.90}} & \num{0.897} & \SI{+38}{\percent} & \SI{+71}{\percent} \\
 \midrule
-\textbf{Medido} & \multicolumn{4}{c}{} & \textbf{\SI{+56}{\percent}} \\
+\textbf{Medido} & \multicolumn{3}{c}{} & \textbf{\SI{+56}{\percent}} & \textbf{\SI{+93}{\percent}} \\
 \bottomrule
 \end{tabularx}
 \end{table}
+
+La tabla contiene, de paso, el mejor argumento a favor de elegir bien la métrica. Con $\rho^2$, la
+caracola configurada es la \emph{mejor} de las tres primeras hipótesis (\num{0.809}); con $R^2$ es
+la peor con diferencia (\num{-6.10}, es decir, peor que limitarse a predecir el valor medio). No es
+una discrepancia numérica sino de significado: $\rho^2$ premia que la curva tenga la forma adecuada
+aunque recorra el camino al revés, y aquí la caracola configurada predice justo la tendencia
+contraria a la medida. Lo que en la sección~\ref{sec:mod-ambiguedad} era un aviso sobre la célula de
+carga vale igual para el par en cuanto se usa un estadístico invariante al signo.
 
 \subsection{Lo que dice el par: el tambor no es un cilindro}
 
@@ -197,12 +212,12 @@ El par del accionamiento no necesita calibración, y con él la comparación sí
 tambor cilíndrico el par es proporcional a la tensión, porque el radio no cambia:
 \begin{equation}
   \tau_{\text{cil}}(\varphi) = T(\varphi)\;r_c \quad\Longrightarrow\quad
-  \frac{\Delta\tau}{\tau} = \frac{\Delta T}{T} = \SI{-22}{\percent}.
+  \frac{\Delta\tau}{\tau} = \frac{\Delta T}{T} = \SI{-20}{\percent}.
 \end{equation}
-Es decir, un cilindro obliga al par a \emph{bajar} un \SI{22}{\percent} a lo largo del tramo con
+Es decir, un cilindro obliga al par a \emph{bajar} un \SI{20}{\percent} a lo largo del tramo con
 carga. El par medido \emph{sube} un \SI{56}{\percent}. La discrepancia no es de matiz: modelo y
 medida evolucionan en sentidos opuestos, y el cociente entre ambos comportamientos es de un factor
-\num{2.0} sobre el recorrido.
+\num{1.9} sobre el recorrido.
 
 La conclusión es inmediata: \textbf{el tambor no se comporta como un cilindro}. Y como la única
 diferencia entre las dos hipótesis es el radio de enrollamiento, la medida permite estimarlo: el
@@ -224,17 +239,17 @@ deducido de la medida.}
 Que el radio crezca es, cualitativamente, lo que pide la compensación: como la tensión baja al subir
 la barra, el radio tiene que crecer para que el producto se mantenga. La cuestión es cuánto. Con el
 recorrido medido, para que el par fuese exactamente constante bastaría con que el radio creciera un
-\SI{24}{\percent}. El radio efectivo crece un \SI{93}{\percent}, casi cuatro veces más.
+\SI{26}{\percent}. El radio efectivo crece un \SI{93}{\percent}, casi cuatro veces más.
 
 El resultado, por tanto, tiene dos caras:
 
 \begin{itemize}
-  \item \textbf{La caracola actúa, y de forma medible.} Frente al \SI{-22}{\percent} que impondría un
+  \item \textbf{La caracola actúa, y de forma medible.} Frente al \SI{-20}{\percent} que impondría un
         cilindro, el par real recorre un camino completamente distinto. El mecanismo cambia la
         relación de transmisión a lo largo del recorrido, que es exactamente lo que se quería
         comprobar.
   \item \textbf{Pero no compensa: sobrecompensa.} En lugar de aplanar el par lo empeora en el otro
-        sentido, pasando de una caída del \SI{22}{\percent} a una subida del \SI{56}{\percent}. Con
+        sentido, pasando de una caída del \SI{20}{\percent} a una subida del \SI{56}{\percent}. Con
         estos parámetros, el rizado de par sobre el tramo con carga es peor que el de un cilindro
         equivalente (tabla~\ref{tab:perfiles}).
 \end{itemize}
@@ -243,6 +258,36 @@ Además, el sentido del radio efectivo medido (creciente) es el \emph{contrario}
 configurada en el banco (decreciente, de \num{45} a \SI{25}{\milli\metre}), lo que apunta a que la
 pieza está descrita al revés en la configuración, montada al revés en la máquina, o ambas cosas
 \verificar{medir el perfil real de la caracola y comprobar en qué sentido se enrolla el cable}.
+
+\subsection{La hipótesis del tambor excéntrico}
+\label{sec:res-excentrico}
+
+Queda por probar la cuarta hipótesis, que es además la del diseño propuesto. Un tambor excéntrico
+produce un radio sinusoidal (ecuación~\eqref{eq:excentrico}) y, a diferencia de la caracola, puede
+crecer a lo largo del recorrido sin más que calarlo con la fase adecuada. Ajustando $e$ y
+$\varphi_0$ al par medido se obtiene un $R^2 = \num{0.90}$, frente a $\num{-6.10}$ de la caracola
+configurada y $\num{0.19}$ de la invertida: es, con diferencia, la familia que mejor describe la
+medida, y la figura~\ref{fig:excentrico-comp}a muestra que reproduce la curvatura del radio efectivo
+que ninguna caracola lineal puede dar.
+
+Ahora bien, el ajuste hay que leerlo con cuidado, porque lo interesante está en cómo falla:
+
+\begin{itemize}
+  \item El óptimo se va contra la cota física que se le impuso, $e/R = \num{0.90}$. Un tambor así
+        tendría un radio que va de \num{1.9} a \SI{36.9}{\milli\metre} en una vuelta: el eje de giro
+        quedaría casi en el borde de la pieza, lo que no es un tambor razonable.
+  \item Aun forzándolo hasta ahí, el par del modelo sólo sube un \SI{38}{\percent}, cuando el medido
+        sube un \SI{56}{\percent}. Se queda corto.
+\end{itemize}
+
+La conclusión es más fuerte que la de cualquiera de las hipótesis por separado: \textbf{con la
+geometría del mecanismo que se ha supuesto, ningún tambor físicamente razonable ---ni cilindro, ni
+caracola, ni excéntrico--- reproduce el par medido}. El crecimiento del radio efectivo es demasiado
+pronunciado para explicarse sólo con la forma del tambor. Eso desplaza la sospecha hacia los
+parámetros del mecanismo, que no están medidos sino ajustados, y enlaza directamente con la
+divergencia del ajuste conjunto que describe la sección siguiente. Dicho de otro modo: el banco
+demuestra con solvencia que el tambor \emph{no} es un cilindro, pero no puede todavía decir qué
+tambor es, y la pieza que falta para cerrarlo no es de análisis sino de metrología.
 
 \section{Ajuste de los parámetros del mecanismo}
 \label{sec:res-ajuste}

@@ -36,7 +36,21 @@ Las figuras de resultados y los ficheros `datos*.json` se generan a partir de `c
 pip install matplotlib numpy scipy
 python figuras/generar_figuras.py      # campaña preliminar (14-15 sept)
 python figuras/generar_figuras21.py    # campaña del 21 de septiembre
+python figuras/modelo_excentrico.py    # tambor excéntrico: ajuste, diseño y pieza real
 ```
+
+`modelo_excentrico.py` produce `n_excentrico.pdf` y `datos_exc.json`, de donde salen las cifras del
+excéntrico en los capítulos 4 y 11. Las cotas de la pieza real (`R_MIN_CAD`, `R_MAX_CAD`) están al
+principio del fichero: si cambian en el CAD, actualízalas ahí y vuelve a ejecutarlo.
+
+La versión para Overleaf se genera con:
+
+```
+python figuras/generar_overleaf.py
+```
+
+que rasteriza los diagramas, incrusta la bibliografía resuelta y deja `TFG_overleaf.zip` en la raíz
+del repositorio.
 
 `figuras/modelo_mecanismo.py` es el modelo del capítulo 4 portado a Python. Sus parámetros
 (`L2`, `dx`, `L3`, `L4`, `a0`, `red`, `r0`, `r1`, `barr`) deben coincidir con los de

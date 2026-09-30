@@ -54,7 +54,7 @@ RNF8 & \textbf{Coherencia del modelo}: una sola implementación de la geometría
 La figura~\ref{fig:arquitectura} muestra la arquitectura, organizada en tres niveles:
 
 \begin{enumerate}
-  \item \textbf{Nivel de campo}: el servomotor paso a paso con su accionamiento, la transmisión, la
+  \item \textbf{Nivel de campo}: el servomotor AC con su accionamiento, la transmisión, la
         caracola, el cable y la barra con la masa; la célula de carga intercalada en el cable y los
         dos finales de carrera.
   \item \textbf{Nivel de control}: la placa adaptadora con la Raspberry Pi Pico~2. Ejecuta el lazo
@@ -89,7 +89,7 @@ La figura~\ref{fig:arquitectura} muestra la arquitectura, organizada en tres niv
   \draw[bus] (srv) -- node[right,font=\scriptsize,align=left] {USB CDC\\ tramas + CRC-8} (pico);
   \node[blk] (lc) at (0,-7.4) {Célula de carga\\ \scriptsize puente de galgas};
   \node[blk] (fc) at (5,-7.4) {Finales de carrera\\ \scriptsize A arriba, B abajo (NC)};
-  \node[blk] (drv) at (10,-7.4) {Accionamiento\\ \scriptsize servo paso a paso};
+  \node[blk] (drv) at (10,-7.4) {Accionamiento\\ \scriptsize servo AC};
   \node[blk] (mot) at (10,-9.0) {Motor + reducción $N$\\ \scriptsize caracola $r(\varphi)$};
   \node[blk] (mec) at (5,-9.0) {Cable, barra\\ \scriptsize y masa de 2 kg};
   \draw[->,thick] (lc) -- node[pos=0.28,right,font=\scriptsize] {señal mV/V} (click);

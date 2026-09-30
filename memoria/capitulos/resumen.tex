@@ -1,7 +1,7 @@
 \chapter{Resumen}
 
 Este Trabajo Fin de Grado desarrolla el banco de ensayos de un mecanismo de elevación basado en una
-\emph{caracola}: un tambor de radio variable que, accionado por un servomotor paso a paso de lazo
+\emph{caracola}: un tambor de radio variable que, accionado por un servomotor AC de lazo
 cerrado, enrolla un cable y levanta una barra articulada con una masa de \SI{2}{\kilo\gram}. La idea
 que se quiere contrastar es la del \emph{fusee} de la relojería: si el radio del tambor crece donde
 la tensión del cable es pequeña y decrece donde es grande, el par que ve el motor se mantiene
@@ -29,7 +29,7 @@ la ambigüedad, y al hacerlo contradice la configuración vigente del mecanismo:
 recorrido en que el cable trabaja con carga, el modelo predice que la tensión \emph{baja} un
 \SI{20}{\percent} mientras que el par gravitatorio medido \emph{sube} un \SI{56}{\percent}. El radio
 efectivo deducido crece un \SI{93}{\percent}, cuando para mantener el par constante bastaría con que
-creciera un \SI{24}{\percent}. La caracola, tal y como está descrita en la configuración, no
+creciera un \SI{26}{\percent}. La caracola, tal y como está descrita en la configuración, no
 compensa: sobrecompensa, y con el sentido invertido respecto del que pide el modelo.
 
 El trabajo entrega, por tanto, un banco de ensayos reproducible, un modelo verificado en su
@@ -42,7 +42,7 @@ a paso, Modbus RTU, RS-485, célula de carga, ZSC31014, Raspberry Pi Pico 2, adq
 \chapter{Abstract}
 
 This Bachelor's Thesis develops the test bench for a lifting mechanism based on a variable-radius
-spiral drum (a \emph{fusee}-like drum, here called \emph{caracola}): driven by a closed-loop stepper
+spiral drum (a \emph{fusee}-like drum, here called \emph{caracola}): driven by a closed-loop AC servo
 servomotor, it winds a cable that lifts a hinged bar carrying a \SI{2}{\kilo\gram} mass. The idea
 under test is the one behind the horological fusee: if the drum radius grows where the cable tension
 is small and shrinks where it is large, the motor torque stays roughly constant along the stroke.
@@ -67,7 +67,7 @@ geometries. The drive torque, which needs no calibration, resolves the ambiguity
 contradicts the current configuration of the mechanism: over the loaded part of the stroke the model
 predicts the tension to \emph{fall} by \SI{20}{\percent} while the measured gravitational torque
 \emph{rises} by \SI{56}{\percent}. The implied effective radius grows by \SI{93}{\percent}, whereas
-a \SI{24}{\percent} growth would suffice for constant torque. The spiral drum, as configured, does
+a \SI{26}{\percent} growth would suffice for constant torque. The spiral drum, as configured, does
 not compensate: it overcompensates, and in the opposite sense to the one the model requires.
 
 The thesis therefore delivers a reproducible test bench, a model verified in its formulation and a
@@ -75,5 +75,5 @@ contrast procedure, together with a clear diagnosis of what remains in order to 
 validation: measuring the real dimensions of the mechanism and calibrating the load cell with
 reference masses.
 
-\paragraph{Keywords:} variable radius drum, fusee, torque compensation, closed-loop stepper servo,
+\paragraph{Keywords:} variable radius drum, fusee, torque compensation, AC servo drive,
 Modbus RTU, RS-485, load cell, ZSC31014, Raspberry Pi Pico 2, data acquisition.

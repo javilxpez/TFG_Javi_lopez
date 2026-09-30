@@ -24,22 +24,37 @@ aportar. Una caracola accionada por un motor no reduce esa energía: el trabajo 
 el mismo. Lo que hace es repartirlo de manera uniforme a lo largo del giro, lo que reduce el par de
 pico y, con él, el tamaño del motor necesario.
 
-\section{Accionamiento: servomotores paso a paso de lazo cerrado}
+\section{Accionamiento: servomotor AC de lazo cerrado}
 
-Un motor paso a paso convencional funciona en lazo abierto: el controlador impone la secuencia de
-fases y se da por hecho que el rotor la sigue. Es sencillo y tiene buen par a baja velocidad, pero
-si la carga supera el par disponible se pierden pasos sin que el sistema lo detecte
-\cite{kenjo1994}. Los servomotores paso a paso de lazo cerrado añaden un codificador y un
-accionamiento que regula la corriente en función del error de posición: conservan el par a baja
-velocidad, no pierden pasos y ofrecen modos de control en posición, velocidad o par, además de
-magnitudes de supervisión como la velocidad real o el par entregado.
+Para un banco cuya magnitud de medida es el par del propio accionamiento, la elección del motor no
+es indiferente. Un motor paso a paso convencional funciona en lazo abierto: el controlador impone la
+secuencia de fases y se da por hecho que el rotor la sigue; es sencillo y tiene buen par a baja
+velocidad, pero si la carga supera el par disponible se pierden pasos sin que el sistema lo detecte
+\cite{kenjo1994}, y la corriente de fase no guarda una relación limpia con el par entregado.
 
-El accionamiento de este trabajo pertenece a esa familia \completar{marca y modelo del motor y del
-accionamiento, par nominal, tensión de alimentación y resolución del codificador}. Integra una
-interfaz RS-485 con protocolo Modbus RTU, por la que se configura (modo de control, rigidez, rampas
-y resistencia de frenado), se habilita, se envía la consigna de velocidad y se leen la velocidad y
-el par. Tenerlo todo en un bus de dos hilos simplifica el cableado frente a la alternativa de
-señales de paso y dirección más entradas analógicas.
+El accionamiento de este trabajo es un servomotor síncrono de imanes permanentes de corriente
+alterna con codificador absoluto. El accionamiento cierra el lazo de corriente sobre la posición
+del rotor mediante control vectorial, de modo que la corriente en cuadratura es proporcional al par
+y puede publicarse como magnitud de supervisión: eso es lo que hace utilizable la lectura de par
+del capítulo~\ref{chap:resultados}. Ofrece modos de control en posición, velocidad y par, y entrega
+la velocidad y el par reales por el bus.
+
+Sus características son \SI{400}{\watt} de potencia, \SI{1.27}{\newton\metre} de par nominal,
+\SI{3000}{rpm} de velocidad nominal, codificador absoluto de \num{17} bits ---esto es,
+\num{131072} cuentas por vuelta--- y protección IP67. Incorpora además la función STO
+(\emph{Safe Torque Off}), una entrada de seguridad cableada que corta la excitación de las etapas de
+potencia sin pasar por el firmware, de acuerdo con \cite{iec61800}. \verificar{confirmar el modelo
+exacto en la etiqueta del accionamiento: la serie se comercializa en variante EtherCAT y en variante
+RS-485, y el firmware de este trabajo usa la segunda}
+
+Dos detalles importan para el resto de la memoria. El primero es que un servo AC frena de forma
+regenerativa: al bajar la carga, el motor devuelve energía al bus de continua, y por eso el
+accionamiento necesita una resistencia de frenado, cuyos parámetros el firmware programa
+explícitamente (anexo~\ref{anx:modbus}). El segundo es que la interfaz elegida es RS-485 con
+protocolo Modbus RTU, por la que se configura, se habilita, se envía la consigna de velocidad y se
+leen la velocidad y el par. Tenerlo todo en un bus de dos hilos simplifica el cableado frente a la
+alternativa de señales de paso y dirección más entradas analógicas, a costa de una latencia que el
+capítulo~\ref{chap:firmware} analiza en detalle.
 
 \section{Medida de fuerza con células de carga}
 
