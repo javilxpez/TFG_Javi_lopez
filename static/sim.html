@@ -28,7 +28,7 @@
     .ctl input[type=range] { flex: 1; min-width: 160px; }
     .chips { margin-top: 8px; }
     .line { margin-top: 6px; }
-    #mec { width: 100%; height: 560px; display: block; background: var(--fui-field); border: 1px solid var(--fui-rule); }
+    #mec { width: 100%; height: 680px; display: block; background: var(--fui-field); border: 1px solid var(--fui-rule); }
     canvas.graf { max-height: 240px; }
   </style>
 </head>
@@ -51,7 +51,17 @@
             <select id="f-tipo" onchange="editado()">
               <option value="car">caracola (radio variable)</option>
               <option value="cil">cilindro (radio fijo)</option>
+              <option value="leva">leva de par constante (r = τ0/T)</option>
             </select></label>
+          <label id="w-tau0">τ0 · par en el tambor (N·m)
+            <input type="number" id="f-tau0" step="0.05" min="0.05" oninput="editado()"
+                   title="Par que la leva mantiene constante en el tambor. El radio en cada punto es τ0 dividido por la tensión que pide la barra."></label>
+          <label id="w-rmax">radio máximo de la leva (mm)
+            <input type="number" id="f-rmax" step="1" min="10" oninput="editado()"
+                   title="Tope del radio en el arranque, donde la tensión es casi nula."></label>
+          <label id="w-thfin" class="ancho">θ hasta el que se diseña la leva (°)
+            <input type="number" id="f-thfin" step="1" min="-80" max="90" oninput="editado()"
+                   title="La leva se calcula de θ en B hasta aquí; pasado el final el radio se queda en el último valor."></label>
           <label id="w-L1" class="ancho">radio del cilindro (mm)
             <input type="number" id="f-L1" step="0.1" min="0.1" oninput="editado()"></label>
           <label id="w-r0">radio en el home r0 (mm)
@@ -76,12 +86,15 @@
           <div class="ancho line hint" id="s-recorrido" style="margin-top:0"></div>
 
           <div class="sub">Barra y mástil</div>
-          <label>L2 altura de D sobre O (mm)
+          <label>L2 altura del eje del tambor sobre O (mm)
             <input type="number" id="f-L2" step="1" min="0.1" oninput="editado()"
-                   title="Altura vertical de la salida del cable D sobre la articulación O."></label>
-          <label>dx · D a la izquierda de O (mm)
-            <input type="number" id="f-dx" step="1" oninput="editado()"
-                   title="Desplazamiento horizontal entre D y O: 25 mm que D está a la izquierda del centro más 40 mm que O está a la derecha. Negativo si D queda a la derecha de O."></label>
+                   title="Altura vertical del eje de giro del tambor C sobre la articulación O."></label>
+          <label>xt · eje del tambor a la izquierda de O (mm)
+            <input type="number" id="f-xt" step="1" oninput="editado()"
+                   title="Eje de giro del tambor, en horizontal desde la vertical de la articulación O. Negativo si queda a la derecha. El cable sale tangente al tambor por el lado de O, así que su línea queda a r del eje y se desplaza al cambiar el radio."></label>
+          <label>ob · carril a la izquierda de O (mm)
+            <input type="number" id="f-ob" step="1" oninput="editado()"
+                   title="Sólo para el dibujo: la barra vertical del banco no pasa por la articulación, la escuadra saca O este tanto hacia fuera."></label>
           <label>L3 de O al cable (mm)
             <input type="number" id="f-L3" step="1" min="0.1" oninput="editado()"></label>
           <label>L4 del cable a la pesa (mm)
@@ -137,9 +150,10 @@
       <div class="card">
         <div class="title">Tensión del cable y par en el tambor frente al giro del motor</div>
         <canvas id="gTau" class="graf"></canvas>
+        <div class="line hint" id="s-leva" hidden></div>
       </div>
       <div class="card">
-        <div class="title">Ángulo α entre la línea O→D y la barra frente al giro del motor</div>
+        <div class="title">Ángulo θ de la barra desde la horizontal frente al giro del motor</div>
         <canvas id="gAng" class="graf"></canvas>
       </div>
     </div>
@@ -156,7 +170,7 @@
 const TEMA = coloresTema();
 temaGraficas();
 const el = id => document.getElementById(id);
-const NUM = ['L1', 'r0', 'r1', 'barr', 'L2', 'dx', 'L3', 'L4', 'e1', 'e2', 'm', 'g', 'th0', 'red'];
+const NUM = ['L1', 'r0', 'r1', 'barr', 'L2', 'xt', 'ob', 'L3', 'L4', 'e1', 'e2', 'm', 'g', 'th0', 'red', 'tau0', 'rmax', 'thfin'];
 const GRAD = Math.PI / 180;
 
 let guardado = null;   // lo que hay ahora mismo en el servidor
@@ -177,14 +191,17 @@ function escribirForm(q) {
   visibilidad();
 }
 function visibilidad() {
-  const car = el('f-tipo').value === 'car';
-  el('w-L1').hidden = car;
+  const tipo = el('f-tipo').value, car = tipo === 'car', leva = tipo === 'leva';
+  el('w-L1').hidden = tipo !== 'cil';
   el('w-r0').hidden = el('w-r1').hidden = !car;
+  el('w-tau0').hidden = el('w-rmax').hidden = el('w-thfin').hidden = !leva;
+  el('w-barr').hidden = leva;
   el('t-barr').textContent = car ? 'de r0 a r1 hay (rev de tambor)' : 'el ciclo gira el tambor (rev)';
-  // El recorrido del motor no se pide: sale del barrido del tambor y la reducción.
-  const q = leerForm(), rv = Mec.recorridoMotor(q);
+  // El recorrido del motor no se pide: sale del barrido del tambor y la reducción. En la
+  // leva el barrido tampoco: sale del perfil.
+  const q = leerForm(), rv = Mec.validar(q) ? NaN : Mec.recorridoMotor(q), barr = Mec.validar(q) ? NaN : Mec.barrido(q);
   el('s-recorrido').innerHTML = Number.isFinite(rv)
-    ? `recorrido A→B del motor = ${q.barr} rev de tambor × reducción ${q.red} = <b>${rv.toFixed(2)} rev</b>`
+    ? `recorrido A→B del motor = ${barr.toFixed(3)} rev de tambor${leva ? ' (lo que gira la leva hasta θ final)' : ''} × reducción ${q.red} = <b>${rv.toFixed(2)} rev</b>`
     : 'recorrido A→B del motor: falta el barrido o la reducción';
 }
 const normal = q => Object.fromEntries(Object.keys(MEC_DEFAULTS).map(k => [k, q[k]]));
@@ -284,9 +301,10 @@ function dibujar(q, st, p) {
   ctx.clearRect(0, 0, W, H);
 
   const R = q.L3 + q.L4;
-  const rmax = q.tipo === 'car' ? Math.max(q.r0, q.r1) : q.L1;
-  const xmin = Math.min(-q.dx - rmax * 1.6, -Math.max(rmax * 1.6, 70)), xmax = R + 30;
-  const ymin = -R - 80, ymax = Math.max(q.L2 + rmax + 30, R + 20);
+  const rmax = q.tipo === 'car' ? Math.max(q.r0, q.r1)
+             : q.tipo === 'leva' ? Math.max(q.rmax, ...Mec.perfilLeva(q).r) : q.L1;
+  const xmin = Math.min(-q.xt - rmax - 30, -q.ob - 30, -Math.max(rmax * 1.6, 70)), xmax = R + 30;
+  const ymin = -R - 130, ymax = Math.max(q.L2 + rmax + 36, R + 20);
   const k = Math.min((W - 30) / (xmax - xmin), (H - 30) / (ymax - ymin));
   const ox = 15 + (W - 30 - (xmax - xmin) * k) / 2 - xmin * k;
   const oy = H - 15 - (H - 30 - (ymax - ymin) * k) / 2 + ymin * k;
@@ -336,49 +354,157 @@ function dibujar(q, st, p) {
       linea(0, 0, R * Math.cos(a * GRAD), R * Math.sin(a * GRAD), TEMA.regla, 3, [6, 4]);
   }
 
-  // Salida del cable: D sube L2 y queda dx a la izquierda de O. Se dibuja el triángulo
-  // L2 / dx en trazo fino, porque esa inclinación es la que cambia la tensión.
-  const D = { x: -q.dx, y: q.L2 };
-  linea(0, 0, D.x, D.y, TEMA.tinta2, 4);
-  ctx.save(); ctx.fillStyle = TEMA.rejilla; ctx.fillRect(X(0) - 16, Y(0) + 6, 32, 7); ctx.restore();
-  if (q.dx) {
-    linea(0, 0, 0, q.L2, TEMA.rejilla, 1, [4, 4]);          // la vertical de O
-    linea(0, q.L2, D.x, D.y, TEMA.rejilla, 1, [4, 4]);      // el desplazamiento dx
-    texto(`dx = ${q.dx} mm`, X(D.x / 2), Y(q.L2) - 8, TEMA.tinta2, 'center', 10);
-  }
-  texto(`|OD| = ${Mec.od(q).toFixed(1)} mm`, X(D.x) - 10, Y(q.L2 / 2), TEMA.tinta, 'right');
-  texto(`L2 ${q.L2} · ${(90 - Mec.incD(q)).toFixed(1)}° de la vertical`,
-        X(D.x) - 10, Y(q.L2 / 2) + 13, TEMA.tinta2, 'right', 10);
+  // Estructura. El carril vertical NO pasa por la articulación: la escuadra saca O ob mm
+  // hacia la derecha. Arriba, la placa del motor lleva el eje del tambor C a (−xt, L2).
+  const C = { x: -q.xt, y: q.L2 };
+  const lado = Mec.lado(q);
+  linea(-q.ob, ymin + 12, -q.ob, q.L2 + rmax + 6, TEMA.tinta2, 6);          // carril
+  ctx.save(); ctx.fillStyle = TEMA.rejilla; ctx.beginPath();                  // escuadra
+  ctx.moveTo(X(-q.ob), Y(-30)); ctx.lineTo(X(-q.ob), Y(30)); ctx.lineTo(X(0), Y(0));
+  ctx.closePath(); ctx.fill(); ctx.restore();
+  linea(-q.ob, q.L2, C.x, C.y, TEMA.tinta2, 4);                              // placa del motor
+  // Referencias: la vertical de O hasta encima del tambor, y la cota xt.
+  const yCota = q.L2 + rmax + 22;
+  linea(0, 0, 0, yCota, TEMA.rejilla, 1, [4, 4]);
+  linea(C.x, C.y, C.x, yCota, TEMA.rejilla, 1, [4, 4]);
+  linea(0, yCota, C.x, yCota, TEMA.tinta2, 1);
+  texto(`xt = ${q.xt} mm`, X(C.x / 2), Y(yCota) + 9, TEMA.tinta2, 'center', 10);
+  linea(0, 0, C.x, C.y, TEMA.rejilla, 1, [2, 5]);                            // línea O→C
+  texto(`|OC| = ${Mec.oc(q).toFixed(1)} mm`, X(Math.min(C.x, 0)) - 12, Y(q.L2 * 0.55), TEMA.tinta, 'right');
+  texto(`L2 ${q.L2} · O→C ${(90 - Mec.incC(q)).toFixed(1)}° de la vertical`,
+        X(Math.min(C.x, 0)) - 12, Y(q.L2 * 0.55) + 13, TEMA.tinta2, 'right', 10);
 
-  // Tambor en D, girando con φ. La espiral se dibuja entera, y el radio que trabaja
-  // ahora mismo se marca: es el brazo del par.
-  const phitot = q.tipo === 'car' ? q.barr * 2 * Math.PI : 2 * Math.PI;
-  ctx.save(); ctx.strokeStyle = TEMA.morado; ctx.lineWidth = 1.5; ctx.beginPath();
-  const N = 90;
-  for (let i = 0; i <= N; i++) {
-    const psi = phitot * i / N;
-    const rr = q.tipo === 'car' ? q.r0 + (q.r1 - q.r0) * psi / phitot : q.L1;
-    const a = Math.PI / 2 + psi - st.phi;
-    const px = X(D.x + rr * Math.cos(a)), py = Y(D.y + rr * Math.sin(a));
-    i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+  // Tambor en C, girando con φ. Se dibuja la caracola entera tal como está en el CAD:
+  // la espiral lineal de r0 a r1 en 'barr' vueltas, un arco a radio constante a cada
+  // lado (fuera de la espiral el radio se queda en el extremo, como en tambor()) y una
+  // rampa corta que cierra la pieza. El punto de tangencia T es donde sale el cable, y la
+  // pieza se gira para que el punto de la espiral que trabaja (ψ = φ) caiga en T.
+  //
+  // Sentido: con el cable saliendo por la derecha (lado +1) recoger es girar antihorario,
+  // así que los puntos que aún no han trabajado (ψ > φ, radios por venir) están en sentido
+  // horario de T y suben hacia él: a(ψ) = aT − sentido·lado·(ψ − φ).
+  const phitot = q.tipo === 'cil' ? 2 * Math.PI : Mec.barrido(q) * 2 * Math.PI;
+  const tg = st.tg || { x: C.x + lado * st.r, y: C.y };    // sin estado: tangente vertical
+  const aT = Math.atan2(tg.y - C.y, tg.x - C.x);
+  // Orientación del tambor: el punto ψ cae en aRef + sl·(φ − ψ), la misma convención que
+  // el modelo (Mec.puntoPerfil), así el cable dibujado es tangente al perfil dibujado.
+  const aRef = st.aRef != null ? st.aRef : aT;
+  const angDe = psi => aRef + q.sentido * lado * (st.phi - psi);
+  const psiC = st.psi != null ? st.psi : st.phi;            // ψ del contacto
+  const rDe = psi => Mec.tambor(q, psi).r;                  // caracola, cilindro o leva
+  // Reparto del resto de vuelta, con las proporciones medidas en el CAD (50° / 60° / 115°).
+  const libre = Math.max(0, 2 * Math.PI - phitot);
+  // Caracola: meseta a r1, rampa de cierre y meseta a r0, como la pieza del CAD. Leva:
+  // el resto de vuelta es una transición suave (coseno) del radio final al de arranque,
+  // sin esquinas: el cable no pisa ese tramo, pero una esquina ahí parece un error.
+  const esLeva = q.tipo === 'leva';
+  const P1 = esLeva ? 0 : Math.min(50 * GRAD, libre * 0.22), Pr = esLeva ? libre : Math.min(60 * GRAD, libre * 0.27), P0 = libre - P1 - Pr;
+  const psiIni = -P0, psiFin = phitot + P1 + Pr;
+  const rA = rDe(0), rZ = rDe(phitot);
+  const perfil = psi => {
+    if (q.tipo !== 'cil' && psi > phitot + P1) {              // cierre: del radio final al inicial
+      const f = Math.min(1, (psi - phitot - P1) / Math.max(Pr, 1e-9));
+      return esLeva ? rZ + (rA - rZ) * (1 - Math.cos(Math.PI * f)) / 2 : rZ + (rA - rZ) * f;
+    }
+    return rDe(psi);
+  };
+  // El tambor se pinta dos veces: en su sitio y ampliado en un recuadro, que es donde se
+  // ve la interacción del cable con la leva (cómo se asienta sobre el perfil, por dónde
+  // sale, cuánto radio trabaja). Por eso va en una función con su propia transformación.
+  const pintaTambor = (X2, Y2, k2, grueso) => {
+    const pt = (x, y) => [X2(x), Y2(y)];
+    ctx.save(); ctx.fillStyle = conAlfa(TEMA.morado, 0.12); ctx.strokeStyle = TEMA.morado;
+    ctx.lineWidth = 1.5 * grueso; ctx.beginPath();
+    const N = 240;
+    for (let i = 0; i <= N; i++) {
+      const psi = psiIni + (psiFin - psiIni) * i / N, rr = perfil(psi), a = angDe(psi);
+      const [px, py] = pt(C.x + rr * Math.cos(a), C.y + rr * Math.sin(a));
+      i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+    }
+    ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+    // Cable ya enrollado: va pegado al perfil desde el anclaje (en el arco de r0) hasta T.
+    if (psiC > psiIni) {
+      ctx.save(); ctx.strokeStyle = TEMA.azul; ctx.lineWidth = 2.5 * grueso; ctx.beginPath();
+      const M = 120;
+      for (let i = 0; i <= M; i++) {
+        const psi = psiIni + (psiC - psiIni) * i / M, rr = rDe(psi), a = angDe(psi);
+        const [px, py] = pt(C.x + rr * Math.cos(a), C.y + rr * Math.sin(a));
+        i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+      }
+      ctx.stroke(); ctx.restore();
+    }
+    // Eje, radio que trabaja (es el brazo del par) y punto de tangencia.
+    ctx.save(); ctx.fillStyle = TEMA.fondo || '#fff'; ctx.strokeStyle = TEMA.morado; ctx.lineWidth = 1.5 * grueso;
+    ctx.beginPath(); ctx.arc(X2(C.x), Y2(C.y), Math.max(3, 6 * k2), 0, 2 * Math.PI); ctx.fill(); ctx.stroke(); ctx.restore();
+    ctx.save(); ctx.strokeStyle = TEMA.morado; ctx.lineWidth = grueso; ctx.setLineDash([2, 2]);
+    ctx.beginPath(); ctx.moveTo(X2(C.x), Y2(C.y)); ctx.lineTo(X2(tg.x), Y2(tg.y)); ctx.stroke(); ctx.restore();
+    ctx.fillStyle = TEMA.morado; ctx.beginPath(); ctx.arc(X2(C.x), Y2(C.y), 3 * grueso, 0, 2 * Math.PI); ctx.fill();
+    ctx.fillStyle = TEMA.azul; ctx.beginPath(); ctx.arc(X2(tg.x), Y2(tg.y), 4 * grueso, 0, 2 * Math.PI); ctx.fill();
+  };
+  pintaTambor(X, Y, k, 1);
+
+  // Recuadro de detalle: el tambor ampliado, con el tramo de cable libre que sale de T.
+  {
+    const Z = Math.round(Math.min(300, H * 0.42)), x0 = W - Z - 10, y0 = 10;
+    const kz = (Z / 2 - 14) / (rmax + 4);
+    const Xz = x => x0 + Z / 2 + (x - C.x) * kz, Yz = y => y0 + Z / 2 - (y - C.y) * kz;
+    ctx.save(); ctx.fillStyle = TEMA.fondo || '#fff'; ctx.strokeStyle = TEMA.regla; ctx.lineWidth = 1;
+    ctx.fillRect(x0, y0, Z, Z); ctx.strokeRect(x0, y0, Z, Z);
+    ctx.beginPath(); ctx.rect(x0, y0, Z, Z); ctx.clip();
+    // cable libre desde T hacia A' (sale del recuadro)
+    if (st.Ap) {
+      ctx.strokeStyle = TEMA.azul; ctx.lineWidth = 2.5; ctx.beginPath();
+      ctx.moveTo(Xz(tg.x), Yz(tg.y)); ctx.lineTo(Xz(st.Ap.x), Yz(st.Ap.y)); ctx.stroke();
+    }
+    pintaTambor(Xz, Yz, kz, 1.4);
+    // flecha del sentido de giro al avanzar el ciclo, sobre el radio máximo
+    const giro = -q.sentido * lado, a0 = aT + giro * 0.9, a1 = aT + giro * 1.5, ra = rmax + 2;
+    ctx.strokeStyle = TEMA.tinta2; ctx.lineWidth = 1.2; ctx.beginPath();
+    for (let i = 0; i <= 20; i++) { const a = a0 + (a1 - a0) * i / 20; const px = Xz(C.x + ra * Math.cos(a)), py = Yz(C.y + ra * Math.sin(a)); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }
+    ctx.stroke();
+    const ex = Xz(C.x + ra * Math.cos(a1)), ey = Yz(C.y + ra * Math.sin(a1)), dirF = a1 + giro * Math.PI / 2;
+    ctx.fillStyle = TEMA.tinta2; ctx.beginPath(); ctx.moveTo(ex, ey);
+    ctx.lineTo(ex - 7 * Math.cos(dirF - 0.5), ey + 7 * Math.sin(dirF - 0.5));
+    ctx.lineTo(ex - 7 * Math.cos(dirF + 0.5), ey + 7 * Math.sin(dirF + 0.5)); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    texto(`detalle del tambor ×${(kz / k).toFixed(1)} · brazo ${st.r.toFixed(1)} mm`, x0 + 6, y0 + 10, TEMA.tinta, 'left', 10);
+    texto(`${q.tipo === 'leva' ? 'leva' : q.tipo === 'car' ? 'caracola' : 'cilindro'} · φ ${(st.phi / (2 * Math.PI)).toFixed(3)} rev`, x0 + 6, y0 + 23, TEMA.tinta2, 'left', 10);
+    texto('T', Xz(tg.x) + 8 * lado, Yz(tg.y) - 8, TEMA.azul, lado > 0 ? 'left' : 'right');
+    texto('C', Xz(C.x) - 8, Yz(C.y) - 9, TEMA.tinta, 'right');
   }
-  ctx.stroke(); ctx.restore();
-  // El modelo toma el cable saliendo del punto D: el radio sólo cuenta como brazo del
-  // par, no mueve la salida del cable. Se marca en vertical como referencia.
-  linea(D.x, D.y, D.x, D.y + st.r, TEMA.morado, 1, [2, 2]);
-  punto(D.x, D.y, 4, TEMA.morado);
-  texto(`r = ${st.r.toFixed(1)} mm`, X(D.x) + st.r * k + 10, Y(D.y) - 10, TEMA.morado);
-  texto(`φ tambor ${(st.phi / (2 * Math.PI)).toFixed(3)} rev`, X(D.x) + st.r * k + 10, Y(D.y) + 5, TEMA.tinta, 'left', 10);
-  texto('D', X(D.x) - 10, Y(D.y) - 10, TEMA.tinta, 'right');
+  // Etiquetas del tambor por el lado contrario al cable, que es el que queda libre.
+  const xEt = X(C.x) - (rmax * k + 10) * lado, alEt = lado > 0 ? 'right' : 'left';
+  texto(`brazo en el eje ${st.r.toFixed(1)} mm` + (st.rc != null && Math.abs(st.rc - st.r) > 0.05 ? ` (perfil ${st.rc.toFixed(1)})` : ''), xEt, Y(C.y) - 10, TEMA.morado, alEt);
+  texto(`φ tambor ${(st.phi / (2 * Math.PI)).toFixed(3)} rev`, xEt, Y(C.y) + 5, TEMA.tinta, alEt, 10);
+  texto(`sale a ${(tg.x + q.ob).toFixed(0)} mm del carril`, xEt, Y(C.y) + 20, TEMA.azul, alEt, 10);
+  texto('C', X(C.x) - 8, Y(C.y) - 10, TEMA.tinta, 'right');
+  texto('T', X(tg.x) + 8 * lado, Y(tg.y) + 4, TEMA.azul, lado > 0 ? 'left' : 'right');
   texto('O', X(0) - 10, Y(0) + 10, TEMA.tinta, 'right');
 
-  if (st.fuera) {
-    const { cmin, cmax } = Mec.limites(q);
-    texto(`Fuera del mecanismo: el tambor pide c = ${st.c.toFixed(0)} mm de cable`,
+  // Cable flojo (barra por debajo de su reposo libre): hay barra y ángulo, pero no hay
+  // tensión. Se dibuja igual, con T = 0, en vez de dejar el dibujo vacío como un "fuera".
+  if (st.flojo) {
+    texto(`Cable flojo: θ = ${st.th.toFixed(1)}° queda bajo el reposo libre (${Mec.thLibre(q).toFixed(1)}°).`, 12, 78, TEMA.ambar, 'left', 11);
+    texto('La barra apoya en el tope y el cable no hace fuerza: T = 0.', 12, 92, TEMA.ambar, 'left', 11);
+  }
+  if (st.fuera && !st.flojo) {
+    const { cmin, cmax } = Mec.limites(q, st.r);
+    texto(`Fuera del mecanismo: el tambor pide ${st.g.toFixed(0)} mm de cable equivalente`,
           W / 2, 22, TEMA.rojo, 'center', 12);
-    texto(`y sólo caben entre ${cmin.toFixed(0)} (α = 0°) y ${cmax.toFixed(0)} mm (α = 180°), o la barra pasa de ±90°`,
+    texto(`y sólo caben entre ${cmin.toFixed(0)} (barra vertical) y ${cmax.toFixed(0)} mm (punto muerto)`,
           W / 2, 38, TEMA.rojo, 'center', 12);
     return;
+  }
+
+  // Lo que el cable se separa del carril a la altura de la parte baja del tambor: es lo
+  // que se desplaza con el radio, y lo que un punto de salida fijo no podía representar.
+  const yd = q.L2 - rmax - 18;
+  const Ap0 = st.Ap, fr = (yd - Ap0.y) / (tg.y - Ap0.y);
+  if (fr > 0 && fr < 1) {
+    const xd = Ap0.x + (tg.x - Ap0.x) * fr;
+    linea(-q.ob, yd, xd, yd, TEMA.azul, 1, [3, 3]);
+    texto(`cable a ${(xd + q.ob).toFixed(0)} mm del carril, ${Math.abs(Math.atan2(tg.x - Ap0.x, tg.y - Ap0.y) / GRAD).toFixed(1)}° de la vertical`,
+          X(xd) + 8, Y(yd), TEMA.azul, 'left', 10);
   }
 
   // Barra, cable y pesa. El cable no tira del eje sino de A' (e1 por encima, en
@@ -388,7 +514,7 @@ function dibujar(q, st, p) {
   const A = { x: q.L3 * cs, y: q.L3 * sn }, P = { x: R * cs, y: R * sn };
   const Ap = { x: A.x + q.e1 * nx, y: A.y + q.e1 * ny };
   const Pp = { x: P.x - q.e2 * nx, y: P.y - q.e2 * ny };
-  linea(D.x, D.y, Ap.x, Ap.y, TEMA.azul, 2);
+  linea(tg.x, tg.y, Ap.x, Ap.y, TEMA.azul, 2);
   linea(0, 0, P.x, P.y, TEMA.texto, 5);
   if (q.e1) linea(A.x, A.y, Ap.x, Ap.y, TEMA.azul, 1, [2, 2]);
   if (q.e2) linea(P.x, P.y, Pp.x, Pp.y, TEMA.ambar, 1, [2, 2]);
@@ -401,7 +527,7 @@ function dibujar(q, st, p) {
   punto(Ap.x, Ap.y, 4.5, TEMA.azul);
   punto(Pp.x, Pp.y, 3.5, TEMA.ambar);
   texto("A'", X(Ap.x) + 8, Y(Ap.y) - 8, TEMA.azul);
-  texto(`c = ${st.c.toFixed(1)} mm`, X((D.x + Ap.x) / 2) + 8, Y((D.y + Ap.y) / 2), TEMA.azul);
+  texto(`c = ${st.c.toFixed(1)} mm`, X((tg.x + Ap.x) / 2) + 8, Y((tg.y + Ap.y) / 2), TEMA.azul);
   texto(`${q.m} kg`, X(Pp.x) + 18, Y(Pp.y - hilo) + 10, TEMA.ambar);
   texto(`brazos: cable ${st.brazoCable.toFixed(1)} · peso ${st.brazoPeso.toFixed(1)} mm`,
         12, 61, TEMA.tinta, 'left', 10);
@@ -410,20 +536,20 @@ function dibujar(q, st, p) {
   // entre barra y cable en A: son los tres "90°" que se pueden estar diciendo.
   arco(0, 0, 38, 0, st.th, TEMA.verde);
   texto(`θ = ${st.th.toFixed(1)}°`, X(0) + 44 * Math.cos(-t / 2), Y(0) + 44 * Math.sin(-t / 2) + (st.th >= 0 ? -2 : 10), TEMA.verde);
-  arco(0, 0, 24, Mec.incD(q), st.th, TEMA.morado);
-  const aMid = (Mec.incD(q) + st.th) / 2 * GRAD;
+  arco(0, 0, 24, Mec.incC(q), st.th, TEMA.morado);
+  const aMid = (Mec.incC(q) + st.th) / 2 * GRAD;
   texto(`α = ${st.a.toFixed(1)}°`, X(0) + 30 * Math.cos(-aMid) - 4, Y(0) + 30 * Math.sin(-aMid) - 10, TEMA.morado, 'right');
-  const aAO = Math.atan2(-A.y, -A.x) / GRAD, aAD = Math.atan2(D.y - A.y, D.x - A.x) / GRAD;
+  const aAO = Math.atan2(-A.y, -A.x) / GRAD, aAD = Math.atan2(tg.y - A.y, tg.x - A.x) / GRAD;
   let beta = Math.abs(aAD - aAO); if (beta > 180) beta = 360 - beta;
   let a1 = aAO, a2 = aAD; if (Math.abs(a2 - a1) > 180) { if (a2 < a1) a2 += 360; else a1 += 360; }
   arco(A.x, A.y, 20, a1, a2, TEMA.cian);
   const bMid = (a1 + a2) / 2 * GRAD;
   texto(`β = ${beta.toFixed(1)}°`, X(A.x) + 34 * Math.cos(-bMid), Y(A.y) + 34 * Math.sin(-bMid), TEMA.cian, 'center');
 
-  // Fuerzas a escala entre sí: la tensión en A hacia D y el peso en la pesa.
+  // Fuerzas a escala entre sí: la tensión en A' hacia T y el peso en la pesa.
   const peso = q.m * q.g, escN = 70 / Math.max(st.T, peso, 1e-9);
-  const ux = (D.x - Ap.x) / st.c, uy = (D.y - Ap.y) / st.c;
-  flecha(Ap.x, Ap.y, ux * st.T * escN, -uy * st.T * escN, TEMA.rojo, `T = ${st.T.toFixed(1)} N`);
+  const ux = (tg.x - Ap.x) / st.c, uy = (tg.y - Ap.y) / st.c;
+  if (st.T > 0) flecha(Ap.x, Ap.y, ux * st.T * escN, -uy * st.T * escN, TEMA.rojo, `T = ${st.T.toFixed(1)} N`);
   flecha(Pp.x, Pp.y - hilo - 20 / k, 0, peso * escN, TEMA.ambar, `m·g = ${peso.toFixed(1)} N`);
 
   texto(p.t != null ? `t = ${p.t.toFixed(2)} s` : p.tramo, 12, 16, TEMA.tinta);
@@ -435,13 +561,21 @@ function chipsEstado(q, st, p) {
   const c = (k, v) => `<span class="chip">${k} <b>${v}</b></span>`;
   let h = c('avance', (p.av >= 0 ? '+' : '') + p.av.toFixed(3) + ' rev')
         + c('tambor', (st.phi / (2 * Math.PI)).toFixed(3) + ' rev')
-        + c('r', st.r.toFixed(1) + ' mm') + c('cable pagado', st.s.toFixed(1) + ' mm')
+        + c('brazo en el eje', st.r.toFixed(1) + ' mm') + c('cable enrollado', st.s.toFixed(1) + ' mm')
         + c('c', st.c.toFixed(1) + ' mm');
+  if (q.tipo === 'leva') {
+    const pr = Mec.presionLeva(q);
+    h += c('leva: r de arranque', Mec.perfilLeva(q).rIni.toFixed(1) + ' mm') + c('ángulo de presión máx', pr.max.toFixed(0) + '°')
+       + (pr.convexo ? '' : '<span class="chip" style="color:var(--red)">perfil con tramo cóncavo</span>');
+  }
   if (!st.fuera)
     h += c('α', st.a.toFixed(1) + '°') + c('θ desde la horizontal', st.th.toFixed(1) + '°')
        + c('brazo del cable', st.brazoCable.toFixed(1) + ' mm')
        + c('brazo del peso', st.brazoPeso.toFixed(1) + ' mm')
        + c('T', st.T.toFixed(2) + ' N') + c('τ', st.tau.toFixed(3) + ' N·m');
+  else if (st.flojo)
+    h += c('θ desde la horizontal', st.th.toFixed(1) + '°')
+       + '<span class="chip" style="color:var(--amber, var(--red))">cable flojo: la barra apoya en el tope</span>';
   else h += '<span class="chip" style="color:var(--red)">fuera del mecanismo</span>';
   if (ensayo && p.i != null)
     h += c('t', p.t.toFixed(2) + ' s') + c('LC1', ensayo.lc1[p.i] + ' cuentas')
@@ -468,21 +602,25 @@ function comprobar(q) {
   const gr  = (x, y) => (x == null || y == null) ? '—' : Math.abs(x - y).toFixed(1) + '°';
   if (enB.fuera && enB.th == null) {
     cmp.className = 'line err';
-    cmp.innerHTML = `Con θ = ${q.th0}° el cable en B (${enB.c.toFixed(1)} mm) cae en el límite`
+    cmp.innerHTML = `Con θ = ${q.th0}° el cable equivalente en B (${enB.g.toFixed(1)} mm) cae en el límite`
       + ` geométrico: no hay ángulo. Sube θ en B —el punto muerto está en`
       + ` ${Mec.thMuerto(q).toFixed(1)}°—.`;
     el('s-inv').textContent = '';
     return;
   }
-  let h = `Salida del cable D: |OD| = <b>${Mec.od(q).toFixed(1)} mm</b>,`
-        + ` ${(90 - Mec.incD(q)).toFixed(1)}° inclinada de la vertical (L2 ${q.L2}, dx ${q.dx}).`
+  const rB = Mec.rHome(q), rA = q.tipo === 'car' ? q.r1 : q.L1;
+  let h = `Eje del tambor C: |OC| = <b>${Mec.oc(q).toFixed(1)} mm</b>,`
+        + ` ${(90 - Mec.incC(q)).toFixed(1)}° inclinado de la vertical (L2 ${q.L2}, xt ${q.xt}).`
+        + ` El cable sale tangente por la ${Mec.lado(q) > 0 ? 'derecha' : 'izquierda'} del tambor:`
+        + ` su línea queda a ${(q.xt - Mec.lado(q) * rB).toFixed(0)} mm a la izquierda de O en B (r = ${rB})`
+        + ` y a ${(q.xt - Mec.lado(q) * rA).toFixed(0)} mm al final de la espiral (r = ${rA}).`
         + ` Tiro a <b>${Mec.L3ef(q).toFixed(1)} mm</b> de O,`
         + ` ${Mec.delta(q).toFixed(1)}° adelantado del eje (e1 ${q.e1}, e2 ${q.e2}).<br>`
         + `En B, donde arranca el ensayo: barra a <b>${ang(enB)}</b> de la horizontal,`
-        + ` cable <b>${enB.c.toFixed(1)} mm</b> (entre ${cmin.toFixed(0)} y ${cmax.toFixed(0)}).<br>`;
+        + ` cable libre <b>${enB.c.toFixed(1)} mm</b>, equivalente ${enB.g.toFixed(1)} (entre ${cmin.toFixed(0)} y ${cmax.toFixed(0)}).<br>`;
   if (eB.fuera) {
     cmp.className = 'line err';
-    h += `Con ${fmt(extremo)} rev de avance el tambor pide <b>${eB.c.toFixed(0)} mm</b> de cable: la barra`
+    h += `Con ${fmt(extremo)} rev de avance el tambor pide <b>${eB.g.toFixed(0)} mm</b> de cable equivalente: la barra`
        + ` tendría que pasar del punto muerto (${Mec.thMuerto(q).toFixed(1)}°) o de +90°.`
        + ` El recorrido no cabe en el mecanismo.<br>`;
   } else {
@@ -492,8 +630,18 @@ function comprobar(q) {
        + ` recorrido de <b>${gr(eB.th, enB.th)}</b>.<br>`;
   }
   h += `Topes: θ = +90° (barra vertical) con ${fmt(aArriba)} rev de avance; punto muerto en`
-     + ` θ = ${Mec.thMuerto(q).toFixed(1)}° con ${fmt(aMuerto)} rev (ahí el cable se alinea`
-     + ` con la barra, el brazo se anula y la tensión no tiene solución).`;
+     + ` θ = ${Mec.thMuerto(q).toFixed(1)}° con ${fmt(aMuerto)} rev (ahí la línea del cable`
+     + ` pasa por O, el brazo se anula y la tensión no tiene solución).`;
+  // El sobre-centro no es un tope del cable sino de la pesa, y es el que manda en B.
+  const tl = Mec.thLibre(q);
+  h += `<br>Reposo libre de la barra (pesa justo bajo el pivote, cable flojo):`
+     + ` <b>${tl.toFixed(1)}°</b>. De L3+L4 = ${q.L3 + q.L4} y e2 = ${q.e2} mm.`;
+  if (q.th0 < tl)
+    h += `<br><span class="err">⚠ θ en B (${q.th0}°) queda ${(tl - q.th0).toFixed(1)}° por`
+       + ` debajo de ese reposo: la barra no puede quedarse ahí con la pesa colgando, porque`
+       + ` el cable sólo tira. O B está en ${tl.toFixed(1)}°, o e2 vale`
+       + ` ${((q.L3 + q.L4) / Math.tan(-q.th0 * Math.PI / 180)).toFixed(1)} mm en vez de`
+       + ` ${q.e2}. Mídelo con el inclinómetro sobre la barra en B.</span>`;
   if (ensayo) {
     const eF = Mec.estado(q, ensayo.av[ensayo.av.length - 1]);
     if (!eF.fuera)
@@ -532,9 +680,11 @@ function graficas(q) {
   const T = [], tau = [], ang = [];
   for (let i = 0; i <= n; i++) {
     const rv = a + (b - a) * i / n, st = Mec.estado(q, rv);
-    T.push({ x: rv, y: st.fuera ? null : st.T });
-    tau.push({ x: rv, y: st.fuera ? null : st.tau });
-    ang.push({ x: rv, y: st.fuera ? null : st.th });
+    // Con el cable flojo hay barra (θ) y la tensión es 0: se pinta. Sin ángulo, hueco.
+    const hay = !st.fuera || st.flojo;
+    T.push({ x: rv, y: hay ? st.T : null });
+    tau.push({ x: rv, y: hay ? st.tau : null });
+    ang.push({ x: rv, y: st.th == null ? null : st.th });
   }
   const base = { responsive: true, animation: false,
     plugins: { legend: { labels: { color: TEMA.tinta, boxWidth: 10, font: { size: 10 } } } } };
@@ -546,12 +696,36 @@ function graficas(q) {
     gTau = new Chart(el('gTau'), { type: 'scatter', data: { datasets: [] }, options: { ...base,
       scales: { x: ejeX, y: eje('tensión (N)', TEMA.azul), y2: eje('par (N·m)', TEMA.rojo, 'right') } } });
     gAng = new Chart(el('gAng'), { type: 'scatter', data: { datasets: [] }, options: { ...base,
-      scales: { x: { ...ejeX }, y: { ...eje('α entre O→D y la barra (°)', TEMA.verde), min: 0, max: 180 } } } });
+      scales: { x: { ...ejeX }, y: { ...eje('θ de la barra desde la horizontal (°)', TEMA.verde), min: -90, max: 90 } } } });
   }
   gTau.options.scales.x.min = gAng.options.scales.x.min = a;
   gTau.options.scales.x.max = gAng.options.scales.x.max = b;
-  gTau.data.datasets = [lin('tensión T', TEMA.azul, T, 'y'), lin('par τ = T·r', TEMA.rojo, tau, 'y2')];
-  gAng.data.datasets = [lin('ángulo α', TEMA.verde, ang, 'y')];
+  const ds = [lin('tensión T', TEMA.azul, T, 'y'), lin('par τ = T·r', TEMA.rojo, tau, 'y2')];
+  // Con la leva se superponen los dos cilindros que la encierran, el de su radio de
+  // arranque y el de su radio final (el mínimo), con la misma geometría y modelo. Lo que
+  // se compara es el alcance con el par acotado: el cilindro final tiene el mismo par
+  // máximo que la leva y llega más tarde; el de arranque llega antes pasándose de par.
+  const sl = el('s-leva');
+  if (q.tipo === 'leva') {
+    const P = Mec.perfilLeva(q), rIni = P.rIni, rFin = P.r[P.r.length - 1];
+    const cil = r => ({ ...q, tipo: 'cil', L1: r });
+    const series = [[`cilindro r arranque ${rIni.toFixed(1)} mm`, TEMA.ambar, cil(rIni)], [`cilindro r final ${rFin.toFixed(1)} mm`, TEMA.verde, cil(rFin)]];
+    const llega = [];
+    for (const [nombre, color, qc] of series) {
+      const pts = [];
+      for (let i = 0; i <= n; i++) { const rv = a + (b - a) * i / n, st = Mec.estado(qc, rv); pts.push({ x: rv, y: (!st.fuera || st.flojo) ? st.tau : null }); }
+      const d = lin(nombre, color, pts, 'y2'); d.borderDash = [5, 3]; ds.push(d);
+      const rv = Mec.revParaTheta(qc, q.thfin);
+      llega.push(`${nombre}: ${rv == null ? 'no llega a' : rv.toFixed(2) + ' rev de motor hasta'} θ = ${q.thfin}°`
+        + (rv != null ? `, par máx ${Math.max(...pts.filter(p => p.y != null).map(p => p.y)).toFixed(2)} N·m` : ''));
+    }
+    const rvL = Mec.recorridoMotor(q), tauMax = Math.max(...tau.filter(p => p.y != null).map(p => p.y));
+    sl.hidden = false;
+    sl.innerHTML = `Alcance con el par acotado · leva: <b>${rvL.toFixed(2)} rev</b> hasta θ = ${q.thfin}°, par máx ${tauMax.toFixed(2)} N·m`
+      + ` (${((q.thfin - q.th0) / rvL * q.red).toFixed(0)} °/rev de tambor) · ` + llega.join(' · ');
+  } else sl.hidden = true;
+  gTau.data.datasets = ds;
+  gAng.data.datasets = [lin('ángulo θ', TEMA.verde, ang, 'y')];
   gTau.update('none'); gAng.update('none');
 }
 

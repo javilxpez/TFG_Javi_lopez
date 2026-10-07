@@ -487,34 +487,41 @@ MECH_FILE = Path(__file__).parent / "mecanismo.json"
 # El recorrido A→B del motor no se guarda: sale de barr × red (Mec.recorridoMotor).
 MECH_DEFAULTS = {
     "tipo": "car", "L1": 25.0, "r0": 28.18, "r1": 56.0, "barr": 0.367,
-    "L2": 290.0, "dx": 65.0, "L3": 95.0, "L4": 110.0, "e1": 20.0, "e2": 20.0, "m": 2.0, "g": 9.81,
-    "th0": -80.0, "red": 5.0, "sentido": 1,
+    "L2": 290.0, "xt": 30.0, "ob": 30.0, "L3": 95.0, "L4": 110.0, "e1": 20.0, "e2": 20.0, "m": 2.0, "g": 9.81,
+    "th0": -87.0, "red": 5.0, "sentido": 1,
+    # leva de par constante (tipo 'leva'): par objetivo en el tambor (N·m), radio máximo (mm)
+    # y θ hasta el que se diseña (°). Ver Mec.perfilLeva en static/mecanismo.js.
+    "tau0": 1.5, "rmax": 70.0, "thfin": 3.0,
 }
 # (mínimo, máximo, mínimo excluido). th0 es la barra desde la horizontal en el home, y el
 # rango de aquí es el del par de ángulos posible; el límite fino (el punto muerto, ≈ −89°)
-# depende de la geometría y lo comprueba Mec.thMuerto en el cliente. dx es
-# el desplazamiento horizontal de D respecto de O, y puede ser negativo (D a la derecha).
+# depende de la geometría y lo comprueba Mec.thMuerto en el cliente. xt es el eje del
+# tambor a la izquierda de O (negativo: a la derecha); el cable sale tangente al tambor,
+# por el lado de O. ob es el carril a la izquierda de O y sólo sirve para el dibujo.
 # e1 es cuánto tira el cable por encima del eje de la barra y e2 cuánto cuelga la pesa por
 # debajo; negativos si van al otro lado.
 MECH_RANGOS = {
     "L1": (0, 1e4, True), "r0": (0, 1e4, True), "r1": (0, 1e4, True), "barr": (0, 100, True),
-    "L2": (0, 1e4, True), "dx": (-1e4, 1e4, False), "L3": (0, 1e4, True), "L4": (0, 1e4, False),
+    "L2": (0, 1e4, True), "xt": (-1e4, 1e4, False), "ob": (-1e4, 1e4, False), "L3": (0, 1e4, True), "L4": (0, 1e4, False),
     "e1": (-1e4, 1e4, False), "e2": (-1e4, 1e4, False),
     "m": (0, 1e4, False), "g": (0, 100, False), "th0": (-90, 90, False),
     "red": (0, 1e4, True),
+    "tau0": (0, 1e3, True), "rmax": (0, 1e4, True), "thfin": (-90, 90, False),
 }
 
 
 def mech_load() -> dict:
     try:
         data = json.loads(MECH_FILE.read_text())
-        # Ficheros guardados con la convención anterior (α entre mástil y barra). La
-        # conversión exacta es θ = incD − α, con incD = atan2(L2, −dx) la inclinación de
-        # O→D; con dx = 0 se reduce a θ = 90 − α, que era lo que hacía la versión de antes
-        # y fallaba en cuanto D se desplazaba.
+        # Ficheros guardados con la convención anterior (α entre mástil y barra, y la
+        # salida del cable en un punto fijo D a dx de O). La conversión exacta es
+        # θ = incD − α, con incD = atan2(L2, −dx) la inclinación de O→D; con dx = 0 se
+        # reduce a θ = 90 − α, que era lo que hacía la versión de antes y fallaba en cuanto
+        # D se desplazaba. El dx se descarta después: ahora lo que se guarda es el eje del
+        # tambor (xt) y el cable sale tangente a él.
         if "th0" not in data and "a0" in data:
             L2 = float(data.get("L2", MECH_DEFAULTS["L2"]))
-            dx = float(data.get("dx", MECH_DEFAULTS["dx"]))
+            dx = float(data.get("dx", 11.0))
             data["th0"] = math.degrees(math.atan2(L2, -dx)) - float(data["a0"])
         return {**MECH_DEFAULTS, **{k: v for k, v in data.items() if k in MECH_DEFAULTS}}
     except FileNotFoundError:
@@ -532,8 +539,8 @@ def mech_validate(body: dict):
         if k not in MECH_DEFAULTS:
             return None, f"clave desconocida: {k}"
         if k == "tipo":
-            if v not in ("car", "cil"):
-                return None, "tipo tiene que ser 'car' o 'cil'"
+            if v not in ("car", "cil", "leva"):
+                return None, "tipo tiene que ser 'car', 'cil' o 'leva'"
             out[k] = v
         elif k == "sentido":
             if v not in (-1, 1, "-1", "1"):
@@ -573,6 +580,13 @@ async def put_mech(body: dict):
 async def sim():
     """Simulador del mecanismo: aquí se configura la geometría que usan las demás páginas."""
     return HTMLResponse((Path(__file__).parent / "static" / "sim.html").read_text())
+
+
+@app.get("/leva")
+async def leva():
+    """Leva de par constante: el perfil r = τ0/T con la geometría configurada, frente a
+    los cilindros equivalentes y la espiral actual."""
+    return HTMLResponse((Path(__file__).parent / "static" / "leva.html").read_text())
 
 
 @app.get("/mecanismo.js")

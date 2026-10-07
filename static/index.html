@@ -235,13 +235,13 @@
       <div class="grid">
         <div class="param">
           <label>Calibración (cuentas/N)</label>
-          <input type="number" id="p-calib" value="14.41" step="any"
+          <input type="number" id="p-calib" value="-10.2" step="any"
                  title="Cuentas por newton. Puede ser NEGATIVA: esta célula da cuentas negativas al aumentar la tensión.">
         </div>
         <div class="param">
           <label>Fuerza en el punto de tara (N)</label>
-          <input type="number" id="p-offset" value="51.78" step="any"
-                 title="La tara no es fuerza cero: la pesa cuelga siempre. Este es el valor real de la tensión cuando se puso la tara, y es lo que hace que la fuerza salga absoluta.">
+          <input type="number" id="p-offset" value="0" step="any"
+                 title="Tensión real del cable cuando se puso la tara. Tarando en B con el cable flojo es 0; si se tara con la pesa colgando del cable hay que poner aquí lo que tiraba.">
         </div>
         <div class="param">
           <label>Tara</label>
@@ -541,15 +541,16 @@ let ws = null;
 // Calibración de LC1: fuerza = cuentas/forceCalib + forceOffset
 //
 // Son DOS constantes y las dos hacen falta:
-//   · forceCalib puede ser negativa, así que el código no exige fc > 0 como antes.
-//     En esta máquina sale POSITIVA (+14.41): las cuentas crecen con la tensión. Salió
-//     negativa en un primer ajuste hecho con la geometría invertida, y el signo de la
-//     calibración es justamente lo que delata ese error.
-//   · forceOffset existe porque la tara NO es fuerza cero: la pesa de 2 kg cuelga
-//     siempre, así que al tarar se está poniendo a cero una tensión que ya existía.
-//     Sin este término la fuerza sale desplazada por ese valor.
-let forceCalib  = 14.41;
-let forceOffset = 51.78;
+//   · forceCalib es NEGATIVA en esta célula: las cuentas bajan al aumentar la tensión
+//     (medido colgando la pesa: 8325 → 8275 abajo, 8330 → 7900 arriba). El +14.41 y el
+//     offset de 51.78 N que había aquí venían de un ajuste viejo contra el modelo, y
+//     dejaban la pantalla en 51.78 N justo después de tarar: parecía que la tara no
+//     ponía la célula a cero. Tienen que ser los mismos valores que web_monitor.py
+//     escribe en la cabecera del CSV (lc1_calib, lc1_offset).
+//   · forceOffset es la tensión real cuando se puso la tara. Tarando en B con el cable
+//     flojo es 0; sólo es distinto de 0 si se tara con la pesa tirando del cable.
+let forceCalib  = -10.2;
+let forceOffset = 0;
 let lc1Last    = 0;    // ídem para la célula 1
 let t0 = null;
 let lastTsec = null;   // latest device time (s), for command markers

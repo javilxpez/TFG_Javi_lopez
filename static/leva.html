@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Diseño del tambor</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="/fui/css/fanuc-ui.css">
+  <link rel="stylesheet" href="/tema.css">
+  <script src="/tema.js"></script>
+  <script src="/mecanismo.js"></script>
+  <script src="/nav.js" defer></script>
+  <style>
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-start; }
+    .card { padding: 8px 10px; }
+    .col-cfg { flex: 0 0 360px; display: flex; flex-direction: column; gap: 10px; }
+    .col-main { flex: 1; min-width: 420px; display: flex; flex-direction: column; gap: 10px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .grid label { color: var(--fui-ink-3); font: 500 11px/1.25 var(--fui-font-label);
+                  letter-spacing: .08em; text-transform: uppercase; }
+    .grid .ancho { grid-column: 1 / -1; }
+    .fui-screen .grid input[type=number], .fui-screen .grid select { width: 100%; margin-top: 3px; }
+    .chips { margin-top: 8px; }
+    .acciones { display: flex; gap: 6px; flex-wrap: wrap; }
+    .line { margin-top: 6px; }
+    #leva { width: 100%; height: 420px; display: block; background: var(--fui-field); border: 1px solid var(--fui-rule); }
+    canvas.graf { max-height: 300px; }
+    #gRad { min-height: 260px; }
+    table.res { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; }
+    table.res th, table.res td { text-align: right; padding: 3px 6px; border-bottom: 1px solid var(--fui-rule); }
+    table.res th:first-child, table.res td:first-child { text-align: left; }
+    .sw { display: inline-block; width: 10px; height: 10px; margin-right: 5px; vertical-align: middle; }
+  </style>
+</head>
+<body class="fui-page">
+<div class="fui-bezel tema-marco">
+  <div class="fui-plate">
+    <span class="fui-brand">CARACOLA</span>
+    <span>Banco de ensayos · Pico 2</span>
+  </div>
+  <main class="fui-screen">
+    <div class="fui-titlebar"><span>TAMBOR  DISEÑO DE LA ESPIRAL</span><span class="fui-titlebar-end">mecanismo.json</span></div>
+    <section class="fui-view">
+  <div class="row">
+    <div class="col-cfg">
+      <div class="card">
+        <div class="title">Diseño de la espiral — con la geometría de Configuración del mecanismo</div>
+        <div class="line hint" id="s-geo"></div>
+        <div class="grid" style="margin-top:9px">
+          <label>barrido del tambor en el recorrido (°)
+            <input type="number" id="f-barrdeg" step="1" min="20" oninput="pintar()"
+                   title="Lo que gira la salida del capstan para todo el recorrido de la barra. Por defecto el barrido medido en los ensayos (el 'barr' de la configuración, 0.367 rev = 132°). Junto con la energía del recorrido fija el par medio."></label>
+          <label>radio al final del recorrido (mm)
+            <input type="number" id="f-rfin" value="46" step="1" min="5" oninput="pintar()"
+                   title="El radio donde la tensión es máxima. Fija el par de la meseta: τ0 = T_final · r_final. Más pequeño baja el par pero, con el barrido fijo, obliga a un arranque mayor."></label>
+          <label class="ancho">ley del radio
+            <select id="f-ley" onchange="pintar()">
+              <option value="lineal">espiral lineal al barrido medido (como la pieza)</option>
+              <option value="plano">par plano al barrido medido: r = τ0/T</option>
+              <option value="motor">agresivo: todo el par del motor, radio hasta el tope (el barrido sale)</option>
+            </select></label>
+          <label id="w-taum">par límite del motor (N·m en el motor)
+            <input type="number" id="f-taum" value="1.27" step="0.05" min="0.05" oninput="pintar()"
+                   title="Lo que se le deja pedir al motor. El A6-400 da 1.27 N·m nominales (y más en pico). En el tambor es esto por la reducción."></label>
+          <label id="w-rmax">radio máximo que cabe (mm)
+            <input type="number" id="f-rmax" value="70" step="1" min="10" oninput="pintar()"
+                   title="Tope geométrico del tambor. El perfil agresivo es este radio allá donde el par lo permite, y sólo se estrecha donde T·r pasaría del límite."></label>
+          <label>θ al final del recorrido (°)
+            <input type="number" id="f-thfin" step="1" min="-80" max="90" oninput="pintar()"
+                   title="Hasta dónde sube la barra. Medido con inclinómetro: +3°."></label>
+          <label>rizado desde θ (°)
+            <input type="number" id="f-thriz" value="-60" step="5" min="-90" max="90" oninput="pintar()"
+                   title="El rizado se mide de este ángulo en adelante, para no contar el arranque con el cable flojo."></label>
+        </div>
+        <div class="line hint" id="s-tau0" style="margin-top:9px"></div>
+        <div class="acciones" style="margin-top:10px">
+          <button class="primario" onclick="usarEnMecanismo()">Usar este tambor en el mecanismo</button>
+        </div>
+        <div class="line hint" id="s-guardar"></div>
+      </div>
+      <div class="card">
+        <div class="title">Radio final frente a par máximo, con el barrido fijo</div>
+        <div class="line hint">Para cada radio final, el arranque que hace falta para el mismo barrido y el par que sale. El par medio no cambia: lo fija la energía.</div>
+        <table class="res" id="t-trade"></table>
+      </div>
+      <div class="card">
+        <div class="title">Resultado</div>
+        <div class="line hint">La espiral frente a los dos cilindros que la encierran, con el mismo recorrido de barra. El del radio final pide menos par pero gira más; el del radio de arranque gira menos pero pide más par. La espiral queda entre los dos en ambas cosas.</div>
+        <table class="res" id="t-res"></table>
+      </div>
+    </div>
+
+    <div class="col-main">
+      <div class="card">
+        <div class="title">Par en el tambor frente al giro del tambor</div>
+        <div class="line hint">La espiral diseñada frente a los cilindros de su radio de arranque y de su radio final. Mismo recorrido de barra; cada tambor gira lo que necesita. Para ver el cable sobre ella: «Usar esta espiral en el mecanismo» y abrir MECANISMO.</div>
+        <canvas id="gPar" class="graf"></canvas>
+      </div>
+      <div class="row">
+        <div class="card" style="flex:1;min-width:300px">
+          <div class="title">Perfil de la espiral</div>
+          <canvas id="leva"></canvas>
+          <div class="chips" id="s-chips"></div>
+        </div>
+        <div class="card" style="flex:1;min-width:300px">
+          <div class="title">Radio frente al giro del tambor</div>
+          <canvas id="gRad" class="graf"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+    </section>
+  </main>
+  <nav id="nav" data-actual="leva"></nav>
+</div>
+
+<script>
+// ── Diseño de la espiral ─────────────────────────────────────────────────
+// Con la tensión casi plana que tiene este mecanismo, el perfil que mantiene el par
+// constante no gana nada frente a una espiral lineal suave: a igual barrido el pico sale
+// igual o peor (el contacto exacto va por detrás del punto de diseño). Así que se diseña
+// lo simple: una espiral lineal del radio de arranque al radio final en el barrido
+// medido. El radio final es la decisión (par al final frente a arranque necesario), y el
+// de arranque sale de que el recorrido dure justo el barrido. Todo con el contacto exacto
+// cable-perfil de mecanismo.js.
+const TEMA = coloresTema();
+temaGraficas();
+const el = id => document.getElementById(id);
+const GRAD = Math.PI / 180;
+let gPar = null, gRad = null;
+
+const alturaPesa = (q, th) => (q.L3 + q.L4) * Math.sin(th * GRAD) - q.e2 * Math.cos(th * GRAD);
+
+// Recorrido completo de un tambor hasta thFin: giro, par medio, pico, par al final.
+function recorrer(q, thFin) {
+  const rec = Mec.revParaTheta(q, thFin);
+  if (rec == null) return null;
+  const n = 160, out = [];
+  for (let i = 0; i <= n; i++) {
+    const e = Mec.estado(q, rec * i / n);
+    if (e.fuera && !e.flojo) continue;
+    out.push({ phi: e.phi, th: e.th, r: e.r, rc: e.rc, T: e.T, tau: e.tau });
+  }
+  const taus = out.map(o => o.tau);
+  return { rec, out, barr: rec / q.red, medio: taus.reduce((a, b) => a + b, 0) / taus.length,
+           pico: Math.max(...taus), fin: taus[taus.length - 1] };
+}
+// Radio de arranque para que la espiral r0 → rfin dure justo 'barr' vueltas. Más
+// arranque, menos vueltas: monótono, bisección (a 0.1 mm).
+function arranquePara(base, rfin, barr, thFin) {
+  let lo = Math.max(5, rfin * 0.6), hi = Math.max(rfin * 3, 120), res = null;
+  for (let i = 0; i < 11; i++) {
+    const r0 = (lo + hi) / 2, q = { ...base, tipo: 'car', r0, r1: rfin, barr };
+    const r = recorrer(q, thFin);
+    if (!r || r.barr > barr) lo = r0; else { hi = r0; res = { r0, ...r, q }; }
+  }
+  return res;
+}
+function rizado(out, thDesde) {
+  const t = out.filter(o => o.th >= thDesde).map(o => o.tau);
+  if (t.length < 2) return null;
+  const m = t.reduce((a, b) => a + b, 0) / t.length;
+  return { medio: m, riz: 100 * (Math.max(...t) - Math.min(...t)) / m };
+}
+function leerDiseno() {
+  const barrdeg = parseFloat(el('f-barrdeg').value), rfin = parseFloat(el('f-rfin').value);
+  const thfin = parseFloat(el('f-thfin').value), thRiz = parseFloat(el('f-thriz').value);
+  if (![barrdeg, rfin, thfin, thRiz].every(Number.isFinite) || barrdeg <= 0 || rfin <= 0) return null;
+  const taum = parseFloat(el('f-taum').value), rmax = parseFloat(el('f-rmax').value);
+  return { barrdeg, rfin, thfin, thRiz, barr: barrdeg / 360, ley: el('f-ley').value, taum, rmax };
+}
+// Ley agresiva: el par objetivo es el límite del motor en el tambor y el radio el tope
+// geométrico. Sin barrido impuesto: sale el que sale, y es lo que se gana.
+function disenoMotor(base, d) {
+  if (!(d.taum > 0 && d.rmax > 0)) return null;
+  const tau0 = d.taum * base.red, q = { ...base, tipo: 'leva', tau0, rmax: d.rmax, thfin: d.thfin };
+  const r = recorrer(q, d.thfin);
+  return r ? { r0: Mec.perfilLeva(q).rIni, tau0, ...r, q } : null;
+}
+// Ley de par plano: la meseta la fija el radio final, τ0 = T(θ_fin, r_fin)·r_fin, y el
+// radio de arranque (el tope rmax de la leva) se resuelve para que el recorrido dure
+// justo el barrido. Más arranque, menos vueltas.
+// La búsqueda del arranque se hace con el diseño rápido (sin corregir con el modelo
+// exacto, _sinIter) y sólo el resultado final se corrige: la corrección cuesta un segundo
+// y la bisección la pedía once veces, y la página se quedaba colgada.
+function arranquePlano(base, rfin, barr, thFin, rapido) {
+  const Tfin = Mec.tensionDe(base, thFin, rfin);
+  if (Tfin == null || Tfin <= 0) return null;
+  const tau0 = Tfin * rfin / 1000;
+  let lo = rfin, hi = Math.max(rfin * 3, 120), res = null;
+  for (let i = 0; i < 9; i++) {
+    const rmax = (lo + hi) / 2, q = { ...base, tipo: 'leva', tau0, rmax, thfin: thFin, _sinIter: true };
+    const r = recorrer(q, thFin);
+    if (!r || r.barr > barr) lo = rmax; else { hi = rmax; res = { rmax }; }
+  }
+  if (!res) return null;
+  const q = { ...base, tipo: 'leva', tau0, rmax: res.rmax, thfin: thFin, ...(rapido ? { _sinIter: true } : {}) };
+  const r = recorrer(q, thFin);
+  return r ? { r0: Mec.perfilLeva(q).rIni, tau0, ...r, q } : null;
+}
+
+let ultimo = null, pintarN = 0;
+function pintar() {
+  const base = Mec.q, d = leerDiseno();
+  if (!d) return;
+  const errG = Mec.validar({ ...base, tipo: 'car', r0: 50, r1: 40, barr: d.barr });
+  if (errG) { el('s-geo').textContent = 'geometría no válida: ' + errG; return; }
+  el('s-geo').innerHTML = `Eje del tambor a ${base.xt} mm de O y ${base.L2} de alto · barra L3 ${base.L3} + L4 ${base.L4} mm, e1 ${base.e1}, e2 ${base.e2}`
+    + ` · ${base.m} kg · θ en B ${base.th0}°. Reposo libre ${Mec.thLibre(base).toFixed(1)}°.`
+    + (Mec.aviso() ? `<br><span class="err">⚠ ${Mec.aviso()}</span>` : '');
+  el('w-taum').hidden = el('w-rmax').hidden = d.ley !== 'motor';
+  const D = d.ley === 'plano' ? arranquePlano(base, d.rfin, d.barr, d.thfin)
+          : d.ley === 'motor' ? disenoMotor(base, d) : arranquePara(base, d.rfin, d.barr, d.thfin);
+  if (!D) {
+    // Con par plano la meseta T_fin·r_fin tiene que superar el par medio W/barrido, y
+    // algo más porque la entrada va por debajo: de ahí sale el radio final mínimo.
+    const W0 = base.m * base.g * (alturaPesa(base, d.thfin) - alturaPesa(base, base.th0)) / 1000;
+    const Tf = Mec.tensionDe(base, d.thfin, d.rfin) || 1, rMin = W0 / d.barr / (2 * Math.PI) / Tf * 1000;
+    el('s-tau0').innerHTML = `<span class="err">No llega: en ${d.barrdeg}° el par medio es ${(W0 / d.barr / (2 * Math.PI)).toFixed(2)} N·m y`
+      + ` ${d.ley === 'plano' ? `la meseta T_fin·r_fin = ${(Tf * d.rfin / 1000).toFixed(2)} N·m queda por debajo. Hace falta un radio final de al menos ${rMin.toFixed(0)} mm (y algo más por la entrada), o más barrido.`
+                              : 'con ese radio final no hay arranque que pague el cable. Sube el radio final o el barrido.'}</span>`;
+    return;
+  }
+  ultimo = D;
+  const q = D.q, W = base.m * base.g * (alturaPesa(base, d.thfin) - alturaPesa(base, base.th0)) / 1000;
+  const Tmax = Math.max(...D.out.map(o => o.T)), iT = D.out.findIndex(o => o.T === Tmax);
+  const rFinal = D.out[D.out.length - 1].rc != null ? D.out[D.out.length - 1].rc : d.rfin;
+  el('s-tau0').innerHTML = `${d.ley === 'plano' ? 'Perfil de par plano' : d.ley === 'motor' ? 'Perfil agresivo' : 'Espiral lineal'} <b>${D.r0.toFixed(1)} → ${rFinal.toFixed(1)} mm</b> en ${(D.barr * 360).toFixed(0)}° de tambor (${D.rec.toFixed(2)} rev de motor)`
+    + (d.ley === 'plano' ? `, meseta τ0 = ${D.tau0.toFixed(2)} N·m.` : d.ley === 'motor' ? `, límite ${D.tau0.toFixed(2)} N·m en el tambor (${d.taum} en el motor × ${base.red}). Frente a los ${d.barrdeg}° medidos: <b>${(100 * (1 - D.barr * 360 / d.barrdeg)).toFixed(0)} % menos de giro</b>.` : '.')
+    + ` Tensión máxima ${Tmax.toFixed(1)} N a θ = ${D.out[iT].th.toFixed(0)}°; par al final ${D.fin.toFixed(2)} N·m, <b>pico ${D.pico.toFixed(2)} N·m</b>`
+    + ` (${(D.pico / base.red).toFixed(3)} en el motor), medio ${D.medio.toFixed(2)}.`
+    + `<br>Trabajo ${base.th0}° → ${d.thfin}°: ${W.toFixed(3)} J, que en ${d.barrdeg}° son ${(W / d.barr / (2 * Math.PI)).toFixed(3)} N·m de par medio para cualquier tambor.`;
+
+  const rIni = D.r0, rFin = d.ley === 'motor' ? Math.round(rFinal * 10) / 10 : d.rfin;
+  const tambores = [
+    { nombre: `${d.ley === 'plano' ? 'perfil de par plano' : 'espiral'} ${rIni.toFixed(1)} → ${rFin} mm`, color: TEMA.rojo, ancho: 2.4, R: D },
+    { nombre: `cilindro del radio de arranque (${rIni.toFixed(1)} mm)`, color: TEMA.ambar, R: recorrer({ ...base, tipo: 'cil', L1: rIni }, d.thfin) },
+    { nombre: `cilindro del radio final (${rFin} mm)`, color: TEMA.verde, R: recorrer({ ...base, tipo: 'cil', L1: rFin }, d.thfin) },
+  ].filter(t => t.R);
+
+  const lin = (t, data) => ({ label: t.nombre, data, showLine: true, pointRadius: 0, borderWidth: t.ancho || 1.6, borderColor: t.color });
+  const eje = (txt, color) => ({ title: { display: true, text: txt, color: color || TEMA.tinta },
+                                 ticks: { color: color || TEMA.tinta }, grid: { color: TEMA.rejilla } });
+  const opts = { responsive: true, animation: false,
+    plugins: { legend: { labels: { color: TEMA.tinta, boxWidth: 10, font: { size: 10 } } } } };
+  if (!gPar) {
+    gPar = new Chart(el('gPar'), { type: 'scatter', data: { datasets: [] }, options: { ...opts,
+      scales: { x: { ...eje('giro del tambor (rev)'), type: 'linear', min: 0 }, y: { ...eje('par en el tambor (N·m)'), min: 0 } } } });
+    gRad = new Chart(el('gRad'), { type: 'scatter', data: { datasets: [] }, options: { ...opts,
+      plugins: { legend: { display: false } },
+      scales: { x: { ...eje('giro del tambor (rev)'), type: 'linear', min: 0 }, y: { ...eje('brazo en el eje (mm)'), min: 0 } } } });
+  }
+  const xrev = o => o.phi / (2 * Math.PI);
+  gPar.data.datasets = tambores.map(t => lin(t, t.R.out.map(o => ({ x: xrev(o), y: o.tau }))));
+  gPar.update('none');
+  gRad.data.datasets = tambores.map(t => lin(t, t.R.out.map(o => ({ x: xrev(o), y: o.r }))));
+  gRad.update('none');
+
+  const recorrido = d.thfin - base.th0;
+  let h = `<tr><th>tambor</th><th>gira (rev)</th><th>alcance (°/rev)</th><th>par máx</th><th>par medio</th><th>rizado</th></tr>`;
+  for (const t of tambores) {
+    const r = rizado(t.R.out, d.thRiz);
+    h += `<tr><td><span class="sw" style="background:${t.color}"></span>${t.nombre}</td>`
+       + `<td>${t.R.barr.toFixed(3)}</td><td><b>${(recorrido / t.R.barr).toFixed(0)}</b></td>`
+       + `<td>${t.R.pico.toFixed(2)}</td><td>${t.R.medio.toFixed(2)}</td>` + (r ? `<td>${r.riz.toFixed(1)}%</td>` : '<td>—</td>') + `</tr>`;
+  }
+  el('t-res').innerHTML = h;
+
+  // La decisión: radio final frente a pico, con el barrido fijo. Se calcula DESPUÉS de
+  // pintar lo demás (es lo lento) y se cancela si el usuario cambia algo entre medias.
+  el('t-trade').innerHTML = '<tr><td class="hint">calculando…</td></tr>';
+  const marca = ++pintarN;
+  if (d.ley === 'motor') { el('t-trade').innerHTML = '<tr><td class="hint">no aplica: en el modo agresivo el radio final lo pone el par del motor</td></tr>'; dibujarLeva(q, Array.from({ length: 121 }, (_, i) => { const psi = D.barr * 2 * Math.PI * i / 120; return { phi: psi, r: Mec.tambor(q, psi).r }; }), rIni, rFin, Math.max(rIni, rFin, d.rmax)); return; }
+  const radios = [26, 32, 38, 44, 50], filas = [];
+  const paso = i => {
+    if (marca !== pintarN) return;
+    if (i >= radios.length) {
+      el('t-trade').innerHTML = `<tr><th>radio final</th><th>arranque</th><th>par al final</th><th>par máx</th></tr>` + filas.join('');
+      return;
+    }
+    const rf = radios[i];
+    const T = (rf === d.rfin) ? D : (d.ley === 'plano' ? arranquePlano(base, rf, d.barr, d.thfin, true) : arranquePara(base, rf, d.barr, d.thfin));
+    filas.push(T ? `<tr${rf === d.rfin ? ' style="font-weight:600"' : ''}><td>${rf} mm</td><td>${T.r0.toFixed(1)} mm</td><td>${T.fin.toFixed(2)}</td><td>${T.pico.toFixed(2)} N·m</td></tr>`
+                 : `<tr><td>${rf} mm</td><td colspan=3>no llega</td></tr>`);
+    setTimeout(() => paso(i + 1), 0);
+  };
+  setTimeout(() => paso(0), 0);
+  // El perfil en planta se saca del propio tambor, r(ψ) sobre su barrido.
+  const perfil = Array.from({ length: 121 }, (_, i) => { const psi = D.barr * 2 * Math.PI * i / 120; return { phi: psi, r: Mec.tambor(q, psi).r }; });
+  dibujarLeva(q, perfil, rIni, rFin, Math.max(rIni, rFin));
+}
+
+async function usarEnMecanismo() {
+  if (!ultimo) return;
+  const q = ultimo.q.tipo === 'leva'
+    ? { ...Mec.q, tipo: 'leva', tau0: Math.round(ultimo.tau0 * 1000) / 1000, rmax: Math.round(ultimo.q.rmax * 10) / 10, thfin: ultimo.q.thfin, barr: Math.round(ultimo.barr * 1000) / 1000 }
+    : { ...Mec.q, tipo: 'car', r0: Math.round(ultimo.r0 * 10) / 10, r1: ultimo.q.r1, barr: Math.round(ultimo.q.barr * 1000) / 1000 };
+  const err = Mec.validar(q), s = el('s-guardar');
+  if (err) { s.className = 'line err'; s.textContent = err; return; }
+  try { await Mec.guardar(q); s.className = 'line ok'; s.textContent = 'guardado: el mecanismo ya es esta espiral. Ábrela en MECANISMO.'; }
+  catch (e) { s.className = 'line err'; s.textContent = 'no se pudo guardar: ' + e.message; }
+}
+
+// La pieza en planta: el perfil r(ψ) sobre su barrido, cerrado con una transición suave,
+// y encima los dos círculos equivalentes. El cable sale por la derecha, como en /sim.
+function dibujarLeva(q, lv, rIni, rFin, rmax) {
+  const cv = el('leva'), dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth, H = cv.clientHeight;
+  if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+  const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+  const R = Math.max(rmax, rIni) + 8, k = Math.min(W, H) / 2 / R * 0.92, cx = W / 2, cy = H / 2;
+  const X = (r, a) => cx + r * Math.cos(a) * k, Y = (r, a) => cy - r * Math.sin(a) * k;
+  const lado = Mec.lado(q), sent = -q.sentido * lado;      // mismo criterio que el dibujo de /sim
+  const circ = (r, color, raya) => { ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 1.2; ctx.setLineDash(raya || []);
+    ctx.beginPath(); ctx.arc(cx, cy, r * k, 0, 2 * Math.PI); ctx.stroke(); ctx.restore(); };
+  // Cuadrícula radial cada 10 mm
+  for (let r = 10; r < R; r += 10) circ(r, TEMA.rejilla, [2, 4]);
+  // Perfil: ψ = φ recorrido; T (salida del cable) a la derecha. Arranque en ángulo 0.
+  const phiTot = lv[lv.length - 1].phi;
+  ctx.save(); ctx.fillStyle = conAlfa(TEMA.rojo, 0.12); ctx.strokeStyle = TEMA.rojo; ctx.lineWidth = 2; ctx.beginPath();
+  lv.forEach((o, i) => { const a = sent * o.phi; i ? ctx.lineTo(X(o.r, a), Y(o.r, a)) : ctx.moveTo(X(o.r, a), Y(o.r, a)); });
+  // Cierre de la pieza, como en el CAD: el resto de la vuelta a radio final y una rampa
+  // corta de 60° que vuelve al radio de arranque justo antes de B.
+  const resto = Math.max(60 * GRAD, 2 * Math.PI - phiTot), rampa = Math.min(60 * GRAD, resto);
+  for (let i = 1; i <= 60; i++) {
+    const f = i / 60, a = sent * (phiTot + resto * f);
+    const enRampa = resto * f > resto - rampa;
+    const r = enRampa ? rFin + (rIni - rFin) * (resto * f - (resto - rampa)) / rampa : rFin;
+    ctx.lineTo(X(r, a), Y(r, a));
+  }
+  ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+  circ(rIni, TEMA.ambar, [6, 4]); circ(rFin, TEMA.verde, [6, 4]);
+  // eje y salida del cable
+  ctx.save(); ctx.fillStyle = TEMA.tinta; ctx.beginPath(); ctx.arc(cx, cy, 4, 0, 2 * Math.PI); ctx.fill(); ctx.restore();
+  ctx.save(); ctx.strokeStyle = TEMA.azul; ctx.lineWidth = 2; ctx.beginPath();
+  ctx.moveTo(X(lv[0].r, 0), Y(lv[0].r, 0)); ctx.lineTo(X(lv[0].r, 0), H - 6); ctx.stroke(); ctx.restore();
+  const texto = (s, x, y, color, al) => { ctx.fillStyle = color; ctx.font = `11px ${TEMA.fuente}`; ctx.textAlign = al || 'left'; ctx.textBaseline = 'middle'; ctx.fillText(s, x, y); };
+  texto('cable en B', X(lv[0].r, 0) - 6, H - 14, TEMA.azul, 'right');
+  texto(`arranque ${rIni.toFixed(0)} mm`, 8, 14, TEMA.ambar);
+  texto(`final ${rFin.toFixed(1)} mm`, 8, 28, TEMA.verde);
+  texto(`barrido ${(phiTot / GRAD).toFixed(0)}°`, 8, 42, TEMA.rojo);
+  texto('giro al recoger →', W - 8, 14, TEMA.tinta2, 'right');
+  const c = (k2, v) => `<span class="chip">${k2} <b>${v}</b></span>`;
+  el('s-chips').innerHTML = c('r en B', rIni.toFixed(1) + ' mm') + c('r al final', rFin.toFixed(1) + ' mm')
+    + c('r mínimo', Math.min(...lv.map(o => o.r)).toFixed(1) + ' mm') + c('barrido', (phiTot / 2 / Math.PI).toFixed(3) + ' rev');
+}
+
+window.addEventListener('resize', pintar);
+function cargarDiseno() {
+  el('f-thfin').value = Mec.q.thfin;
+  el('f-barrdeg').value = Math.round(Mec.q.barr * 360);      // el barrido medido en los ensayos
+}
+Mec.alCambiar(() => { cargarDiseno(); pintar(); });
+(async () => {
+  await Mec.cargar();
+  cargarDiseno();
+  try { pintar(); } catch (e) { el('s-geo').textContent = 'no se pudo calcular: ' + e.message; }
+})();
+</script>
+</body>
+</html>

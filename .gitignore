@@ -5,3 +5,7 @@ web_monitor.log
 __pycache__/
 *.pyc
 .venv/
+
+# Pagina de WhatsApp Web guardada (38 MB de bundle, no es del proyecto)
+(256) WhatsApp.html
+(256) WhatsApp_files/

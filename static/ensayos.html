@@ -243,7 +243,7 @@ function repintar() {
 function resumen(consts, filas, f1, u1, cal1, f2, u2, cal2, hayLc2) {
   const t = filas.map(f => f.t_rel_s), pos = filas.map(f => f.pos_rev);
   const v1 = filas.map(f1), v2 = hayLc2 ? filas.map(f2) : [0];
-  const par = filas.map(f => f.par_x10 / 10);
+  const dirA = sentidoSubida(filas), par = filas.map(f => parSubida(f, dirA));
   const reps = [...new Set(filas.map(f => f.rep))].sort((a, b) => a - b);
   const chip = (k, v) => `<span class="chip">${k} <b>${v}</b></span>`;
   el('chips').innerHTML =
@@ -268,7 +268,7 @@ function resumen(consts, filas, f1, u1, cal1, f2, u2, cal2, hayLc2) {
     const ts = f.map(x => x.t_rel_s);
     h += `<tr><td>${r}</td><td>${f.length}</td><td>${(ts[ts.length-1]-ts[0]).toFixed(2)}</td>`
        + `<td>${Math.max(...f.map(f1)).toFixed(cal1 ? 2 : 0)}</td>`
-       + `<td>${Math.max(...f.map(x => x.par_x10 / 10)).toFixed(1)}</td>`
+       + `<td>${Math.max(...f.map(x => parSubida(x, dirA))).toFixed(1)}</td>`
        + `<td>${Math.max(...f.map(x => x.pos_rev)).toFixed(4)}</td></tr>`;
   }
   el('tabla').innerHTML = h;
@@ -321,7 +321,7 @@ function resumenMec() {
   const q = Mec.q;
   el('e-mec').innerHTML = `Geometría de <a href="/sim">Configuración del mecanismo</a>: `
     + (q.tipo === 'car' ? `caracola ${q.r0}→${q.r1} mm en ${q.barr} rev de tambor` : `cilindro de ${q.L1} mm`)
-    + ` · L2 ${q.L2} · dx ${q.dx} · L3 ${q.L3} · L4 ${q.L4} mm · ${q.m} kg · θ en B ${q.th0}°`
+    + ` · L2 ${q.L2} · eje del tambor ${q.xt} a la izquierda de O · L3 ${q.L3} · L4 ${q.L4} mm · ${q.m} kg · θ en B ${q.th0}°`
     + ` · reducción ${q.red} · al avanzar el cable ${q.sentido < 0 ? 'se alarga' : 'se acorta'}`
     + (Mec.aviso() ? `<br><span class="err">⚠ ${Mec.aviso()}</span>` : '');
 }
@@ -333,10 +333,10 @@ function teoSerie(filas) {
     el('e-aviso').textContent = 'faltan datos';
     el('e-angulo').textContent = ''; return null;
   }
-  // El cable en B, donde arranca el ensayo, sale del α0 configurado:
-  //   c² = |OD|² + L3² − 2·|OD|·L3·cos α0,   |OD| = √(L2² + dx²)
+  // El cable libre en B, donde arranca el ensayo, sale del θ0 configurado y del radio r0:
+  // el cable va tangente al tambor, así que c² = |CA'|² − r0² (ver mecanismo.js).
   // Los límites cmin/cmax son los topes geométricos, con la barra plegada sobre la línea
-  // O→D (α = 0°) o alineada con ella (α = 180°).
+  // O→C (α = 0°) o alineada con ella (α = 180°).
   const cHome = Mec.cHome(q);
   const { cmin, cmax } = Mec.limites(q);
   let fuera = 0;
@@ -560,27 +560,41 @@ function pintarT(filas, f1, u1, f2, u2, hayLc2) {
 // ida y la vuelta de cada repetición trazan caminos distintos, así que el lazo se ve
 // directamente: lo que cuesta subir contra lo que cuesta bajar en cada punto.
 //
-// El par llega como par_x10 (décimas) en el registro Modbus 16387 del drive.
+// El par llega como par_x10 (décimas) en el registro Modbus 16387 del drive (el monitor
+// de par del Leadshine, en 0.1 % del par nominal). Su signo es el del giro positivo del
+// motor, NO el de "subir": el ciclo B→A gira en negativo, así que el par que sostiene la
+// pesa sale negativo a la ida Y a la vuelta (el motor frena bajando). Parecía invertido.
+// Se pinta con el signo del sentido de subida, para que compare con el teórico.
+function sentidoSubida(filas) {
+  const pB = filas.length ? (filas[0].pos_rev || 0) : 0;
+  const rel = filas.map(x => (x.pos_rev || 0) - pB);
+  const iLejos = rel.reduce((b, v, i) => Math.abs(v) > Math.abs(rel[b]) ? i : b, 0);
+  return rel[iLejos] < 0 ? -1 : 1;
+}
+const parSubida = (x, dirA) => x.par_x10 / 10 * dirA;
+
 function pintarPar(filas) {
+  const dirA = sentidoSubida(filas);
   const reps = [...new Set(filas.map(f => f.rep))].sort((a, b) => a - b);
   const ds = reps.map((r, i) => ({
     label: 'rep ' + r, showLine: true, pointRadius: 0, borderWidth: 1.4,
     borderColor: COLORES[i % COLORES.length],
-    data: filas.filter(x => x.rep === r).map(x => ({ x: x.pos_rev, y: x.par_x10 / 10 }))
+    data: filas.filter(x => x.rep === r).map(x => ({ x: x.pos_rev, y: parSubida(x, dirA) }))
   }));
   if (gPar) gPar.destroy();
   gPar = new Chart(el('gPar'), { type: 'scatter', data: { datasets: ds },
-                                 options: EJES('posición (rev)', 'par del motor') });
+                                 options: EJES('posición (rev)', 'par del motor (+ al subir)') });
 }
 
 // El mismo par, pero contra el tiempo: una sola traza, porque el tiempo es continuo a
 // lo largo de todo el ensayo. Aquí se ven los picos de arranque y de inversión de cada
 // tramo, que en la gráfica contra posición quedan solapados entre repeticiones.
 function pintarParT(filas) {
+  const dirA = sentidoSubida(filas);
   const ds = [{
-    label: 'par medido (unidades del drive)', showLine: true, pointRadius: 0, borderWidth: 1.4,
+    label: 'par medido (unidades del drive, + al subir)', showLine: true, pointRadius: 0, borderWidth: 1.4,
     borderColor: TEMA.ambar,
-    data: filas.map(x => ({ x: x.t_rel_s, y: x.par_x10 / 10 }))
+    data: filas.map(x => ({ x: x.t_rel_s, y: parSubida(x, dirA) }))
   }];
   // Con la caracola el par teórico NO es plano: τ = T·r(φ), y el radio cambia. Es la
   // curva que justifica montarla, así que se superpone aquí si está activada.
@@ -589,7 +603,7 @@ function pintarParT(filas) {
     borderColor: TEMA.rojo, borderDash: [6, 3], spanGaps: false,
     yAxisID: 'ypar', data: teoPar
   });
-  const o = EJES('tiempo (s)', 'par medido');
+  const o = EJES('tiempo (s)', 'par medido (+ al subir)');
   if (teoPar && teoParams().ver)
     o.scales.ypar = { position: 'right', title: { display: true, text: 'par teórico (N·m)', color: TEMA.rojo },
                       ticks: { color: TEMA.rojo }, grid: { drawOnChartArea: false } };

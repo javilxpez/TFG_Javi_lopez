@@ -7,6 +7,7 @@
     ['monitor', '/',        'MONITOR'],
     ['ensayos', '/ensayos', 'ENSAYOS'],
     ['sim',     '/sim',     'MECANISMO'],
+    ['leva',    '/leva',    'DISEÑO'],
   ];
   function montar() {
     const nav = document.getElementById('nav');
