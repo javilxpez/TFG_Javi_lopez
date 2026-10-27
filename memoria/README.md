@@ -42,6 +42,13 @@ python figuras/generar_campana.py      # los 10 ensayos más recientes: figuras 
 modelo: cable tangente al tambor, cable equivalente y contacto exacto con el perfil. Si cambias la
 geometría, cámbiala en el JS y vuelve a ejecutar el port, que comprueba el balance de energía.
 
+**Tambor: espiral frente a cilindro.** `python figuras/analisis_tambor.py` (después de
+`generar_campana.py`) escribe `tambor14.json` y `n14_tambor.pdf`. Las conclusiones, el objetivo de
+diseño y las limitaciones están en [`figuras/ANALISIS_TAMBOR.md`](figuras/ANALISIS_TAMBOR.md). Ojo: la
+geometría confirmada es **sólo la espiral** de 56 a 28,18 mm en 180°, **sin meseta**, así que la
+«espiral con meseta» de `generar_campana.py` y la parte de `resultados.tex` que la usa están
+superadas.
+
 El modelo anterior (salida del cable en un punto fijo con un desplazamiento `dx`) está superado, y
 con él las conclusiones de las campañas de septiembre. `generar_figuras.py` sigue en el repositorio
 pero usa ese modelo viejo: sus cifras no se citan en la memoria.
