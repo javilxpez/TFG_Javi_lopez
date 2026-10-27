@@ -11,15 +11,18 @@ de la tensión por el radio, sigue fielmente esas variaciones, y el actuador hay
 para el peor punto del recorrido aunque la mayor parte del tiempo trabaje muy por debajo.
 
 Una solución clásica es cambiar la relación de transmisión a lo largo del recorrido haciendo que el
-radio del tambor no sea constante. Es la idea del \emph{fusee} de la relojería del siglo XV, un cono
-con una ranura helicoidal que compensaba la pérdida de par del muelle real a medida que se
-desenrollaba \cite{landes1983}. La misma idea reaparece hoy en los tambores de radio variable de la
-robótica de cables \cite{seriani2016,bieber2023} y en los sistemas pasivos de compensación de
+radio del tambor no sea constante. El antecedente más conocido es el \emph{fusee} de la relojería
+del siglo XV, un cono con ranura helicoidal que compensaba la pérdida de par del muelle real a
+medida que se desenrollaba \cite{landes1983}; conviene advertir desde ahora que el mecanismo de este
+trabajo no es un fusee ni lo imita ---es una leva plana, y la fuerza que debe repartir no decae sino
+que crece---, y que la sección~\ref{sec:arte-convexidad} delimita hasta dónde llega el parecido. La
+idea general de modular el brazo reaparece hoy en los tambores de radio variable de la robótica de
+cables \cite{seriani2016,bieber2023,arsenault2018} y en los sistemas pasivos de compensación de
 gravedad \cite{shen2022,endo2010}. En este trabajo, al tambor en espiral se le llama \emph{caracola}
 por su forma.
 
-El mecanismo objeto del proyecto es precisamente una caracola que, accionada por un servomotor paso
-a paso de lazo cerrado, enrolla un cable y levanta una barra articulada con una masa de
+El mecanismo objeto del proyecto es precisamente una caracola que, accionada por un servomotor AC de
+lazo cerrado, enrolla un cable y levanta una barra articulada con una masa de
 \SI{2}{\kilo\gram}. La hipótesis de partida es que el perfil de radio variable aplana el par que ve
 el motor frente a la variación de la tensión del cable. Comprobarlo exige dos cosas: un modelo que
 diga qué cabe esperar y un sistema de medida capaz de registrar a la vez la posición del eje, la

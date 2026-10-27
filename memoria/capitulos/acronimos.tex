@@ -49,23 +49,32 @@ WS       & WebSocket \\
 \midrule
 \endhead
 O         & Articulación de la barra & -- \\
-D         & Punto por el que sale el cable hacia el tambor & -- \\
-A         & Punto de la barra donde tira el cable & -- \\
-$L_2$     & Altura de D sobre la articulación O & mm \\
-$dx$      & Desplazamiento horizontal de D respecto de O & mm \\
-$|OD|$    & Distancia de O a D, $\sqrt{L_2^2+dx^2}$ & mm \\
-$L_3$     & Distancia de O al anclaje del cable en la barra & mm \\
-$L_4$     & Distancia del anclaje al punto de suspensión de la masa & mm \\
+C         & Eje de giro del tambor, en $(-x_t,\,L_2)$ & -- \\
+T         & Punto de tangencia: por donde el cable abandona el tambor & -- \\
+A$'$      & Punto de la barra donde tira el cable, $e_1$ sobre su eje & -- \\
+P$'$      & Punto del que cuelga la masa, $e_2$ bajo el eje de la barra & -- \\
+$L_2$     & Altura del eje del tambor sobre la articulación O & mm \\
+$x_t$     & Eje del tambor a la izquierda de la vertical de O & mm \\
+$|OC|$    & Distancia de O a C, $\sqrt{L_2^2+x_t^2}$ & mm \\
+$L_3$     & De O al punto de tiro, medido sobre el eje de la barra & mm \\
+$e_1$     & El cable tira $e_1$ por encima del eje de la barra & mm \\
+$L_4$     & Del punto de tiro al de suspensión de la masa & mm \\
+$e_2$     & La masa cuelga $e_2$ por debajo del eje de la barra & mm \\
 $m$       & Masa suspendida & kg \\
 $g$       & Aceleración de la gravedad & \si{\metre\per\second\squared} \\
-$\alpha$  & Ángulo en O entre la línea O$\to$D y la barra, de 0° a 180° & ° \\
-$\alpha_0$& Valor de $\alpha$ en B, donde arranca el ensayo & ° \\
 $\theta$  & Ángulo de la barra respecto a la horizontal & ° \\
-$c$       & Longitud libre de cable entre D y A & mm \\
+$\theta_0$& Valor de $\theta$ en B, donde arranca el ensayo & ° \\
+$\theta_{\text{muerto}}$ & Punto muerto: la línea del cable pasa por O & ° \\
+$\theta_{\text{libre}}$  & Reposo de la barra sin cable & ° \\
+$\alpha$  & Ángulo en O entre la línea O$\to$C y la barra & ° \\
+$c$       & Longitud libre de cable, de T a A$'$ & mm \\
+$g_{\text{eq}}$ & Cable equivalente, $c-\operatorname{lado}\cdot r\,a_T$ & mm \\
 $T$       & Tensión del cable & N \\
 $\varphi$ & Giro del tambor contado desde B & rad \\
-$r(\varphi)$ & Radio instantáneo de enrollamiento del tambor & mm \\
-$s(\varphi)$ & Cable pagado por el tambor, $s=\int r\,\mathrm{d}\varphi$ & mm \\
+$\psi$    & Parámetro que recorre el perfil del tambor & rad \\
+$r(\psi)$ & Radio del perfil del tambor & mm \\
+$p$       & Brazo del cable en el eje del tambor, $p\le r$ & mm \\
+$b_c$, $b_p$ & Brazos del cable y del peso respecto de O & mm \\
 $r_0$, $r_1$ & Radios de la caracola al principio y al final del barrido & mm \\
 $\tau$    & Par en el eje del tambor & N·m \\
 $N$       & Reducción motor:tambor (vueltas de motor por vuelta de tambor) & -- \\

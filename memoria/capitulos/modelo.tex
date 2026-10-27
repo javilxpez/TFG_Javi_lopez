@@ -2,476 +2,365 @@
 \label{chap:modelo}
 
 Este capítulo desarrolla el modelo estático del mecanismo: relaciona el giro del tambor con el
-ángulo de la barra, la longitud del cable y su tensión, y de ahí obtiene el par. Con ese modelo se
-comparan cuatro perfiles de tambor y se establece el método con el que, en el
-capítulo~\ref{chap:resultados}, se contrastan las medidas. Las mismas ecuaciones están
-implementadas en \fichero{static/mecanismo.js}, de modo que el simulador y el visor de ensayos
-calculan exactamente lo mismo que aquí se escribe.
+ángulo de la barra, la longitud del cable y su tensión, y de ahí obtiene el par. Las mismas
+ecuaciones están implementadas en \fichero{static/mecanismo.js}, de modo que el simulador, el visor
+de ensayos y las figuras de esta memoria calculan exactamente lo mismo; el
+anexo~\ref{anx:repo} indica cómo regenerar las cifras.
 
-El resultado central del capítulo es la sección~\ref{sec:mod-basta}: un cilindro con el eje
-desplazado —un tambor \emph{excéntrico}— reproduce el perfil de par constante con un error de
-menos del \SI{1}{\percent}, sin necesidad de mecanizar una espiral.
+Conviene avisar de entrada de que este modelo sustituye a uno anterior, y que la diferencia no es de
+refinamiento sino de física. En la primera versión el cable salía de un punto fijo D, desplazado una
+distancia $dx$ de la vertical de la articulación. Ese modelo no podía representar la barra colgando
+por debajo de cierto ángulo, y el ajuste lo compensaba invirtiendo el sentido de la espiral, de donde
+salían unas conclusiones que la sección~\ref{sec:mod-porque} explica y descarta. El cable no sale de
+un punto: sale \emph{tangente} al tambor, y el punto de salida se mueve cuando el radio cambia.
 
 \section{Descripción del mecanismo}
 
-La figura~\ref{fig:mecanismo} muestra el esquema. Una barra rígida articulada en O lleva suspendida
-una masa $m$ a una distancia $L_3+L_4$ de la articulación. El cable se ancla a la barra en el punto
-A, a una distancia $L_3$ de O, y sube hasta el punto de salida D, desde donde se enrolla en el
-tambor. El tambor gira solidario al eje de salida de la transmisión, con una reducción $N$ de
-vueltas de motor por vuelta de tambor.
+La figura~\ref{fig:mecanismo} muestra el esquema. Una barra rígida articulada en O gira en un plano
+vertical. El tambor va montado sobre un carril a la izquierda de O, con su eje de giro en
+\begin{equation}
+  C = (-x_t,\; L_2),
+\end{equation}
+y el cable baja desde el tambor hasta la barra. Se usan dos convenios que conviene fijar porque
+atraviesan todo el capítulo:
 
-El punto D \emph{no} está sobre la vertical de O: está a una altura $L_2$ y desplazado $dx$ hacia el
-lado contrario a la barra. Ese detalle, que en una primera versión del modelo se pasó por alto,
-cambia la física y no sólo el dibujo, como se ve en la sección~\ref{sec:mod-tension}.
-
-Como variable angular se usa $\alpha$, el ángulo en O entre la línea O$\to$D y la barra, que recorre
-de 0° (barra plegada sobre esa línea) a 180° (barra en su prolongación). El ángulo respecto a la
-horizontal es $\theta = \beta - \alpha$, siendo $\beta$ la inclinación de O$\to$D. Se prefiere
-$\alpha$ porque a cada longitud de cable le corresponde un único $\alpha$, sin la ambigüedad que
-tenía medir desde la horizontal.
+\begin{itemize}
+  \item El ángulo de la barra, $\theta$, se mide \emph{desde la horizontal}. Es lo que se configura y
+        lo que se puede comprobar con un inclinómetro apoyado en la barra, sin modelo de por medio.
+        Internamente se usa también $\alpha = \mathrm{inc}_C - \theta$, el ángulo en O entre la línea
+        O$\to$C y la barra, que es el que entra en la ley del coseno.
+  \item La barra lleva dos desfases respecto de su propio eje: el cable no tira del eje sino de un
+        punto A$'$ situado $e_1$ por encima, y la pesa no cuelga del eje sino de P$'$, $e_2$ por
+        debajo. Con $\hat u = (\cos\theta, \operatorname{sen}\theta)$ la dirección de la barra y
+        $\hat n$ su perpendicular,
+        \begin{equation}
+          A' = L_3\,\hat u + e_1\,\hat n, \qquad P' = (L_3+L_4)\,\hat u - e_2\,\hat n .
+        \end{equation}
+\end{itemize}
 
 \begin{figure}[H]
 \centering
-\begin{tikzpicture}[scale=1.7,>=Stealth]
-  \def\al{100}
-  \coordinate (O) at (0,0);
-  \coordinate (D) at (-0.65,2.9);
-  \coordinate (A) at ({0.95*cos(12)},{0.95*sin(12)});
-  \coordinate (W) at ({2.05*cos(12)},{2.05*sin(12)});
-  \fill[gray!25] (-0.35,-0.12) rectangle (0.35,0);
-  \draw[gray!55,line width=1.2pt,dashed] (O) -- (D);
-  \draw[dashed,gray] (O) -- (1.3,0);
-  \draw[line width=2.4pt] (O) -- (W);
-  \draw[blue!70!black,thick] (D) -- (A) node[pos=0.45,right] {$c$};
-  \draw[violet,thick,fill=violet!8] (-0.348,3.076) circle (0.35);
-  \fill[violet] (-0.348,3.076) circle (0.9pt);
-  \node[violet,right,font=\small] at (0.08,3.28) {tambor $r(\varphi)$};
-  \node[below right=-1pt,font=\small] at (-0.52,2.70) {D};
-  \fill (D) circle (1.2pt);
-  \fill (O) circle (1.6pt) node[below=3pt] {O};
-  \fill[blue!70!black] (A) circle (1.4pt) node[below right=-1pt] {A};
-  \draw[->] (0.45,0) arc (0:12:0.45);
-  \node[font=\small] at (0.62,0.07) {$\theta$};
-  \draw[->,green!45!black] ({0.33*cos(\al+12)},{0.33*sin(\al+12)}) arc (\al+12:12:0.33);
-  \node[green!45!black,font=\small] at (0.02,0.46) {$\alpha$};
-  \draw (W) -- ++(0,-0.38);
-  \fill[orange!80!black] ($(W)+(-0.15,-0.66)$) rectangle ($(W)+(0.15,-0.38)$);
-  \draw[->,thick] ($(W)+(0,-0.7)$) -- ++(0,-0.4) node[right] {$mg$};
-  \draw[->,thick,red!75!black] (A) -- ($(A)!0.3!(D)$) node[left=2pt] {$T$};
-  \draw[<->] (-1.15,0) -- (-1.15,2.9) node[midway,left] {$L_2$};
-  \draw[dotted] (-1.2,2.9) -- (-0.7,2.9);
-  \draw[<->] (-0.65,-0.35) -- (0,-0.35) node[midway,below] {$dx$};
-  \node[above=1pt] at ($(O)!0.55!(A)$) {$L_3$};
-  \node[above left=0pt] at ($(A)!0.5!(W)$) {$L_4$};
+\begin{tikzpicture}[scale=1.55,>=Stealth]
+  \coordinate (O)  at (0,0);
+  \coordinate (C)  at (-0.45,3.30);
+  \coordinate (Ap) at (0.856,-0.458);
+  \coordinate (Pp) at (1.442,-1.471);
+  \coordinate (Tg) at (0.037,3.403);
+  \coordinate (Aej) at (0.728,-0.611);
+  % carril y suelo
+  \draw[gray!45,line width=2pt] (-0.45,-1.0) -- (-0.45,3.75);
+  \fill[gray!25] (-0.22,-0.12) rectangle (0.22,0);
+  % tambor
+  \draw[violet,thick,fill=violet!7] (C) circle (0.50);
+  \fill[violet] (C) circle (1.1pt) node[left=3pt,font=\small] {C};
+  \draw[violet,dashed] (C) -- (Tg);
+  \node[violet,font=\small] at (-0.03,3.17) {$r$};
+  \node[violet,font=\small,right] at (0.08,3.72) {tambor};
+  % barra
+  \draw[line width=2.2pt] (O) -- (Pp);
+  \draw[dashed,gray] (O) -- (1.35,0);
+  \draw[->] (0.60,0) arc (0:-40:0.60);
+  \node[font=\small] at (0.80,-0.15) {$\theta$};
+  % cable
+  \draw[blue!70!black,thick] (Ap) -- (Tg) node[pos=0.42,right=1pt] {$c$};
+  \draw[->,thick,red!75!black] (Ap) -- ($(Ap)!0.18!(Tg)$) node[right=2pt] {$T$};
+  \fill (Tg) circle (1.0pt) node[above right=-2pt,font=\small] {T};
+  % puntos de la barra
+  \draw[blue!70!black,thin] (Aej) -- (Ap);
+  \fill[blue!70!black] (Ap) circle (1.3pt) node[above right=-2pt,font=\small] {A$'$};
+  \fill[gray] (Aej) circle (0.8pt);
+  \node[font=\scriptsize,gray,right=1pt] at (0.84,-0.60) {$e_1$};
+  \fill[orange!80!black] (Pp) circle (1.3pt) node[below right=-1pt,font=\small] {P$'$};
+  \draw[->,thick] (Pp) -- ++(0,-0.42) node[right] {$mg$};
+  % cotas
+  \draw[<->] (-0.95,0) -- (-0.95,3.30) node[midway,left] {$L_2$};
+  \draw[dotted] (-1.0,3.30) -- (-0.50,3.30);
+  \draw[<->] (-0.45,-0.75) -- (0,-0.75) node[midway,below=-1pt,font=\small] {$x_t$};
+  \fill (O) circle (1.5pt) node[above left=-1pt] {O};
+  \node[font=\small] at (0.40,-0.52) {$L_3$};
+  \node[font=\small] at (1.32,-0.86) {$L_4$};
 \end{tikzpicture}
-\caption{Esquema del mecanismo. El punto de salida del cable D está desplazado $dx$ respecto de la
-vertical de la articulación O.}
+\caption{Esquema del mecanismo. El cable sale \emph{tangente} al tambor, en el punto T, y no de un
+punto fijo: al cambiar el radio, la línea del cable se desplaza.}
 \label{fig:mecanismo}
 \end{figure}
 
 El modelo parte de las siguientes hipótesis:
 \begin{enumerate}[label=H\arabic*.]
   \item Régimen cuasiestático: a velocidad constante se desprecian las fuerzas de inercia.
-  \item Cable inextensible y sin masa, y punto de salida D fijo.
+  \item Cable inextensible y sin masa, que se mantiene tenso y se asienta sobre el perfil.
   \item Se desprecia la masa de la barra frente a la masa suspendida.
   \item Las pérdidas por rozamiento no entran en el modelo estático: se tratan aparte en la
         sección~\ref{sec:mod-separacion}.
 \end{enumerate}
 
-\section{Cadena de transmisión}
-\label{sec:mod-capstan}
+\section{Los dos ángulos límite del mecanismo}
 
-Entre el servomotor y el tambor hay una reducción. La solución adoptada es una transmisión por
-cable de tipo \emph{capstan drive}: el eje del motor lleva un cabrestante de radio pequeño sobre el
-que se enrolla varias vueltas una cuerda sintética, cuyos extremos se anclan a una polea de radio
-mayor solidaria al tambor. La relación de reducción es la de los radios,
+Antes de las ecuaciones conviene fijar dos ángulos que no son parámetros de diseño sino propiedades
+de la geometría, y que acotan el recorrido útil.
+
+El \textbf{punto muerto} es el ángulo al que la línea del cable pasa por O. Ahí el brazo del cable se
+anula mientras la pesa sigue haciendo momento, de modo que la tensión se iría a infinito y el
+mecanismo no puede sostener la carga. Ocurre cuando A$'$ cae sobre la tangente trazada desde O al
+tambor, que forma un ángulo $\gamma = \arcsin(r/|OC|)$ con la línea O$\to$C:
 \begin{equation}
-  N = \frac{R_{\text{polea}}}{R_{\text{cabrestante}}},
-  \label{eq:reduccion}
+  \theta_{\text{muerto}} = \mathrm{inc}_C - \operatorname{lado}\cdot\gamma - \delta - 180^\circ,
+  \qquad \delta = \arctan\frac{e_1}{L_3},
+  \label{eq:muerto}
 \end{equation}
-con la salvedad de que el radio efectivo del cabrestante incluye el espesor de la cuerda y el paso
-de la hélice con que se guía, de modo que conviene comprobarlo experimentalmente.
+donde $\operatorname{lado} = +1$ si el cable baja por la derecha del tambor. Con la geometría del
+banco cae en \SI{-106.4}{\degree}.
 
-La cuerda no se anuda al cabrestante: se sujeta por rozamiento. La ecuación del cabrestante
-relaciona las tensiones a uno y otro lado de un arrollamiento de ángulo total $\phi_w$ con el
-coeficiente de rozamiento $\mu$,
+El \textbf{reposo libre} es el ángulo al que queda la barra sin cable: la pesa se sitúa justo bajo el
+pivote y su brazo se anula. Como el cable sólo puede tirar, nunca empujar, es el $\theta$ mínimo al
+que la barra puede quedarse:
 \begin{equation}
-  \frac{T_{\text{alta}}}{T_{\text{baja}}} \le e^{\mu\,\phi_w},
-  \label{eq:capstan}
+  \theta_{\text{libre}} = -\arctan\frac{L_3+L_4}{e_2},
+  \label{eq:libre}
 \end{equation}
-un crecimiento exponencial con el número de vueltas que explica por qué con tres a cinco vueltas el
-deslizamiento deja de ser un problema práctico.
-
-Frente a un reductor de engranajes, esta transmisión no tiene holgura, tiene poca inercia reflejada
-y es transparente al par, lo que importa aquí porque el par del accionamiento se usa como magnitud
-de medida: cualquier holgura o rozamiento del reductor contaminaría precisamente la señal que se
-quiere interpretar. A cambio, el recorrido es limitado —la cuerda sólo puede enrollarse y
-desenrollarse— y exige retensado periódico. Para este banco la limitación no es tal: el mecanismo
-trabaja entre dos finales de carrera y, como se verá, el recorrido completo son
-\SI{0.209}{rev} de tambor, es decir, unos \SI{75}{\degree}.
-
-La cuerda es de Dyneema (polietileno de ultra alto peso molecular). Se prefiere al cable de acero
-porque admite radios de curvatura mucho menores sin fatigarse: un cable de acero exige una relación
-entre el diámetro del tambor y el del cable elevada, y con radios pequeños falla por fatiga en pocas
-horas. El punto débil del Dyneema es la fluencia —alargamiento permanente bajo carga mantenida—, que
-se traduce en pérdida de tensión y error de posicionamiento, y que obliga a un tensor.
-\completar{marca, diámetro y carga de rotura de la cuerda; radios del cabrestante y de la polea;
-relación de reducción final medida}
-
-\section{Longitud del cable}
-
-Con $|OD| = \sqrt{L_2^2 + dx^2}$, la ley del coseno en el triángulo O--D--A da
-\begin{equation}
-  c(\alpha)^2 = |OD|^2 + L_3^2 - 2\,|OD|\,L_3\cos\alpha .
-  \label{eq:cable}
-\end{equation}
-El coseno es monótono en $[0^\circ,180^\circ]$, de modo que la correspondencia entre $\alpha$ y $c$
-es biunívoca: cada longitud de cable define un único ángulo, y al revés. Los extremos geométricos
-son $c_{\min} = \big||OD|-L_3\big|$ con la barra plegada y $c_{\max} = |OD|+L_3$ con la barra
-alineada. Despejando,
-\begin{equation}
-  \cos\alpha = \frac{|OD|^2 + L_3^2 - c^2}{2\,|OD|\,L_3}.
-  \label{eq:angulo}
-\end{equation}
+que con $L_3+L_4 = \SI{205}{\milli\metre}$ y $e_2 = \SI{20}{\milli\metre}$ da
+\SI{-84.4}{\degree}. Es una cota que se mide sin modelo —inclinómetro sobre la barra con el cable
+flojo— y de ella sale $e_2$, que resulta ser el parámetro más sensible del banco. Explica además las
+lecturas minúsculas y erráticas de la célula al principio del ensayo: ahí el mecanismo no necesita
+fuerza.
 
 \section{Tensión del cable}
 \label{sec:mod-tension}
 
-El momento del peso respecto a O es $mg(L_3+L_4)\cos\theta$. El brazo de la tensión es la distancia
-de O a la recta D--A, que vale
+Con $|OC| = \sqrt{L_2^2 + x_t^2}$ y $L_3' = \sqrt{L_3^2+e_1^2}$, la ley del coseno en el triángulo
+O--C--A$'$ da la distancia del eje del tambor al punto de tiro:
 \begin{equation}
-  d = \frac{|OD|\,L_3\,\operatorname{sen}\alpha}{c}.
+  d^2 = |OC|^2 + L_3'^2 - 2\,|OC|\,L_3'\cos\beta, \qquad \beta = \alpha - \delta .
+  \label{eq:dca}
 \end{equation}
-Igualando momentos, $T\,d = mg(L_3+L_4)\cos\theta$, resulta
+Como el radio es perpendicular a la tangente, el cable libre es el cateto del triángulo rectángulo
+C--T--A$'$:
 \begin{equation}
-  \boxed{\;T = \frac{m\,g\,(L_3+L_4)\;c\,\cos\theta}{|OD|\;L_3\,\operatorname{sen}\alpha}\;}
-  \qquad \theta = \beta - \alpha,\quad \beta = \arctan\frac{L_2}{-dx}.
+  c = \sqrt{d^2 - r^2}.
+  \label{eq:cable}
+\end{equation}
+
+El equilibrio de momentos en O enfrenta el brazo del cable, $b_c$ ---la distancia de O a la recta
+T--A$'$---, con el brazo del peso, que por colgar la pesa por debajo del eje tiene dos términos:
+\begin{equation}
+  \boxed{\;T = \frac{m\,g\,b_p}{b_c}\;}\qquad
+  b_p = (L_3+L_4)\cos\theta + e_2\operatorname{sen}\theta .
   \label{eq:tension}
 \end{equation}
+El segundo término de $b_p$ es el que hace que el brazo del peso se anule en
+$\theta_{\text{libre}}$ en lugar de en \SI{-90}{\degree}.
 
-Conviene detenerse en el caso particular $dx=0$, que fue el primer modelo del proyecto. Entonces
-$\beta = 90^\circ$, $\theta = 90^\circ-\alpha$, $\cos\theta = \operatorname{sen}\alpha$, y los dos
-factores se cancelan:
+\subsection{El cable equivalente}
+\label{sec:mod-equivalente}
+
+Aquí está el punto más delicado del modelo. Al moverse la barra, el punto de tangencia T
+\emph{migra} por la superficie del tambor, y esa migración enrolla o desenrolla cable sin que el
+tambor haya girado. Dicho de otro modo: el cable que el tambor paga al girar no es la variación del
+cable libre $c$. Lo que se conserva es el \emph{cable equivalente}
 \begin{equation}
-  T\big|_{dx=0} = \frac{m\,g\,(L_3+L_4)}{L_2\,L_3}\,c = K\,c ,
-  \label{eq:tension0}
+  g = c - \operatorname{lado}\cdot r\,a_T ,
+  \label{eq:equivalente}
 \end{equation}
-es decir, \emph{la tensión sería proporcional a la longitud libre de cable}. Es un resultado
-elegante, y por eso costó abandonarlo: con D desplazada la cancelación desaparece y la tensión deja
-de ser proporcional al cable. Además, en $\alpha \to 180^\circ$ el brazo del cable se anula mientras
-la pesa sigue haciendo momento, así que la tensión crece sin límite: ese punto es una singularidad
-del mecanismo y no un punto de trabajo.
+siendo $a_T$ el ángulo del punto de tangencia sobre el tambor. La comprobación es por trabajos
+virtuales: $-\mathrm{d}g/\mathrm{d}\theta$ es exactamente el brazo del cable en O, mientras que
+$-\mathrm{d}c/\mathrm{d}\theta$ se queda entre un \SI{10}{\percent} y un \SI{30}{\percent} corto.
+Sin este término el modelo recogía unos \SI{10}{\milli\metre} de más en cada recorrido, un error del
+mismo orden que lo que se quería medir.
 
-La tabla~\ref{tab:geometria} recoge los valores usados. No son cotas medidas, sino los parámetros
-con los que trabaja la configuración del banco, ajustados sobre los propios ensayos
-(sección~\ref{sec:res-ajuste}).
+\subsection{Contacto exacto con el perfil}
+\label{sec:mod-contacto}
+
+Las ecuaciones anteriores suponen que el cable sale tangente a una \emph{circunferencia} de radio
+$r$. En un tambor de radio variable eso es una aproximación: el perfil tiene pendiente, y la recta
+tangente a la circunferencia del radio local cortaría el lóbulo que viene detrás. El cable real toca
+el perfil donde es tangente \emph{al perfil}, en un punto $\psi^*$ que se obtiene de
+\begin{equation}
+  \big(P(\psi) - A'\big) \times \frac{\mathrm{d}P}{\mathrm{d}\psi} = 0 ,
+  \label{eq:contacto}
+\end{equation}
+y de ahí salen las dos magnitudes que importan: el brazo del par en el tambor es la distancia del
+eje a esa recta, que es \emph{menor} que $r$ donde el perfil tiene pendiente, y el cable enrollado es
+la longitud de \emph{arco} del perfil, no $r$ por el ángulo. El par en el tambor y en el motor son
+\begin{equation}
+  \tau = T\,p(\psi^*), \qquad \tau_m = \frac{\tau}{N\,\eta},
+  \label{eq:par}
+\end{equation}
+con $p$ ese brazo, $N$ la reducción y $\eta$ el rendimiento de la transmisión.
+
+Con el radio variando no queda relación cerrada entre el giro del tambor y el ángulo de la barra, de
+modo que la trayectoria $\theta(\varphi)$ se integra paso a paso imponiendo que el cable total
+---libre más arco enrollado--- se conserve. Es lo que hace \codigo{Mec.trayectoria()}, y lo que
+consultan después todas las demás funciones.
+
+\subsection{Comprobación: balance de energía}
+
+El modelo no se ajusta a nada; conviene por tanto comprobarlo contra una identidad física. El
+trabajo que entrega el tambor a lo largo del recorrido tiene que ser la energía potencial que gana
+la masa:
+\begin{equation}
+  \int_0^{\varphi_{\text{tot}}} \tau\,\mathrm{d}\varphi \;=\; m\,g\,\Delta h_{P'} .
+  \label{eq:energia}
+\end{equation}
+Integrando numéricamente con la geometría del banco se obtiene \SI{3.5685}{\joule} por el primer
+miembro y \SI{3.5686}{\joule} por el segundo: coinciden en la cuarta cifra. Es una comprobación
+exigente, porque recorre toda la cadena ---perfil, contacto, cable equivalente y trayectoria--- y
+cualquier inconsistencia en el brazo o en el cable pagado rompería la igualdad.
+
+\section{Parámetros del mecanismo}
 
 \begin{table}[H]
 \centering
-\caption{Parámetros del mecanismo empleados en el modelo \verificar{medir las cotas reales del
-prototipo y rehacer el ajuste; de ellas dependen todas las cifras de este capítulo}.}
+\caption{Parámetros del mecanismo \verificar{cotas tomadas del CAD y del banco; conviene
+contrastarlas con una medición directa sobre el montaje}.}
 \label{tab:geometria}
 \begin{tabular}{@{}lll@{}}
 \toprule
 Parámetro & Valor & Comentario \\
 \midrule
-$L_2$ & \SI{290}{\milli\metre} & altura de D sobre O \\
-$dx$ & \SI{65}{\milli\metre} & desplazamiento horizontal de D \\
-$|OD|$ & \SI{297.2}{\milli\metre} & línea O$\to$D, a \SI{12.6}{\degree} de la vertical \\
-$L_3$ & \SI{95}{\milli\metre} & anclaje del cable en la barra \\
-$L_4$ & \SI{110}{\milli\metre} & resto de barra hasta la masa \\
+$L_2$ & \SI{330}{\milli\metre} & altura del eje del tambor sobre O \\
+$x_t$ & \SI{30}{\milli\metre} & eje del tambor a la izquierda de O (es el carril) \\
+$|OC|$ & \SI{331.4}{\milli\metre} & línea O$\to$C, a \SI{95.2}{\degree} \\
+$L_3$ & \SI{95}{\milli\metre} & del pivote al punto de tiro, sobre el eje de la barra \\
+$e_1$ & \SI{20}{\milli\metre} & el cable tira por encima del eje \\
+$L_4$ & \SI{110}{\milli\metre} & resto de barra hasta la pesa \\
+$e_2$ & \SI{20}{\milli\metre} & la pesa cuelga por debajo del eje \\
 $m$ & \SI{2}{\kilo\gram} & masa suspendida \\
-$\alpha_0$ & \SI{114}{\degree} & ángulo en B, donde arranca el ensayo \\
-$c$ en B & \SI{346.9}{\milli\metre} & de~\eqref{eq:cable} \\
-$c_{\min}$ -- $c_{\max}$ & \SIrange{202.2}{392.2}{\milli\metre} & topes geométricos \\
-$r_0 \to r_1$ & \SIrange{45}{25}{\milli\metre} & radios de la caracola configurados \\
-Barrido & \SI{0.3}{rev} de tambor & recorrido en que el radio pasa de $r_0$ a $r_1$ \\
-$N$ & 5,5 & reducción motor:tambor \\
+$\theta_0$ & \SI{-87}{\degree} & barra en B, medida con inclinómetro \\
+$r_0 \to r_1$ & \SIrange{56}{28.18}{\milli\metre} & radios de la espiral, medidos sobre el CAD \\
+Barrido & \SI{0.367}{rev} de tambor & $=\SI{1.835}{rev}$ de motor medidas \\
+$N$ & 5 & reducción motor:tambor \\
+\midrule
+$\theta_{\text{muerto}}$ & \SI{-106.4}{\degree} & de~\eqref{eq:muerto}, no es un parámetro \\
+$\theta_{\text{libre}}$ & \SI{-84.4}{\degree} & de~\eqref{eq:libre}, no es un parámetro \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\section{Par en el tambor}
+\section{Qué hace realmente este mecanismo}
+\label{sec:mod-porque}
 
-Sea cual sea la forma del tambor, el cable sale por tangencia y su recta de acción queda a una
-distancia $r(\varphi)$ del eje de giro. Esa distancia es a la vez el brazo del par y la velocidad
-con que se paga cable por radián girado:
+Con el modelo cerrado se puede responder a la pregunta de diseño, y la respuesta obliga a corregir
+lo que se creía al empezar.
+
+\subsection{La tensión no baja: sube}
+
+La intuición de partida era la del compensador clásico: al subir la barra la tensión del cable
+disminuye, y el tambor tiene que ir dando radio para mantener el par. En esta geometría \emph{no es
+así}. Sobre el tramo en que el cable trabaja con carga, la tensión del modelo \emph{crece} de
+\num{36.7} a \SI{41.5}{\newton}, un \SI{+13}{\percent}, y pasada la horizontal sigue creciendo hasta
+dispararse cerca de \SI{70}{\degree}, donde el cable se alinea con la barra. La razón es que el brazo
+del peso y el brazo del cable crecen casi a la vez y se cancelan en buena medida: la barra, por sí
+sola, ya está casi compensada.
+
+De ahí se sigue lo importante: \emph{aquí hay poco que compensar}. El tambor no está corrigiendo una
+tensión que se desploma, sino modulando una tensión que varía poco.
+
+\subsection{Por qué el par de pico, y por qué a igual número de vueltas}
+\label{sec:mod-criterio}
+
+Antes de comparar perfiles hay que fijar con qué criterio, porque de eso depende todo lo demás.
+
+\paragraph{La energía no sirve como criterio.} El trabajo de subir la masa no depende del perfil:
+es $m\,g\,\Delta h$ y punto. Un tambor no ahorra energía, sólo la reparte a lo largo del giro.
+
+\paragraph{El par de pico sí.} Un motor y su accionamiento se eligen por el par máximo que tienen
+que dar, aunque sea un instante. Si el par sube un \SI{30}{\percent} a lo largo del recorrido, hace
+falta un equipo un \SI{30}{\percent} mayor que el resto del tiempo va sobrado. Aplanar la curva baja
+el pico hacia la media, y la relación pico/media es, por tanto, la medida directa del beneficio. Hay
+además dos razones de segundo orden que apuntan en el mismo sentido: el par es corriente y las
+pérdidas en el cobre van con su cuadrado, de modo que para el mismo trabajo la corriente eficaz
+---y el calentamiento--- es mínima cuando la corriente es constante; y el lazo de velocidad ve una
+perturbación constante en lugar de una rampa, lo que mejora el seguimiento sin tocar ganancias.
+
+\paragraph{Y la comparación tiene que ser a igual número de vueltas.} Ésta es la condición que hace
+no trivial todo el problema, y conviene plantearla como la objeción natural: \emph{si lo que se
+quiere es menos par, ¿no basta con poner un cilindro más pequeño?} Un cilindro más pequeño baja el
+par, sí, pero no gratis: el tambor sólo tiene dos cosas que ofrecer, par y cable por vuelta, y las
+dos son el mismo radio,
 \begin{equation}
-  \frac{\mathrm{d}s}{\mathrm{d}\varphi} = r(\varphi), \qquad
-  s(\varphi) = \int_0^{\varphi} r(u)\,\mathrm{d}u, \qquad
-  c(\varphi) = c_B - s(\varphi), \qquad
-  \varphi = \frac{2\pi\,p}{N},
-  \label{eq:cable-tambor}
+  \tau = T\,r, \qquad \frac{\mathrm{d}s}{\mathrm{d}\varphi} = r .
 \end{equation}
-tomando como origen el punto B, donde arranca el ensayo, contando $\varphi$ positivo en el sentido
-en que el ciclo avanza y siendo $p$ el avance del eje del motor en revoluciones. Que el brazo del
-par y el radio de pago sean la misma función es lo que liga indisolublemente el perfil del tambor
-con el recorrido: no se puede cambiar uno sin cambiar el otro. El par en el tambor y en el motor son
-\begin{equation}
-  \tau(\varphi) = T\big(c(\varphi)\big)\; r(\varphi), \qquad \tau_m = \frac{\tau}{N\,\eta},
-  \label{eq:par}
-\end{equation}
-con $\eta$ el rendimiento de la transmisión.
+Bajar el radio baja las dos a la vez: menos par, pero también menos recorrido por vuelta, es decir
+más vueltas y más tiempo de ciclo. Lo que un tambor de radio variable ofrece es precisamente
+desacoplarlas: usar radio grande mientras la tensión es baja ---avanzando deprisa sin pasarse de
+par--- y pasar a radio pequeño justo cuando la tensión sube. En el mejor de los casos consigue
+\emph{el pico del cilindro pequeño con las vueltas del grande}. Dicho al revés: para un motor dado y
+un tiempo de ciclo dado, es lo que permite levantar más carga.
 
-\subsection{Perfiles de tambor}
+Por eso la tabla siguiente escala cada perfil para que la barra llegue al mismo ángulo final en las
+mismas vueltas de motor. Sin esa normalización se estarían comparando ciclos de duración distinta, y
+cualquier tambor pequeño parecería mejor.
 
-Se manejan tres familias. El \textbf{cilindro} tiene $r(\varphi)=R$ constante; el par sigue
-entonces exactamente a la tensión. La \textbf{caracola} es una espiral de Arquímedes, con radio
-lineal en el giro entre $r_0$ y $r_1$ a lo largo de un barrido $\varphi_b$:
-\begin{equation}
-  r(\varphi) = r_0 + (r_1-r_0)\,\frac{\varphi}{\varphi_b}, \qquad 0 \le \varphi \le \varphi_b,
-  \label{eq:espiral}
-\end{equation}
-y fuera de ese tramo el radio se queda en el extremo que corresponda.
+\subsection{Comparación de perfiles a igual recorrido}
 
-El \textbf{tambor excéntrico} es un cilindro de radio $R$ cuyo eje de giro no pasa por su centro
-geométrico, sino a una distancia $e$ de él (figura~\ref{fig:excentrico}). Es la forma que adopta el
-diseño de este trabajo, y tiene una ventaja de fabricación decisiva: no hay ningún perfil que
-mecanizar, basta taladrar el alojamiento del eje descentrado.
-
-\begin{figure}[H]
-\centering
-\begin{tikzpicture}[scale=1.25,>=Stealth]
-  \draw[violet,thick,fill=violet!7] (0,0) circle (1.6);
-  \coordinate (C) at (0,0);
-  \coordinate (Oe) at (-0.345,0.289);
-  \draw[blue!70!black,thick] (1.6,1.5) -- (1.6,-1.9);
-  \draw[->,thick,red!75!black] (1.6,-1.4) -- (1.6,-1.95) node[right] {$T$};
-  \node[blue!70!black,right,font=\small] at (1.66,1.25) {cable};
-  \fill (1.6,0.289) circle (1.1pt);
-  \draw[dashed,gray] (C) -- (1.6,0);
-  \node[gray,font=\small] at (0.8,-0.2) {$R$};
-  \draw[->,green!45!black,thick] (Oe) -- (1.6,0.289);
-  \node[green!45!black,font=\small,above] at (0.62,0.30) {$r(\varphi)$};
-  \draw[->,thick] (C) -- (Oe);
-  \node[font=\small,below right=-2pt] at (-0.17,0.145) {$e$};
-  \fill (C) circle (1.3pt) node[below=2pt,font=\small] {C};
-  \draw[line width=1pt] ($(Oe)+(-0.12,-0.12)$) -- ($(Oe)+(0.12,0.12)$);
-  \draw[line width=1pt] ($(Oe)+(-0.12,0.12)$) -- ($(Oe)+(0.12,-0.12)$);
-  \node[font=\small,left=3pt] at (Oe) {O$_t$};
-  \draw[->,gray] (-1.05,0.95) arc (140:100:1.35);
-  \node[gray,font=\small] at (-0.62,1.35) {$\varphi$};
-\end{tikzpicture}
-\caption{Tambor excéntrico: un cilindro de radio $R$ girando alrededor de un eje O$_t$ situado a una
-distancia $e$ de su centro C. El brazo del cable es la distancia de O$_t$ a la recta de acción, y
-varía de forma sinusoidal con el giro.}
-\label{fig:excentrico}
-\end{figure}
-
-El cable sale tangente a la circunferencia de centro C y radio $R$, luego su recta de acción está a
-distancia $R$ de C. Como C gira alrededor de O$_t$ describiendo un círculo de radio $e$, la
-distancia de O$_t$ a esa recta es
-\begin{equation}
-  \boxed{\;r(\varphi) = R - e\cos(\varphi + \varphi_0)\;}
-  \label{eq:excentrico}
-\end{equation}
-donde $\varphi_0$ es la fase de montaje, es decir, la orientación con que se cala el tambor sobre su
-eje. Integrando~\eqref{eq:cable-tambor}, el cable pagado vale
-\begin{equation}
-  s(\varphi) = R\,\varphi - e\,\big[\operatorname{sen}(\varphi+\varphi_0) - \operatorname{sen}\varphi_0\big].
-  \label{eq:excentrico-s}
-\end{equation}
-
-El radio recorre así una sinusoide de valor medio $R$ y amplitud $e$, entre $R-e$ y $R+e$, con
-período una vuelta completa. De ahí se siguen dos propiedades que condicionan el diseño: el
-recorrido de radios está acotado por la excentricidad, de modo que no se puede pedir cualquier
-relación $r_{\max}/r_{\min}$; y el radio sólo es monótono durante media vuelta, así que el
-mecanismo debe trabajar dentro de esa media vuelta. Ambas se cumplen holgadamente aquí, donde el
-recorrido son \SI{75}{\degree}.
-
-\subsection{Cota inferior del par de pico}
-
-El trabajo que el tambor entrega a lo largo de un recorrido es el que gana la masa en energía
-potencial, y no depende del perfil:
-\begin{equation}
-  W = \int_0^{\varphi_{\text{tot}}} \tau\,\mathrm{d}\varphi = \int_{c_{\text{fin}}}^{c_{\text{ini}}} T(c)\,\mathrm{d}c .
-  \label{eq:trabajo}
-\end{equation}
-Como la integral del par está fijada, su máximo no puede ser menor que su media:
-\begin{equation}
-  \max_{\varphi}\tau(\varphi) \;\geq\; \frac{W}{\varphi_{\text{tot}}},
-  \label{eq:cota}
-\end{equation}
-y la igualdad sólo se alcanza si el par es constante. \emph{El perfil de par constante es, por
-tanto, el que minimiza el par de pico para un recorrido y un giro de tambor dados.} Este resultado
-no depende de la geometría: vale igual con $dx=0$ que sin él.
-
-\subsection{Perfil ideal de par constante}
-
-Imponiendo $\tau = T(c)\,r = \tau_0$ y usando $\mathrm{d}c/\mathrm{d}\varphi = -r$:
-\begin{equation}
-  r(\varphi) = \frac{\tau_0}{T\big(c(\varphi)\big)}, \qquad
-  \frac{\mathrm{d}c}{\mathrm{d}\varphi} = -\frac{\tau_0}{T(c)},
-  \qquad \tau_0 = \frac{W}{\varphi_{\text{tot}}} .
-  \label{eq:ideal}
-\end{equation}
-Con $dx=0$, donde $T=Kc$, la ecuación se integra en forma cerrada y da
-$c(\varphi)=\sqrt{c_0^2-2(\tau_0/K)\varphi}$, con el radio inversamente proporcional al cable. Con
-$dx\neq0$ no hay forma cerrada y la integración se hace numéricamente, que es como se ha calculado
-la curva de la figura~\ref{fig:excentrico-comp}.
-
-La regla práctica se mantiene en ambos casos: \emph{el radio debe ser grande donde la tensión es
-pequeña y pequeño donde la tensión es grande}.
-
-\subsection{¿Basta un tambor excéntrico?}
-\label{sec:mod-basta}
-
-El perfil ideal es una función cualquiera, que habría que mecanizar. El excéntrico sólo tiene dos
-parámetros de forma, $e$ y $\varphi_0$, porque el tercero queda fijado: \emph{el tambor tiene que
-pagar el mismo cable en el mismo giro}, ya que la carga recorre lo mismo. Imponiendo
-$s(\varphi_{\text{tot}}) = S$ en~\eqref{eq:excentrico-s},
-\begin{equation}
-  R = \frac{S + e\,\big[\operatorname{sen}(\varphi_{\text{tot}}+\varphi_0) - \operatorname{sen}\varphi_0\big]}
-           {\varphi_{\text{tot}}} .
-  \label{eq:restriccion}
-\end{equation}
-Esta restricción no es un detalle de cálculo: sin ella el problema degenera, porque un tambor de
-radio nulo no mueve la carga, entrega par constante cero y sale formalmente «óptimo».
-
-La comparación se hace sobre el recorrido que los ensayos hacen realmente con carga en el cable
-(sección~\ref{sec:res-campania}): un avance del motor de \num{0.65} a \SI{1.80}{rev}, que son
-\SI{0.209}{rev} de tambor y llevan el cable de \num{316.4} a \SI{276.6}{\milli\metre}, es decir
-$S = \SI{39.8}{\milli\metre}$. En ese tramo el modelo da una tensión que \emph{baja} de \num{44.2} a
-\SI{35.5}{\newton}, porque el brazo del cable mejora más deprisa de lo que crece el momento del
-peso, y un trabajo $W = \SI{1.58}{\joule}$, al que corresponde un par ideal
-$\tau_0 = \SI{1.20}{\newton\metre}$.
-
-Minimizando el rizado de par sobre $(e,\varphi_0)$ con $R$ dado por~\eqref{eq:restriccion} se
-obtiene $R = \SI{32.8}{\milli\metre}$, $e = \SI{6.4}{\milli\metre}$ y
-$\varphi_0 = \SI{27}{\degree}$, esto es, una excentricidad relativa de sólo $e/R = \num{0.19}$. El
-resultado es el de la tabla~\ref{tab:perfiles}:
+La comparación tiene que hacerse a igual recorrido, o el tambor más grande parece peor sólo porque
+mueve más carga por vuelta. La tabla~\ref{tab:perfiles} escala cada perfil para que la barra llegue
+al mismo ángulo final en las mismas vueltas de motor.
 
 \begin{table}[H]
 \centering
-\caption{Perfiles de tambor sobre el recorrido con carga ($\varphi_{\text{tot}}=\SI{0.209}{rev}$ de
-tambor, $S=\SI{39.8}{\milli\metre}$, $W=\SI{1.58}{\joule}$). Todos pagan el mismo cable en el mismo
-giro.}
+\caption{Perfiles de tambor a igual recorrido (barra hasta \SI{-2.6}{\degree} en \SI{1.78}{rev} de
+motor). El par de pico es lo que dimensiona el motor; el rizado, lo que mide la compensación.}
 \label{tab:perfiles}
-\begin{tabular}{@{}lcccc@{}}
-\toprule
-Perfil & $r$ inicial & $r$ final & $\tau$ mín. -- máx. & Rizado \\
-       & (mm) & (mm) & (N·m) & $\frac{\max-\min}{\text{media}}$ \\
-\midrule
-Cilindro equivalente & 30,3 & 30,3 & 1,06 -- 1,35 & \SI{23.8}{\percent} \\
-Caracola configurada & 41,2 & 27,9 & 0,88 -- 1,65 & \SI{64.5}{\percent} \\
-\textbf{Excéntrico óptimo} & \textbf{27,1} & \textbf{34,2} & \textbf{1,197 -- 1,205} & \textbf{\SI{0.66}{\percent}} \\
-Ideal (par constante) & 27,0 & 34,3 & 1,20 -- 1,20 & \SI{0}{\percent} \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-La conclusión es la que da título a la sección: \emph{un excéntrico basta}. Su radio recorre de
-\num{27.1} a \SI{34.2}{\milli\metre}, y el perfil ideal va de \num{27.0} a
-\SI{34.3}{\milli\metre}; las dos curvas son indistinguibles a la escala del dibujo, y el rizado
-residual es del \SI{0.66}{\percent} frente al \SI{0}{\percent} teórico. Dicho de otro modo: sobre un
-recorrido de \SI{75}{\degree} el perfil ideal es, con excelente aproximación, un trozo de sinusoide,
-y una sinusoide es exactamente lo que da un cilindro descentrado. Se obtiene el beneficio completo
-de la compensación con una pieza que no requiere mecanizado de perfil.
-
-Conviene subrayar también el contraste con la caracola \emph{tal y como está configurada}, que
-empeora el reparto del par respecto a un simple cilindro (rizado del \SI{64.5}{\percent} frente al
-\SI{23.8}{\percent}). La razón es que la tensión baja a lo largo del recorrido, de modo que para
-compensarla el radio tendría que \emph{crecer} un \SI{26}{\percent}, y el perfil configurado lo hace
-decrecer un \SI{32}{\percent}: está descrito —o montado— al revés respecto de lo que pide la
-compensación.
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=\textwidth]{n_excentrico.pdf}
-\caption{Izquierda: radio efectivo medido frente a las hipótesis de perfil
-(sección~\ref{sec:res-contraste}). Derecha: par en el tambor para el cilindro equivalente, la
-caracola configurada, el excéntrico óptimo y el perfil ideal; el excéntrico se superpone al ideal.}
-\label{fig:excentrico-comp}
-\end{figure}
-
-\subsection{La pieza del prototipo}
-\label{sec:mod-pieza}
-
-El tambor que se ha llevado a fabricación no es el óptimo teórico de la
-tabla~\ref{tab:perfiles}, sino una pieza con cotas redondeadas a lo que permitían el alojamiento del
-rodamiento y el anclaje de la banda. Del modelo se toman dos radios sobre la misma diametral,
-medidos desde el eje de giro: \SI{28.179}{\milli\metre} y \SI{56.00}{\milli\metre}
-\verificar{confirmar que las dos cotas del CAD están sobre la misma recta que pasa por el eje; si no
-lo están, $R$ y $e$ hay que obtenerlos del perfil completo}. De ahí,
-\begin{equation}
-  R = \frac{r_{\max}+r_{\min}}{2} = \SI{42.1}{\milli\metre}, \qquad
-  e = \frac{r_{\max}-r_{\min}}{2} = \SI{13.9}{\milli\metre}, \qquad
-  \frac{e}{R} = \num{0.33} .
-\end{equation}
-
-Al ser un tambor mayor que el óptimo, paga el cable en menos giro: el recorrido con carga pasa de
-\SI{75.4}{\degree} a \SI{49.2}{\degree} de tambor (\SI{0.137}{rev}). Con el calado adecuado el
-rizado de par resulta del \SI{2.8}{\percent}, con el radio recorriendo de \num{40.6} a
-\SI{51.6}{\milli\metre} y el par entre \num{1.81} y \SI{1.86}{\newton\metre}. Sigue siendo un
-resultado excelente ---casi un orden de magnitud mejor que el \SI{23.8}{\percent} de un cilindro---
-aunque no alcance el \SI{0.66}{\percent} del óptimo. Manteniendo $R=\SI{42.1}{\milli\metre}$, la
-excentricidad que minimizaría el rizado sería $e = \SI{10.0}{\milli\metre}$ ($e/R = \num{0.24}$),
-que lo dejaría en el \SI{0.50}{\percent}: la pieza tiene algo más de excentricidad de la que este
-mecanismo necesita.
-
-\begin{table}[H]
-\centering
-\caption{Efecto del calado del tambor sobre su eje, con las cotas del prototipo.}
-\label{tab:calado}
-\begin{tabular}{@{}lcc@{}}
-\toprule
-Calado & $\varphi_0$ & Rizado de par \\
-\midrule
-Mejor & \SI{+84}{\degree} & \SI{2.8}{\percent} \\
-Peor & --- & \SI{60.5}{\percent} \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-Ese resultado merece destacarse porque es una instrucción de montaje, no un cálculo de diseño:
-\emph{la misma pieza, calada en la posición equivocada, pasa de un rizado del \SI{2.8}{\percent} a
-uno del \SI{60.5}{\percent}}, peor que no poner compensación ninguna. La razón es que el excéntrico
-sólo compensa mientras su radio crece a lo largo del recorrido, y con media vuelta de diferencia en
-el calado el radio decrece y suma su efecto al de la tensión en lugar de restarlo. El plano debe
-acotar, por tanto, la posición angular del chavetero o de los taladros de arrastre respecto del
-máximo de excentricidad, y el montaje debe verificarse antes de cargar la pesa.
-\completar{incluir el plano de la pieza con la cota angular del calado y una vista del conjunto}
-
-\subsection{Par exigido al motor}
-
-La tabla~\ref{tab:parmotor} recoge el par de pico que cada solución exige al motor, repartiendo el
-par del tambor por la reducción. El margen es amplio en todos los casos frente al par nominal del
-servomotor, \SI{1.27}{\newton\metre}, lo que deja espacio para el rozamiento de la transmisión y
-para el par de aceleración, que el modelo cuasiestático no recoge.
-
-\begin{table}[H]
-\centering
-\caption{Par de pico exigido al motor, como fracción del par nominal (\SI{1.27}{\newton\metre}).}
-\label{tab:parmotor}
 \begin{tabular}{@{}lccc@{}}
 \toprule
-Tambor & $\tau$ de pico & \multicolumn{2}{c}{$\tau$ en el motor} \\
-\cmidrule(lr){3-4}
- & en el tambor & $N=5{,}5$ & $N=\num{8.55}$ \\
+Perfil & $r$ inicial $\to$ final & $\tau$ de pico & Rizado \\
+       & (mm) & (N·m) & \\
 \midrule
-Excéntrico óptimo & \SI{1.205}{\newton\metre} & \SI{0.219}{\newton\metre} (\SI{17}{\percent}) & \SI{0.141}{\newton\metre} (\SI{11}{\percent}) \\
-Excéntrico del prototipo & \SI{1.86}{\newton\metre} & \SI{0.338}{\newton\metre} (\SI{27}{\percent}) & \SI{0.218}{\newton\metre} (\SI{17}{\percent}) \\
-Caracola configurada & \SI{1.650}{\newton\metre} & \SI{0.300}{\newton\metre} (\SI{24}{\percent}) & \SI{0.193}{\newton\metre} (\SI{15}{\percent}) \\
+Cilindro & 44,6 $\to$ 44,6 & 1,84 & \SI{13.4}{\percent} \\
+Espiral de la pieza, 56 $\to$ 28 mm & 48,8 $\to$ 33,3 & 1,80 & \SI{25.2}{\percent} \\
+Espiral de la pieza con su meseta & 46,2 $\to$ 38,3 & 1,82 & \SI{13.6}{\percent} \\
+\textbf{Espiral suave, 52 $\to$ 44 mm} & \textbf{45,7 $\to$ 41,4} & \textbf{1,75} & \textbf{\SI{5.5}{\percent}} \\
+Espiral invertida & 39,8 $\to$ 58,0 & 2,39 & \SI{52.5}{\percent} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-El excéntrico del prototipo pide más par que el óptimo por una razón puramente geométrica: al ser un
-tambor de mayor radio, el mismo trabajo se reparte en menos giro, de modo que el par sube en la
-misma proporción en que baja el recorrido angular. Es un intercambio libre ---se compensa con la
-reducción--- y no debe confundirse con el efecto de la compensación, que es lo que mide el rizado.
+Dos lecturas, y las dos van contra lo que se esperaba:
 
-\section{Método experimental: separación del par y radio efectivo}
+\begin{itemize}
+  \item \textbf{El par de pico apenas depende del perfil.} Entre todas las opciones razonables va de
+        \num{1.75} a \SI{1.84}{\newton\metre}: un \SI{5}{\percent} de diferencia. Como es el par de
+        pico lo que dimensiona el motor, \emph{optimizar el perfil no ahorra motor}. Sólo la espiral
+        invertida se sale, y lo hace para mal.
+  \item \textbf{La pieza fabricada no es la mejor elección.} Con 56 $\to$ 28 mm compensa de más y
+        deja un rizado del \SI{25}{\percent}, casi el doble que un simple cilindro
+        (\SI{13.4}{\percent}). Una espiral mucho más suave, de 52 a \SI{44}{\milli\metre}, baja el
+        rizado al \SI{5.5}{\percent} \emph{y} da el par de pico más bajo de la tabla.
+\end{itemize}
+
+\subsection{Por qué no se persigue una leva de par constante}
+
+Es natural preguntarse por el perfil que haría el par exactamente constante, $r = \tau_0/T$. Se ha
+implementado y se descarta, por tres razones que conviene dejar escritas:
+
+\begin{enumerate}
+  \item El beneficio es marginal. Visto lo anterior, el par de pico que se ganaría frente a una
+        espiral suave está dentro del \SI{5}{\percent}, mientras que el rozamiento seco medido es del
+        \SI{18}{\percent} del par (sección~\ref{sec:res-friccion}). Se optimizaría muy por debajo del
+        ruido del sistema.
+  \item No hay solución en el arranque. Con el cable flojo la tensión tiende a cero y el radio que
+        pide el par constante tiende a infinito; hay que acotarlo a un radio máximo, y ese tope
+        acaba fijando el perfil tanto como el criterio de par constante.
+  \item \textbf{El cable no sigue cualquier perfil.} Un cable tenso sólo se asienta sobre un perfil
+        \emph{convexo} y de pendiente suave; en un tramo cóncavo lo puentea como una cuerda, y
+        entonces ni el radio ni el par son los que dice el modelo. El criterio práctico es mantener
+        el ángulo de presión $\arctan(|r'|/r)$ por debajo de unos \SI{25}{\degree}. Los perfiles de
+        par constante con radio de arranque alto lo violan de largo, con ángulos de
+        \SIrange{60}{80}{\degree}.
+\end{enumerate}
+
+Esta última condición es la restricción física de fondo, y vale para cualquier tambor de radio
+variable accionado por cable: no se puede pedir al perfil una variación de radio más rápida de lo
+que el cable puede seguir.
+
+\section{Método experimental: separación del par y brazo efectivo}
 \label{sec:mod-separacion}
 
 El accionamiento entrega el par en unidades internas de escala desconocida, y el par medido incluye
 las pérdidas por rozamiento. Para comparar con el modelo sin depender de esa escala se recorre el
-mismo punto en los dos sentidos, a la misma velocidad. Las pérdidas se oponen siempre al
-movimiento, mientras que el par gravitatorio conserva el signo:
-\begin{equation}
-  |\tau_{\uparrow}(p)| = \tau_g(p) + \tau_f(p), \qquad
-  |\tau_{\downarrow}(p)| = \tau_g(p) - \tau_f(p),
-\end{equation}
+mismo punto en los dos sentidos, a la misma velocidad. Las pérdidas se oponen siempre al movimiento,
+mientras que el par gravitatorio conserva el signo:
 \begin{equation}
   \tau_g = \frac{|\tau_{\uparrow}| + |\tau_{\downarrow}|}{2}, \qquad
   \tau_f = \frac{|\tau_{\uparrow}| - |\tau_{\downarrow}|}{2}.
@@ -480,66 +369,49 @@ movimiento, mientras que el par gravitatorio conserva el signo:
 El mismo promedio aplicado a la señal de la célula elimina en primera aproximación el retardo de su
 filtro, que desplaza en sentidos opuestos las curvas de ida y de vuelta.
 
-Con $\tau_g$ ya limpio de pérdidas, la ecuación~\eqref{eq:par} permite estimar el \emph{radio
-efectivo}
+Con $\tau_g$ limpio de pérdidas, \eqref{eq:par} permite estimar el \emph{brazo efectivo}
 \begin{equation}
-  r_{\text{ef}}(p) \;\propto\; \frac{\tau_g(p)}{T(p)},
-  \label{eq:radio-efectivo}
+  p_{\text{ef}}(\varphi) \;\propto\; \frac{\tau_g(\varphi)}{T(\varphi)},
+  \label{eq:brazo-efectivo}
 \end{equation}
 donde $T$ se toma del modelo, que no necesita la célula de carga: sólo la geometría y la masa. En un
-tambor cilíndrico $r_{\text{ef}}$ sería constante; su forma es, por tanto, una medida directa del
-perfil del tambor.
+tambor cilíndrico $p_{\text{ef}}$ sería constante; su forma es, por tanto, una medida directa del
+perfil que el cable está recorriendo.
 
 \subsection{Por qué no basta con medir la fuerza}
 \label{sec:mod-ambiguedad}
 
-Podría pensarse que basta con comparar la señal de la célula con la tensión del modelo. No es así, y
-esto condiciona todo el capítulo de resultados. Como la célula no está calibrada, la comparación se
-hace ajustando una recta $T \approx a\,(\text{cuentas}) + b$, y el coeficiente de determinación de
-ese ajuste es el cuadrado del coeficiente de correlación:
-\begin{equation}
-  R^2 = \rho^2 .
-\end{equation}
-El valor de $R^2$ \emph{no cambia si se invierte el signo de $a$}. Una geometría que prediga una
-tensión creciente y otra que la prediga decreciente pueden dar exactamente el mismo $R^2$ frente a
-los mismos datos, y sólo difieren en el signo de la sensibilidad de la célula, que es precisamente
-lo que no se conoce. La medida de fuerza, por sí sola, no puede decidir en qué sentido trabaja el
-mecanismo.
+La célula no está calibrada con masas patrón, de modo que la comparación con el modelo se hace
+ajustando una escala. El coeficiente de determinación de ese ajuste es el cuadrado del coeficiente de
+correlación, $R^2 = \rho^2$, y \emph{no cambia si se invierte el signo de la escala}: una geometría
+que prediga una tensión creciente y otra que la prediga decreciente pueden puntuar igual. La medida
+de fuerza, por sí sola, no puede decidir en qué sentido trabaja el mecanismo.
 
-\subsection{El mismo riesgo al comparar pares}
-\label{sec:mod-metrica}
-
-La advertencia anterior se extiende a la comparación de pares si se emplea una métrica ciega al
-signo, y conviene explicitarlo porque es un error fácil de cometer. El par del accionamiento sí
-tiene escala y signo conocidos, de modo que la comparación legítima ajusta \emph{una sola} constante
-positiva $k$ —el paso de unidades internas a newton-metro— y mide la bondad como
+El par del accionamiento sí puede, porque su signo y su escala son propios del equipo y no dependen
+de ninguna calibración pendiente. Por eso el criterio del capítulo~\ref{chap:resultados} es comparar
+$\tau_g$ con el par del modelo ajustando \emph{una sola} constante positiva $k$ ---el paso de
+unidades internas a newton-metro--- y medir
 \begin{equation}
   R^2 = 1 - \frac{\sum_i \big(\tau_{g,i} - k\,\tau_i^{\text{mod}}\big)^2}
                  {\sum_i \big(\tau_{g,i} - \bar\tau_g\big)^2}, \qquad k>0 .
   \label{eq:r2-par}
 \end{equation}
-Si en su lugar se usa $\rho^2$, un modelo que prediga exactamente la tendencia contraria a la medida
-puntúa alto, porque $\rho^2$ es invariante frente al cambio de signo. La
-sección~\ref{sec:res-contraste} muestra que la diferencia entre las dos métricas no es académica:
-sobre estos datos una hipótesis pasa de $\rho^2=\num{0.81}$ —aparentemente buena— a
-$R^2=\num{-6.10}$ —peor que predecir la media— según cuál se use.
+Usar en su lugar $\rho^2$ premia a un modelo que prediga la tendencia contraria a la medida, y la
+sección~\ref{sec:res-contraste} muestra que la diferencia no es académica.
 
 \section{Limitaciones del modelo}
 
 \begin{itemize}
-  \item Los parámetros de la tabla~\ref{tab:geometria} no son cotas medidas, sino un ajuste sobre
-        los ensayos; el propio capítulo~\ref{chap:resultados} muestra que no son consistentes con el
-        par medido.
-  \item El punto de salida del cable se desplaza con el radio de enrollamiento, lo que introduce un
-        error de algunos milímetros en $L_2$ y $dx$.
-  \item En el tambor excéntrico se supone que el cable trabaja en una sola capa y que su dirección
-        de salida es fija. Con varias capas el radio efectivo crece con el espesor acumulado, y la
-        dirección de salida gira, lo que altera~\eqref{eq:excentrico}.
-  \item Se desprecian la elasticidad del cable y la masa de la barra. En una transmisión con cuerda
-        sintética la fluencia del Dyneema hace que la primera hipótesis sea válida sólo a corto
-        plazo, entre retensados.
-  \item El rendimiento y las pérdidas se suponen iguales en los dos sentidos, en valor absoluto,
-        para poder aplicar~\eqref{eq:separacion}.
-  \item El modelo es estático: no describe el tramo inicial en que el cable está destensado, ni los
+  \item Las cotas de la tabla~\ref{tab:geometria} proceden del CAD y de medidas sobre el banco, no de
+        una metrología cuidada. $e_2$ es el parámetro más sensible y el que conviene medir mejor, a
+        través de $\theta_{\text{libre}}$.
+  \item Se supone que el cable trabaja en una sola capa y que se asienta sobre el perfil. Con varias
+        capas el brazo crece con el espesor acumulado, y en tramos de pendiente fuerte el cable
+        puentea el perfil.
+  \item Se desprecian la elasticidad del cable y la masa de la barra. Con cuerda sintética la
+        hipótesis de cable inextensible sólo vale a corto plazo, entre retensados.
+  \item El rendimiento y las pérdidas se suponen iguales en los dos sentidos, en valor absoluto, para
+        poder aplicar~\eqref{eq:separacion}.
+  \item El modelo es estático: no describe el tramo inicial con el cable destensado ni los
         transitorios de arranque e inversión.
 \end{itemize}

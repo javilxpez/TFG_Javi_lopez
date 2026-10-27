@@ -37,9 +37,10 @@ Ruta & Contenido \\
 \fichero{image (1).png} & Esquema de la revisión B. \\
 \fichero{README.MD} & Notas sobre la UART de la Pico y el doble núcleo. \\
 \fichero{memoria/} & Esta memoria: \fichero{TFG.tex}, \fichero{capitulos/}, \fichero{figuras/} y \fichero{bibliografia/}. \\
-\fichero{figuras/generar\_figuras.py} & Figuras y cifras de la campaña preliminar. \\
-\fichero{figuras/generar\_figuras21.py} & Figuras y cifras de la campaña del 21 de septiembre. \\
-\fichero{figuras/modelo\_mecanismo.py} & Modelo del capítulo~\ref{chap:modelo} portado a Python. \\
+\fichero{figuras/modelo\_mecanismo.py} & Modelo del capítulo~\ref{chap:modelo}: port de \fichero{static/mecanismo.js}. Ejecutarlo comprueba el balance de energía. \\
+\fichero{figuras/generar\_campana.py} & Figuras y cifras de una campaña de ensayos. Por defecto, los diez ensayos más recientes. \\
+\fichero{figuras/generar\_overleaf.py} & Genera la versión ligera para Overleaf. \\
+\fichero{figuras/generar\_figuras.py} & Campaña preliminar. Usa el modelo antiguo: sus cifras no se citan. \\
 \fichero{memoria/\_v1/} & Versión anterior de la memoria, antes de adoptar la plantilla de la ETSIDI. \\
 \fichero{old/} & Pruebas iniciales en modo par. \\
 \bottomrule
@@ -50,11 +51,19 @@ Ruta & Contenido \\
 Con el repositorio y Python con \codigo{numpy}, \codigo{scipy} y \codigo{matplotlib} instalados:
 
 \begin{lstlisting}[language=bash,numbers=none]
-python memoria/figuras/generar_figuras.py     # campaña preliminar
-python memoria/figuras/generar_figuras21.py   # campaña del 21 de septiembre
+python memoria/figuras/modelo_mecanismo.py    # valida el modelo (balance de energía)
+python memoria/figuras/generar_campana.py     # los 10 ensayos mas recientes
 \end{lstlisting}
 
-Ambos programas leen \fichero{cycles/*.csv}, escriben las figuras en \fichero{memoria/figuras/} y
-dejan las cifras en \fichero{datos.json} y \fichero{datos21.json}, que son las que cita el
-capítulo~\ref{chap:resultados}. Los parámetros del mecanismo están al principio de
-\fichero{modelo\_mecanismo.py} y deben coincidir con los de \fichero{mecanismo.json}.
+El segundo admite \codigo{--ultimos N} (cuántos ensayos recientes tomar, por defecto 10),
+\codigo{--patron} (un glob sobre \fichero{cycles/}, para analizar una campaña concreta) y
+\codigo{--prefijo} (con qué nombre escribir las figuras). Con los valores por defecto escribe
+\fichero{n14\_*.pdf} y \fichero{datos14.json}, que son las cifras que cita el
+capítulo~\ref{chap:resultados}. Analizar una campaña anterior para comparar es, por ejemplo,
+\codigo{--patron '20261007-*.csv' --prefijo n07}.
+
+\fichero{modelo\_mecanismo.py} es un port fiel de \fichero{static/mecanismo.js}, de modo que la
+memoria, el simulador y el visor de ensayos calculan lo mismo. Si se cambia la geometría hay que
+cambiarla en el JS, que es la fuente, y volver a ejecutar el port para comprobar que sigue cuadrando
+el balance de energía. El diseño del perfil de leva de par constante existe sólo en el JS y no se ha
+portado: el capítulo~\ref{chap:modelo} explica por qué no se recomienda.

@@ -1,11 +1,10 @@
 \chapter{Resumen}
 
-Este Trabajo Fin de Grado desarrolla el banco de ensayos de un mecanismo de elevación basado en una
-\emph{caracola}: un tambor de radio variable que, accionado por un servomotor AC de lazo
-cerrado, enrolla un cable y levanta una barra articulada con una masa de \SI{2}{\kilo\gram}. La idea
-que se quiere contrastar es la del \emph{fusee} de la relojería: si el radio del tambor crece donde
-la tensión del cable es pequeña y decrece donde es grande, el par que ve el motor se mantiene
-aproximadamente constante a lo largo del recorrido.
+Este Trabajo Fin de Grado desarrolla el banco de ensayos de un mecanismo de elevación basado en un
+tambor de radio variable ---aquí llamado \emph{caracola}--- que, accionado por un servomotor AC de
+lazo cerrado, enrolla un cable y levanta una barra articulada con una masa de \SI{2}{\kilo\gram}. La
+idea que se quiere contrastar es que, modulando el radio con que trabaja el cable, el par que ve el
+motor deje de seguir a la tensión y se reparta de forma más uniforme a lo largo del recorrido.
 
 Para poder contrastarla se ha construido una plataforma completa: una placa adaptadora diseñada en
 KiCad alrededor de una Raspberry Pi Pico~2, con bus RS-485, entradas digitales protegidas, entradas
@@ -16,36 +15,47 @@ B$\rightarrow$A$\rightarrow$B; un protocolo binario propio con CRC-8; y una apli
 y WebSocket) con tres páginas: monitor en tiempo real, configuración del mecanismo con simulador, y
 visor de ensayos que superpone la curva teórica a cada medida.
 
-El banco muestrea a \SI{20.0}{\hertz} con una dispersión del periodo de \SI{0.06}{\milli\second},
-graba cada ensayo en cuentas brutas y repite el recorrido con una desviación típica de
-\SI{11}{mrev} de motor. Se han analizado dos campañas de ensayos, la segunda con el
-ciclo de ensayo reorganizado para que arranque en el extremo inferior del recorrido.
+El banco muestrea a \SI{20.0}{\hertz} con una dispersión del periodo de \SI{0.06}{\milli\second} y
+graba cada ensayo en cuentas brutas. El modelo del mecanismo se ha reformulado: el cable no sale de
+un punto fijo sino \emph{tangente} al tambor, y el contacto se resuelve sobre el perfil real, lo que
+obliga a integrar la trayectoria paso a paso. Su consistencia se comprueba contra el balance de
+energía, que se cumple en la cuarta cifra significativa sin ajustar ningún parámetro.
 
-El resultado principal es metodológico y, en parte, negativo. El modelo estático reproduce bien la
-forma de la señal de la célula de carga ($R^2 = 0{,}97$), pero se demuestra que esa comparación es
-insuficiente: al no estar calibrada la célula, el ajuste absorbe un cambio de signo y el mismo
-$R^2$ admite dos geometrías opuestas. El par del accionamiento, que no necesita calibración, deshace
-la ambigüedad, y al hacerlo contradice la configuración vigente del mecanismo: sobre el tramo del
-recorrido en que el cable trabaja con carga, el modelo predice que la tensión \emph{baja} un
-\SI{20}{\percent} mientras que el par gravitatorio medido \emph{sube} un \SI{56}{\percent}. El radio
-efectivo deducido crece un \SI{93}{\percent}, cuando para mantener el par constante bastaría con que
-creciera un \SI{26}{\percent}. La caracola, tal y como está descrita en la configuración, no
-compensa: sobrecompensa, y con el sentido invertido respecto del que pide el modelo.
+Sobre los diez ensayos de la campaña decisiva ---consecutivos y repetibles al \SI{0.6}{\percent}---,
+el resultado es que \textbf{el par del tambor es prácticamente plano}: varía un \SI{-5}{\percent} a
+lo largo del tramo con carga, con un rizado del \SI{12.1}{\percent}, mientras que un tambor cilíndrico equivalente lo haría \emph{crecer} un
+\SI{15}{\percent}. El mecanismo, por tanto, hace lo que se diseñó que hiciera, y se mide. El perfil
+que explica la medida no es la espiral tal y como está descrita en la configuración ---que
+sobrecompensa---, sino esa misma espiral precedida de su arco de radio constante: ajustando la
+longitud de ese arco como único parámetro se obtiene $R^2 = 0{,}84$, y el valor ajustado
+(\SI{61}{\degree}) coincide con el que la pieza tiene medido en el modelo CAD (\SI{50}{\degree}).
 
-El trabajo entrega, por tanto, un banco de ensayos reproducible, un modelo verificado en su
-formulación y un procedimiento de contraste, junto con un diagnóstico claro de lo que falta para
-cerrar la validación: medir las cotas reales del mecanismo y calibrar la célula con masas patrón.
+El trabajo arroja además un resultado de diseño que contradice la expectativa de partida. El
+criterio correcto es el par de pico, porque es lo que dimensiona el accionamiento; y como todos los
+tambores que recorren lo mismo en las mismas vueltas entregan el mismo par medio, el ahorro se
+reduce al cociente de sus relaciones pico/media. Medido, sale entre el \SI{-1.5}{\percent} y el
+\SI{+4}{\percent}: en este banco el tambor de radio variable \emph{no ahorra motor}. La razón no es
+que el principio falle, sino que aquí la tensión apenas varía ---un \SI{13}{\percent} según el
+modelo, un \SI{28}{\percent} según la célula--- porque el brazo del peso y el del cable crecen a la
+vez y se cancelan: no hay nada que repartir. Donde la tensión variase el doble o el triple, el mismo
+tambor recortaría el motor en esa proporción. Perseguir además un perfil de par exactamente constante
+choca con una restricción física: el cable sólo se asienta sobre perfiles convexos y de pendiente
+suave.
 
-\paragraph{Palabras clave:} tambor de radio variable, caracola, compensación de par, servomotor paso
-a paso, Modbus RTU, RS-485, célula de carga, ZSC31014, Raspberry Pi Pico 2, adquisición de datos.
+Se entrega, por tanto, un banco de ensayos reproducible, un modelo verificado y un procedimiento de
+contraste, junto con un diagnóstico de lo que falta para cerrar la validación: calibrar la célula con
+masas patrón, medir el ángulo de reposo libre de la barra y levantar el perfil real del tambor.
+
+\paragraph{Palabras clave:} tambor de radio variable, caracola, compensación de par, servomotor AC,
+Modbus RTU, RS-485, célula de carga, ZSC31014, Raspberry Pi Pico 2, adquisición de datos.
 
 \chapter{Abstract}
 
 This Bachelor's Thesis develops the test bench for a lifting mechanism based on a variable-radius
-spiral drum (a \emph{fusee}-like drum, here called \emph{caracola}): driven by a closed-loop AC servo
-servomotor, it winds a cable that lifts a hinged bar carrying a \SI{2}{\kilo\gram} mass. The idea
-under test is the one behind the horological fusee: if the drum radius grows where the cable tension
-is small and shrinks where it is large, the motor torque stays roughly constant along the stroke.
+drum ---here called \emph{caracola}--- driven by a closed-loop AC servo motor, which winds a cable
+and lifts a hinged bar carrying a \SI{2}{\kilo\gram} mass. The idea under test is that, by modulating
+the radius at which the cable works, the motor torque stops following the cable tension and is spread
+more evenly along the stroke.
 
 A complete platform was built to test it: a KiCad-designed adapter board around a Raspberry Pi
 Pico~2, with an RS-485 bus, protected digital inputs, conditioned analogue inputs, high-side outputs
@@ -55,25 +65,37 @@ B$\rightarrow$A$\rightarrow$B cycles; a custom binary protocol with CRC-8; and a
 (FastAPI and WebSocket) with three pages: real-time monitor, mechanism configuration with a
 simulator, and a test viewer that overlays the theoretical curve on each measurement.
 
-The bench samples at \SI{20.0}{\hertz} with a period spread of \SI{0.06}{\milli\second}, logs every
-test in raw counts and repeats the stroke with a standard deviation of \SI{11}{mrev} of
-motor shaft. Two test campaigns were analysed, the second one with the test cycle reorganised to
-start at the lower end of the stroke.
+The bench samples at \SI{20.0}{\hertz} with a period spread of \SI{0.06}{\milli\second} and logs
+every test in raw counts. The mechanism model was reformulated: the cable does not leave a fixed
+point but is \emph{tangent} to the drum, and contact is solved against the actual profile, which
+requires integrating the trajectory step by step. Its consistency is checked against the energy
+balance, satisfied to the fourth significant figure without fitting any parameter.
 
-The main result is methodological and partly negative. The static model reproduces the shape of the
-load-cell signal well ($R^2 = 0.97$), but that comparison is shown to be insufficient: since the
-cell is uncalibrated, the fit absorbs a sign change and the same $R^2$ admits two opposite
-geometries. The drive torque, which needs no calibration, resolves the ambiguity --- and in doing so
-contradicts the current configuration of the mechanism: over the loaded part of the stroke the model
-predicts the tension to \emph{fall} by \SI{20}{\percent} while the measured gravitational torque
-\emph{rises} by \SI{56}{\percent}. The implied effective radius grows by \SI{93}{\percent}, whereas
-a \SI{26}{\percent} growth would suffice for constant torque. The spiral drum, as configured, does
-not compensate: it overcompensates, and in the opposite sense to the one the model requires.
+Across the ten tests of the decisive campaign ---consecutive and repeatable to \SI{0.6}{\percent}---,
+the result is that \textbf{the drum torque is essentially flat}: it varies by \SI{-5}{\percent} over
+the loaded stroke, with a ripple of \SI{12.1}{\percent}, whereas an equivalent cylindrical drum would make it \emph{rise} by
+\SI{15}{\percent}. The mechanism therefore does what it was designed to do, and this is measurable.
+The profile that explains the measurement is not the spiral as described in the configuration
+---which overcompensates--- but that same spiral preceded by its constant-radius arc: fitting the
+length of that arc as the only additional parameter yields $R^2 = 0.84$, and the fitted value
+(\SI{61}{\degree}) agrees with the one measured on the CAD model of the part (\SI{50}{\degree}).
 
-The thesis therefore delivers a reproducible test bench, a model verified in its formulation and a
-contrast procedure, together with a clear diagnosis of what remains in order to close the
-validation: measuring the real dimensions of the mechanism and calibrating the load cell with
-reference masses.
+The work also yields a design result that contradicts the initial expectation. The right figure of
+merit is peak torque, since that is what sizes the drive; and because every drum covering the same
+stroke in the same number of turns delivers the same mean torque, the saving reduces to the ratio of
+their peak-to-mean values. Measured, it falls between \SI{-1.5}{\percent} and \SI{+4}{\percent}: on
+this bench the variable-radius drum \emph{does not save motor}. The reason is not that the principle
+fails, but that here the tension barely varies ---\SI{13}{\percent} per the model,
+\SI{28}{\percent} per the load cell--- because the weight lever arm and the cable lever arm grow
+together and cancel: there is nothing to redistribute. Where the tension varied twice or three times
+as much, the same drum would cut the motor by that proportion. Pursuing an exactly constant-torque
+profile also conflicts with a physical constraint: a cable only seats on convex profiles of gentle
+slope.
 
-\paragraph{Keywords:} variable radius drum, fusee, torque compensation, AC servo drive,
-Modbus RTU, RS-485, load cell, ZSC31014, Raspberry Pi Pico 2, data acquisition.
+The thesis therefore delivers a reproducible test bench, a verified model and a contrast procedure,
+together with a diagnosis of what remains in order to close the validation: calibrating the load cell
+with reference masses, measuring the free rest angle of the bar, and surveying the actual drum
+profile.
+
+\paragraph{Keywords:} variable radius drum, torque compensation, AC servo drive, Modbus RTU, RS-485,
+load cell, ZSC31014, Raspberry Pi Pico 2, data acquisition.

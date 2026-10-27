@@ -15,8 +15,16 @@ cable por el radio con el que ese cable sale del tambor:
 Si el radio es constante, el par reproduce exactamente la forma de la tensión. Si el radio cambia
 con el giro, $r(\varphi)$, se dispone de un grado de libertad para moldear el par: basta con que el
 radio sea grande donde la tensión es pequeña, y pequeño donde es grande, para que el producto se
-mantenga aproximadamente constante. Ésa es la idea del \emph{fusee} y de los tambores de radio
-variable, y el capítulo~\ref{chap:modelo} la desarrolla para la geometría concreta del prototipo.
+mantenga aproximadamente constante. Ésa es la idea de los tambores de radio variable, y el
+capítulo~\ref{chap:modelo} la desarrolla para la geometría concreta del prototipo.
+
+Hay que añadir enseguida una advertencia que el capítulo del modelo convierte en resultado: la
+ecuación~\eqref{eq:par-basico} usa el radio como si el cable saliera del tambor por un punto fijo y
+tangente a una circunferencia. Ninguna de las dos cosas es exacta en un tambor de radio variable. El
+brazo que multiplica a la tensión es la distancia del eje a la recta del cable, que donde el perfil
+tiene pendiente es \emph{menor} que el radio, y el punto por el que el cable abandona el tambor se
+desplaza al girar. Ambos efectos son del orden del \SI{10}{\percent} en este prototipo, es decir, del
+mismo orden que lo que se quiere medir.
 
 Conviene separar dos cosas que se confunden con facilidad. Un mecanismo de compensación
 \emph{pasiva} (un muelle con una polea no circular) reduce la energía que el actuador tiene que

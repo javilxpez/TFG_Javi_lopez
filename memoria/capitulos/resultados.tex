@@ -1,360 +1,349 @@
-\chapter{Resultados y discusión}
+\chapter{Resultados}
 \label{chap:resultados}
 
-Este capítulo presenta primero la caracterización del banco (temporización y repetibilidad) y
-después el contraste del modelo con las medidas. El contraste se organiza alrededor de una pregunta
-concreta: \emph{¿se comporta el tambor como un cilindro o como una caracola, y en qué medida?} Todas
-las figuras y cifras se generan con los programas de \fichero{memoria/figuras/} a partir de los
-ficheros de \fichero{cycles/}, sin edición manual.
+Este capítulo presenta las medidas del banco y las contrasta con el modelo del
+capítulo~\ref{chap:modelo}. El resultado central es que, sobre el recorrido que el mecanismo hace
+realmente con carga, \textbf{el par del tambor es prácticamente plano}, y que el perfil que lo
+explica no es la espiral tal y como está descrita en la configuración, sino esa misma espiral
+precedida por su arco de radio constante.
 
 \section{Campañas de ensayos}
 \label{sec:res-campania}
 
-Se han realizado dos campañas, separadas por el rediseño del ciclo y del modelo.
-
-\begin{description}[style=nextline,leftmargin=1.5em]
-  \item[Campaña preliminar (14 y 15 de septiembre)] Quince ficheros con el ciclo anterior, que
-        arrancaba en el origen y bajaba hasta el final de carrera (A$\rightarrow$B$\rightarrow$A), y
-        con el modelo que situaba la salida del cable en la vertical de la articulación. Catorce
-        ensayos válidos, 2744 muestras, doce de ellos a \SI{30}{rpm}.
-  \item[Campaña del 21 de septiembre] Quince ficheros con el ciclo reorganizado
-        (B$\rightarrow$A$\rightarrow$B, sección~\ref{sec:fw-ciclo}) y la calibración provisional ya
-        escrita en la cabecera. De ellos, seis son ciclos completos y \textbf{tres} son ensayos
-        limpios y mutuamente consistentes (18:06:37, 18:07:09 y 18:08:46), que son los que se usan
-        para el análisis cuantitativo. El resto quedaron interrumpidos o con el cable mal asentado,
-        y se descartan de forma explícita en la tabla~\ref{tab:ensayos21}.
-\end{description}
+Los datos que sostienen el capítulo son los diez ensayos del 14 de octubre de 2026, todos con la
+misma configuración y el mismo ciclo B$\to$A$\to$B. No se ha descartado ninguno: los diez recorren
+\SI{1.80}{rev} de motor con una desviación típica de \SI{0.011}{rev} ---un \SI{0.6}{\percent}--- y
+sus curvas se superponen dentro del espesor de la línea.
 
 \begin{table}[H]
 \centering
-\caption{Ensayos de la campaña del 21 de septiembre con ciclo completo.}
-\label{tab:ensayos21}
+\caption{Ensayos del 14 de octubre de 2026. Los diez son consecutivos, tomados en menos de tres
+minutos y con la misma configuración.}
+\label{tab:ensayos}
 \small
-\begin{tabularx}{\textwidth}{@{}lrrrXl@{}}
+\begin{tabular}{@{}lcc@{}}
 \toprule
-Ensayo & Muestras & $p_{\max}$ (rev) & $R^2$ fuerza & Observaciones & Uso \\
+Ensayo & Muestras & Recorrido (rev de motor) \\
 \midrule
-18:06:37 & 180 & 1,789 & 0,932 & ciclo limpio & sí \\
-18:07:09 & 180 & 1,806 & 0,931 & ciclo limpio & sí \\
-18:08:46 & 180 & 1,810 & 0,930 & ciclo limpio & sí \\
-18:16:41 & 172 & 1,847 & 0,187 & la señal de la célula apenas varía & no \\
-18:21:20 & 176 & 1,867 & 0,165 & ídem, con par de bajada muy bajo & no \\
-18:34:24 & 180 & 1,864 & 0,956 & rango de fuerza distinto: tara cambiada & no \\
+18:56:10 & 272 & 1,81 \\
+18:56:24 & 276 & 1,79 \\
+18:56:40 & 276 & 1,80 \\
+18:56:55 & 276 & 1,78 \\
+18:57:09 & 272 & 1,79 \\
+18:57:24 & 272 & 1,78 \\
+18:57:38 & 272 & 1,78 \\
+18:57:53 & 272 & 1,80 \\
+18:58:09 & 272 & 1,80 \\
+18:58:48 & 272 & 1,80 \\
 \bottomrule
-\end{tabularx}
+\end{tabular}
 \end{table}
+
+Las campañas anteriores (septiembre y 7 de octubre) se interpretaron, las primeras, con el modelo de
+punto de salida fijo, hoy superado. La del 7 de octubre, ya con el modelo tangente, da los mismos
+resultados que la que aquí se presenta ---la meseta ajustada coincide en \SI{61}{\degree} y el orden
+de las hipótesis es idéntico---, con peor repetibilidad. Sus conclusiones
+geométricas no se mantienen y no se reproducen aquí; lo que sí se mantiene de ellas es la
+caracterización de la cadena de adquisición, que no depende del modelo.
 
 \section{Temporización del lazo de control}
 \label{sec:res-temporizacion}
 
-La figura~\ref{fig:temporizacion} muestra la distribución del periodo entre muestras y del tiempo de
-trabajo del lazo, medidos por el propio firmware. En la campaña del 21 de septiembre:
+El firmware trabaja con un periodo fijo de \SI{50}{\milli\second}. Sobre las muestras de los ocho
+ensayos, el periodo medido es de \SI{50.02}{\milli\second} con una desviación típica de
+\SI{0.13}{\milli\second}, y el \SI{98.3}{\percent} de los intervalos caen dentro de
+\SI{\pm 0.5}{\milli\second}. El tiempo de trabajo declarado por el propio lazo es de
+\SI{10.96}{\milli\second} de media y \SI{11.00}{\milli\second} como máximo: un
+\SI{22}{\percent} del periodo, con \SI{39}{\milli\second} de holgura.
 
-\begin{itemize}
-  \item el periodo medio es \SI{50.004}{\milli\second} con una desviación típica de
-        \SI{0.059}{\milli\second}, y el \SI{99.7}{\percent} de los periodos son exactamente de
-        \SI{50}{\milli\second} (el resto, de \SI{51}{\milli\second}, el grano de \codigo{millis()}).
-        La frecuencia de muestreo es de \SI{20.0}{\hertz} y cumple RNF1 con holgura;
-  \item el tiempo de trabajo está entre \num{10.84} y \SI{11.00}{\milli\second}, con media de
-        \SI{10.97}{\milli\second}: el \SI{22}{\percent} del periodo, con \SI{39}{\milli\second} de
-        margen. Su dispersión, de apenas \SI{0.2}{\milli\second}, confirma que el lazo está dominado
-        por las tres transacciones Modbus.
-\end{itemize}
-
-Las cifras coinciden con las de la campaña preliminar, lo que indica que la temporización no depende
-del ensayo.
-
-\begin{figure}[tbp]
-\centering
-\includegraphics[width=\textwidth]{temporizacion.pdf}
-\caption{Izquierda: periodo entre muestras (escala logarítmica). Derecha: tiempo de trabajo por
-vuelta del lazo.}
-\label{fig:temporizacion}
-\end{figure}
+Esa holgura importa porque la base de tiempos es lo que permite emparejar posición, fuerza y par en
+la misma muestra. Un lazo que se saltara periodos desplazaría unas magnitudes respecto de otras y
+contaminaría justo la comparación que se quiere hacer.
 
 \section{Ensayo tipo}
 
-La figura~\ref{fig:ensayo-tipo} muestra el ensayo de las 18:08:46. La secuencia es:
-
-\begin{enumerate}
-  \item El eje arranca en B y sube hacia A. Durante la primera media revolución (zona sombreada) la
-        señal de la célula permanece plana y el par del motor es de unas \SI{3}{\uacc}: el mecanismo
-        está recogiendo holgura y todavía no levanta la masa.
-  \item A partir de \SI{0.56}{rev} de avance el par crece con rapidez y la señal de la célula
-        empieza a moverse: el cable ya trabaja. Desde ahí hasta A el par sigue creciendo.
-  \item Al activarse el final A el ciclo invierte la consigna y el eje baja de vuelta a B, con un par
-        menor que en la subida por efecto de las pérdidas.
-  \item La repetición se cierra al volver a tocar B. La duración total es de \SI{8.9}{\second}.
-\end{enumerate}
+La figura~\ref{fig:ensayo-tipo} muestra el último ensayo de la campaña. La secuencia es siempre la
+misma: el eje arranca en B y avanza hacia A; durante la primera media vuelta larga el cable aún no
+tira y las tres señales están en reposo; a partir de ahí la carga entra, la célula sube y el par se
+estabiliza; al llegar al final de carrera el ciclo invierte y vuelve a B recorriendo los mismos
+puntos en sentido contrario.
 
 \begin{figure}[tbp]
 \centering
-\includegraphics[width=\textwidth]{n_ensayo_tipo.pdf}
-\caption{Ensayo tipo de la campaña del 21 de septiembre: avance, velocidad, señal de la célula con
-la tensión del modelo superpuesta, y par del motor. En gris, el tramo inicial sin carga.}
+\includegraphics[width=\textwidth]{n14_ensayo_tipo.pdf}
+\caption{Ensayo del 14 de octubre a las 18:58:48. De arriba abajo: avance del motor con el ángulo de
+la barra que predice el modelo, velocidad frente a consigna, célula de carga frente a la tensión del
+modelo, y par del accionamiento. La banda gris es el tramo en que el cable todavía no tira.}
 \label{fig:ensayo-tipo}
 \end{figure}
 
+El tramo sin carga no es un defecto del ensayo sino una propiedad del mecanismo: en B la barra está a
+\SI{-87}{\degree}, apenas \SI{2.6}{\degree} por debajo del reposo libre
+$\theta_{\text{libre}} = \SI{-84.4}{\degree}$ de la ecuación~\eqref{eq:libre}, y ahí el brazo de la
+pesa es casi nulo. El mecanismo, sencillamente, no necesita fuerza para sostenerla. Todo el análisis
+cuantitativo se restringe por eso al tramo con carga, de \SI{0.60}{rev} de motor en adelante.
+
 \section{Repetibilidad}
 
-Los tres ensayos limpios alcanzan el final de carrera A tras \num{1.789}, \num{1.806} y
-\SI{1.810}{rev} de avance, con una desviación típica de \SI{11}{mrev}, y vuelven a B con
-un avance final de \num{-14}, \num{+5} y \SI{+1}{mrev}. Es decir, el recorrido entre los
-dos finales de carrera se repite dentro del \SI{0.6}{\percent}, y el ciclo cierra prácticamente sobre
-el punto de partida. El tramo inicial sin carga también es repetible: el par supera las
-\SI{10}{\uacc} en \num{0.55}, \num{0.56} y \SI{0.58}{rev}.
+Los diez ensayos alcanzan un recorrido máximo de \SI{1.80}{rev} de motor con una desviación típica
+de \SI{0.011}{rev}, un \SI{0.6}{\percent}. Es un orden de magnitud mejor que en campañas anteriores,
+donde la dispersión del punto en que se detecta el final de carrera llegaba al \SI{5}{\percent}. Con
+esta repetibilidad el promedio de los diez ensayos es prácticamente una sola curva.
 
-La dispersión combina la repetibilidad de los propios finales de carrera con la deriva de la posición
-integrada a lo largo de casi dos revoluciones, de modo que es una cota superior de ambas.
+\section{Fuerza y par a lo largo del recorrido}
+\label{sec:res-friccion}
 
-\section{Tensión y par a lo largo del recorrido}
-
-La figura~\ref{fig:fuerza-par} superpone las muestras de los tres ensayos limpios en las que el eje
-se mueve de forma estable. Se aprecian tres hechos: los ensayos son muy repetibles, la señal de la
-célula recorre el mismo camino en subida y bajada (una vez descontado el retardo de su filtro), y el
-par es sistemáticamente mayor en la subida que en la bajada, como corresponde a unas pérdidas que se
-oponen siempre al movimiento.
+La figura~\ref{fig:descomposicion} promedia los diez ensayos por tramos de avance, separando la
+subida de la bajada. De esa separación salen, por la ecuación~\eqref{eq:separacion}, el par
+gravitatorio $\tau_g$ y el de pérdidas $\tau_f$.
 
 \begin{figure}[tbp]
 \centering
-\includegraphics[width=\textwidth]{n_fuerza_par.pdf}
-\caption{Señal de la célula (izquierda) y par del motor (derecha) frente al avance, en los tres
-ensayos limpios. En gris, el tramo sin carga.}
-\label{fig:fuerza-par}
-\end{figure}
-
-Aplicando la separación de la ecuación~\eqref{eq:separacion} sobre intervalos de \SI{0.05}{rev}
-(figura~\ref{fig:descomposicion}) se obtiene, en el tramo con carga (de \num{0.68} a
-\SI{1.73}{rev}):
-
-\begin{itemize}
-  \item \textbf{par gravitatorio} $\tau_g$: crece de \num{20.8} a \SI{32.3}{\uacc}, es decir,
-        un \SI{+56}{\percent};
-  \item \textbf{pérdidas} $\tau_f$: \SI{5.4}{\uacc} de media, el \SI{19}{\percent} de $\tau_g$, y
-        prácticamente constantes a lo largo del recorrido, lo que corresponde a un rozamiento de tipo
-        Coulomb;
-  \item \textbf{tensión del modelo} $T$: \emph{decrece} de \num{44.2} a \SI{35.5}{\newton}, un
-        \SI{-20}{\percent}, porque al subir la barra el brazo del cable mejora más deprisa de lo que
-        crece el momento del peso.
-\end{itemize}
-
-\begin{figure}[tbp]
-\centering
-\includegraphics[width=\textwidth]{n_descomposicion.pdf}
-\caption{Arriba: señal de la célula en cada sentido, con la tensión del modelo. Centro: par en cada
-sentido, componente gravitatoria $\tau_g$ y pérdidas $\tau_f$. Abajo: radio efectivo medido frente a
-las dos orientaciones posibles de la caracola.}
+\includegraphics[width=\textwidth]{n14_descomposicion.pdf}
+\caption{Promedio de los diez ensayos. Arriba: célula en subida y bajada frente a la tensión del
+modelo. Centro: par en los dos sentidos, con el par gravitatorio $\tau_g$ y el de pérdidas $\tau_f$.
+Abajo: brazo efectivo deducido de la medida frente a las hipótesis de perfil.}
 \label{fig:descomposicion}
 \end{figure}
+
+Dos observaciones, ambas sobre el tramo con carga:
+
+\begin{itemize}
+  \item \textbf{El par gravitatorio es plano.} Va de \num{38.0} a \num{36.1} unidades de
+        accionamiento, es decir \SI{-5}{\percent} a lo largo de todo el tramo, con un valor medio de
+        \num{38.5} y un rizado del \SI{12.1}{\percent} en torno a él.
+  \item \textbf{Las pérdidas son rozamiento seco.} $\tau_f$ vale \num{6.8} unidades de media y se
+        mantiene entre \num{5.2} y \num{8.0} en todo el recorrido, sin tendencia. Es un
+        \SI{18}{\percent} del par gravitatorio. Que sea plano, y no proporcional a la velocidad,
+        confirma que domina el rozamiento seco y justifica la hipótesis de
+        la ecuación~\eqref{eq:separacion}.
+\end{itemize}
+
+\subsection{La escala del accionamiento}
+
+Ajustando el par medido al del modelo con una única constante positiva se obtiene
+\begin{equation}
+  1\ \text{unidad de accionamiento} = \SI{0.0553}{\newton\metre}.
+\end{equation}
+La cifra merece atención porque es una comprobación cruzada: un ajuste independiente sobre la campaña
+de septiembre, con otra geometría y otro tratamiento, daba \SI{0.055}{\newton\metre}. Coinciden
+dentro del \SI{1}{\percent}. Con esa escala, el par gravitatorio medio es de
+\SI{2.13}{\newton\metre}, el de pico \SI{2.24}{\newton\metre} y el de rozamiento
+\SI{0.38}{\newton\metre}. En el eje del motor, con la reducción $N=5$, el pico queda en
+\SI{0.45}{\newton\metre}: un \SI{35}{\percent} del par nominal del servomotor. Conviene subrayar que
+esta conversión a newton-metro es una cifra \emph{derivada} del ajuste, no una medida independiente;
+lo que el accionamiento entrega sin ambigüedad es la forma de la curva y su signo.
 
 \section{Contraste con el modelo: qué perfil explica la medida}
 \label{sec:res-contraste}
 
 Éste es el núcleo del trabajo experimental. Se comparan cuatro hipótesis de tambor, todas con la
-misma geometría del mecanismo y todas obligadas a pagar el mismo cable en el mismo giro
-(ecuación~\eqref{eq:restriccion}), de modo que sólo se diferencian en la \emph{forma} de
-$r(\varphi)$:
+misma geometría del mecanismo, ajustando en cada caso una única constante positiva de escala:
 
 \begin{enumerate}
-  \item \textbf{cilindro} de radio constante $r = \SI{30.3}{\milli\metre}$;
-  \item \textbf{caracola configurada}, con el radio decreciendo de \num{45} a \SI{25}{\milli\metre};
-  \item \textbf{caracola invertida}, con el radio creciendo de \num{25} a \SI{45}{\milli\metre};
-  \item \textbf{tambor excéntrico}, con $e$ y $\varphi_0$ ajustados a la medida.
+  \item \textbf{espiral configurada}, lineal de \num{56} a \SI{28.18}{\milli\metre} en
+        \SI{0.367}{rev} de tambor;
+  \item \textbf{espiral con meseta}: la misma espiral, precedida de un arco de radio constante
+        $r_0$, como la tiene la pieza real;
+  \item \textbf{cilindro} de radio constante \SI{44.6}{\milli\metre}, el que recorre lo mismo;
+  \item \textbf{espiral invertida}, de \num{28.18} a \SI{56}{\milli\metre}.
 \end{enumerate}
-
-Las tres primeras no tienen ningún parámetro libre de forma; la cuarta tiene dos, así que parte con
-ventaja y hay que juzgarla con ese descuento.
-
-\subsection{Lo que dice la fuerza: nada concluyente}
-
-La tabla~\ref{tab:contraste} recoge el ajuste de cada hipótesis contra la señal de la célula. Las
-tres dan coeficientes de determinación altos, entre \num{0.93} y \num{0.97}. No es que las tres sean
-correctas: es que la señal de la célula, sin calibrar, no tiene capacidad para distinguirlas. El
-ajuste absorbe en su pendiente tanto la sensibilidad desconocida como el signo
-(sección~\ref{sec:mod-ambiguedad}), y lo poco que diferencia a las tres hipótesis en la forma de la
-curva queda por debajo del ruido y del retardo del filtro.
 
 \begin{table}[H]
 \centering
-\caption{Contraste de las cuatro hipótesis de tambor sobre el tramo con carga. Para el par se dan
-las dos métricas de la sección~\ref{sec:mod-metrica}: $R^2$ ajustando una única escala positiva, que
-es la legítima, y $\rho^2$, ciega al signo. Las dos últimas columnas son la variación que predice
-cada modelo a lo largo del tramo.}
+\caption{Contraste de las hipótesis sobre el tramo con carga. $R^2$ ajusta una sola escala positiva
+(ecuación~\eqref{eq:r2-par}); $\rho^2$ es el cuadrado de la correlación, ciego al signo.}
 \label{tab:contraste}
 \small
 \begin{tabularx}{\textwidth}{@{}Xccccc@{}}
 \toprule
-Hipótesis & Fuerza & \multicolumn{2}{c}{Par} & \multicolumn{2}{c}{Variación del modelo} \\
-\cmidrule(lr){2-2}\cmidrule(lr){3-4}\cmidrule(lr){5-6}
- & $R^2$ & $R^2$ ($k>0$) & $\rho^2$ & $\tau$ & $r$ \\
+Hipótesis & \multicolumn{2}{c}{Bondad} & \multicolumn{3}{c}{Predicción sobre el tramo} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-6}
+ & $R^2$ & $\rho^2$ & var.\ $\tau$ & var.\ brazo & rizado \\
 \midrule
-Cilindro, $r=\SI{30.3}{\milli\metre}$ & \num{0.947} & \num{-1.44} & \num{0.777} & \SI{-20}{\percent} & \SI{0}{\percent} \\
-Caracola configurada, 45$\to$25 mm & \num{0.966} & \num{-6.10} & \num{0.809} & \SI{-45}{\percent} & \SI{-32}{\percent} \\
-Caracola invertida, 25$\to$45 mm & \num{0.930} & \num{0.19} & \num{0.534} & \SI{+1}{\percent} & \SI{+36}{\percent} \\
-Excéntrico ajustado, $e/R=\num{0.90}$ & --- & \textbf{\num{0.90}} & \num{0.897} & \SI{+38}{\percent} & \SI{+71}{\percent} \\
+Espiral configurada & \num{-1.23} & \num{0.56} & \SI{-23}{\percent} & \SI{-32}{\percent} & \SI{25.2}{\percent} \\
+\textbf{Espiral con meseta} & \textbf{\num{0.84}} & \num{0.85} & \SI{-5}{\percent} & \SI{-17}{\percent} & \SI{13.6}{\percent} \\
+Cilindro, \SI{44.6}{\milli\metre} & \num{-1.78} & \num{0.17} & \SI{+15}{\percent} & \SI{0}{\percent} & \SI{13.4}{\percent} \\
+Espiral invertida & \num{-20.14} & \num{0.36} & \SI{+72}{\percent} & \SI{+45}{\percent} & \SI{52.4}{\percent} \\
 \midrule
-\textbf{Medido} & \multicolumn{3}{c}{} & \textbf{\SI{+56}{\percent}} & \textbf{\SI{+93}{\percent}} \\
+\textbf{Medido} & & & \textbf{\SI{-5}{\percent}} & \textbf{\SI{-16}{\percent}} & \textbf{\SI{12.1}{\percent}} \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-La tabla contiene, de paso, el mejor argumento a favor de elegir bien la métrica. Con $\rho^2$, la
-caracola configurada es la \emph{mejor} de las tres primeras hipótesis (\num{0.809}); con $R^2$ es
-la peor con diferencia (\num{-6.10}, es decir, peor que limitarse a predecir el valor medio). No es
-una discrepancia numérica sino de significado: $\rho^2$ premia que la curva tenga la forma adecuada
-aunque recorra el camino al revés, y aquí la caracola configurada predice justo la tendencia
-contraria a la medida. Lo que en la sección~\ref{sec:mod-ambiguedad} era un aviso sobre la célula de
-carga vale igual para el par en cuanto se usa un estadístico invariante al signo.
+\subsection{La meseta, y por qué la espiral sola no bastaba}
 
-\subsection{Lo que dice el par: el tambor no es un cilindro}
+La espiral tal y como está descrita en la configuración predice que el par caiga un
+\SI{23}{\percent}; el medido cae un \SI{5}{\percent}. El desacuerdo es grande ($R^2 = \num{-1.23}$,
+peor que predecir la media), y sin embargo el sentido es el correcto: el brazo decrece, como dice la
+medida. Lo que falla es \emph{cuánto}.
 
-El par del accionamiento no necesita calibración, y con él la comparación sí es concluyente. En un
-tambor cilíndrico el par es proporcional a la tensión, porque el radio no cambia:
-\begin{equation}
-  \tau_{\text{cil}}(\varphi) = T(\varphi)\;r_c \quad\Longrightarrow\quad
-  \frac{\Delta\tau}{\tau} = \frac{\Delta T}{T} = \SI{-20}{\percent}.
-\end{equation}
-Es decir, un cilindro obliga al par a \emph{bajar} un \SI{20}{\percent} a lo largo del tramo con
-carga. El par medido \emph{sube} un \SI{56}{\percent}. La discrepancia no es de matiz: modelo y
-medida evolucionan en sentidos opuestos, y el cociente entre ambos comportamientos es de un factor
-\num{1.9} sobre el recorrido.
+La explicación está en el perfil real. La pieza no empieza a estrecharse en el punto en que arranca
+el ensayo: lleva antes un arco de radio constante. Si el cable arranca sobre esa meseta, el tambor
+gira un rato sin cambiar de radio y la espiral efectiva es más corta que la nominal. Ajustando la
+longitud de esa meseta como único parámetro adicional, el acuerdo salta a $R^2 = \num{0.84}$, y la
+meseta que sale vale \SI{0.17}{rev} de tambor, es decir \SI{61}{\degree}. La campaña del 7 de
+octubre, analizada igual, da exactamente la misma meseta con $R^2 = \num{0.90}$.
 
-La conclusión es inmediata: \textbf{el tambor no se comporta como un cilindro}. Y como la única
-diferencia entre las dos hipótesis es el radio de enrollamiento, la medida permite estimarlo: el
-radio efectivo de la ecuación~\eqref{eq:radio-efectivo} pasa de \num{0.470} a
-\SI{0.909}{\uacc\per\newton}, es decir, \textbf{crece un \SI{93}{\percent}} a lo largo del tramo con
-carga (figura~\ref{fig:cilindro}).
+Ese número es el mejor argumento a favor de la hipótesis, porque no se ha usado para construirla:
+\emph{el perfil medido sobre el CAD tiene un arco a radio constante de unos \SI{50}{\degree}} antes
+de la espiral. El ajuste, que sólo ha visto pares del accionamiento, recupera esa meseta dentro de
+una decena de grados.
+
+\subsection{Lo que descarta el cilindro}
+
+El cilindro queda descartado sin ambigüedad ($R^2 = \num{-1.78}$, $\rho^2 = \num{0.17}$). Y lo
+descarta por el \emph{sentido}: con radio constante el par sigue a la tensión, que en esta geometría
+crece un \SI{15}{\percent}; el par medido no crece, decrece ligeramente. El tambor, por tanto, está
+cambiando la relación de transmisión a lo largo del recorrido, que es lo que se quería comprobar.
+
+La espiral invertida es la hipótesis peor con diferencia ($R^2 = \num{-20.1}$): predice que el par
+suba un \SI{72}{\percent}. Queda así resuelta en sentido contrario la duda que dejó abierta la
+campaña de septiembre, donde el modelo antiguo favorecía precisamente esa orientación.
+
+\subsection{Las dos métricas no dicen lo mismo}
+
+La tabla ilustra de paso por qué la métrica importa. Con $\rho^2$, la espiral configurada puntúa
+\num{0.56} y parece una hipótesis aceptable; con $R^2$ y escala positiva es \num{-1.23}. $\rho^2$
+premia que la curva tenga la forma adecuada aunque recorra el camino al revés o con la amplitud
+equivocada, y aquí eso basta para confundir. Es el mismo aviso que la
+sección~\ref{sec:mod-ambiguedad} hace sobre la célula de carga, trasladado al par.
+
+\section{La tensión: célula frente a modelo}
+
+La figura~\ref{fig:modelo}b compara la señal de la célula con la tensión que predice el modelo. El
+acuerdo es parcial y conviene ser preciso sobre en qué.
 
 \begin{figure}[tbp]
 \centering
-\includegraphics[width=\textwidth]{n_cilindro.pdf}
-\caption{Contraste de las tres hipótesis. Izquierda: tensión del modelo. Centro: par normalizado de
-cada hipótesis frente al par medido. Derecha: radio de cada hipótesis frente al radio efectivo
-deducido de la medida.}
-\label{fig:cilindro}
+\includegraphics[width=\textwidth]{n14_modelo.pdf}
+\caption{(a) Par gravitatorio medido frente a las cuatro hipótesis de tambor. (b) Tensión del cable:
+célula de carga, escalada, frente al modelo.}
+\label{fig:modelo}
 \end{figure}
 
-\subsection{Cuánto compensa, y en qué sentido}
+\textbf{En nivel, coinciden.} Con la calibración provisional del firmware
+(\SI{-10.2}{\uacc\per\newton}) la célula da entre \num{33} y \SI{42}{\newton} donde el modelo da
+entre \num{37} y \SI{42}{\newton}; el factor de escala que las iguala es \num{1.04}. Para una célula
+sin calibrar con masas patrón, un \SI{4}{\percent} es un acuerdo notable, y confirma que el orden
+de magnitud del modelo es el correcto.
 
-Que el radio crezca es, cualitativamente, lo que pide la compensación: como la tensión baja al subir
-la barra, el radio tiene que crecer para que el producto se mantenga. La cuestión es cuánto. Con el
-recorrido medido, para que el par fuese exactamente constante bastaría con que el radio creciera un
-\SI{26}{\percent}. El radio efectivo crece un \SI{93}{\percent}, casi cuatro veces más.
+\textbf{En pendiente, no.} La célula crece un \SI{28}{\percent} a lo largo del tramo con carga, y el
+modelo sólo un \SI{13}{\percent}. La discrepancia es sistemática: aparece en los diez ensayos, con
+crecimientos medidos entre el \SI{27}{\percent} y el \SI{31}{\percent}, y aparecía igual en la
+campaña anterior. No es ruido ni un ensayo aislado.
 
-El resultado, por tanto, tiene dos caras:
+Lo que sí sostiene la cadena completa es el producto: reconstruyendo el par como fuerza medida por el
+brazo del modelo se recupera el par del accionamiento con $R^2 = \num{0.55}$. Es decir, las tres
+magnitudes son mutuamente consistentes en primera aproximación, pero queda una discrepancia de
+pendiente en la fuerza que el modelo no explica. Las sospechas razonables son la falta de
+calibración de la célula ---su sensibilidad podría no ser lineal en este rango--- y el valor de
+$e_2$, que es el parámetro al que más responde el brazo del peso. Ninguna de las dos se puede cerrar
+sin medir. \verificar{calibrar la célula con masas patrón y medir $\theta_{\text{libre}}$ con
+inclinómetro para fijar $e_2$}
 
-\begin{itemize}
-  \item \textbf{La caracola actúa, y de forma medible.} Frente al \SI{-20}{\percent} que impondría un
-        cilindro, el par real recorre un camino completamente distinto. El mecanismo cambia la
-        relación de transmisión a lo largo del recorrido, que es exactamente lo que se quería
-        comprobar.
-  \item \textbf{Pero no compensa: sobrecompensa.} En lugar de aplanar el par lo empeora en el otro
-        sentido, pasando de una caída del \SI{20}{\percent} a una subida del \SI{56}{\percent}. Con
-        estos parámetros, el rizado de par sobre el tramo con carga es peor que el de un cilindro
-        equivalente (tabla~\ref{tab:perfiles}).
-\end{itemize}
+\section{Qué aporta realmente el tambor}
+\label{sec:res-aporta}
 
-Además, el sentido del radio efectivo medido (creciente) es el \emph{contrario} al de la caracola
-configurada en el banco (decreciente, de \num{45} a \SI{25}{\milli\metre}), lo que apunta a que la
-pieza está descrita al revés en la configuración, montada al revés en la máquina, o ambas cosas
-\verificar{medir el perfil real de la caracola y comprobar en qué sentido se enrolla el cable}.
-
-\subsection{La hipótesis del tambor excéntrico}
-\label{sec:res-excentrico}
-
-Queda por probar la cuarta hipótesis, que es además la del diseño propuesto. Un tambor excéntrico
-produce un radio sinusoidal (ecuación~\eqref{eq:excentrico}) y, a diferencia de la caracola, puede
-crecer a lo largo del recorrido sin más que calarlo con la fase adecuada. Ajustando $e$ y
-$\varphi_0$ al par medido se obtiene un $R^2 = \num{0.90}$, frente a $\num{-6.10}$ de la caracola
-configurada y $\num{0.19}$ de la invertida: es, con diferencia, la familia que mejor describe la
-medida, y la figura~\ref{fig:excentrico-comp}a muestra que reproduce la curvatura del radio efectivo
-que ninguna caracola lineal puede dar.
-
-Ahora bien, el ajuste hay que leerlo con cuidado, porque lo interesante está en cómo falla:
+Juntando la medida con la tabla~\ref{tab:perfiles} del capítulo~\ref{chap:modelo} se puede responder
+a la pregunta de ingeniería, y la respuesta es más matizada de lo que el planteamiento inicial
+suponía.
 
 \begin{itemize}
-  \item El óptimo se va contra la cota física que se le impuso, $e/R = \num{0.90}$. Un tambor así
-        tendría un radio que va de \num{1.9} a \SI{36.9}{\milli\metre} en una vuelta: el eje de giro
-        quedaría casi en el borde de la pieza, lo que no es un tambor razonable.
-  \item Aun forzándolo hasta ahí, el par del modelo sólo sube un \SI{38}{\percent}, cuando el medido
-        sube un \SI{56}{\percent}. Se queda corto.
+  \item \textbf{El tambor actúa, y se mide.} El brazo efectivo cae un \SI{16}{\percent} a lo largo
+        del tramo con carga, y gracias a eso el par se queda casi plano donde un cilindro lo haría
+        subir un \SI{15}{\percent}. El mecanismo hace lo que se diseñó que hiciera.
+  \item \textbf{La pieza compensa de más.} Su rizado teórico a igual recorrido es del
+        \SI{25}{\percent}, casi el doble que el de un cilindro. Lo que la salva en la práctica es
+        precisamente la meseta: el tramo de radio constante acorta la espiral efectiva y deja el
+        rizado real en el \SI{12}{\percent} medido.
 \end{itemize}
 
-La conclusión es más fuerte que la de cualquiera de las hipótesis por separado: \textbf{con la
-geometría del mecanismo que se ha supuesto, ningún tambor físicamente razonable ---ni cilindro, ni
-caracola, ni excéntrico--- reproduce el par medido}. El crecimiento del radio efectivo es demasiado
-pronunciado para explicarse sólo con la forma del tambor. Eso desplaza la sospecha hacia los
-parámetros del mecanismo, que no están medidos sino ajustados, y enlaza directamente con la
-divergencia del ajuste conjunto que describe la sección siguiente. Dicho de otro modo: el banco
-demuestra con solvencia que el tambor \emph{no} es un cilindro, pero no puede todavía decir qué
-tambor es, y la pieza que falta para cerrarlo no es de análisis sino de metrología.
+\subsection{Cuánto motor se ahorra, exactamente}
+\label{sec:res-ahorro}
 
-\section{Ajuste de los parámetros del mecanismo}
-\label{sec:res-ajuste}
+La pregunta que importa es cuánto baja el par de pico, por las razones de la
+sección~\ref{sec:mod-criterio}. Y admite una respuesta casi sin modelo, apoyada en una identidad:
+como el tambor de referencia y el real recorren lo mismo en las mismas vueltas, entregan el mismo
+trabajo en el mismo giro y por tanto \emph{tienen el mismo par medio}. Un cilindro, además, copia la
+forma de la tensión, porque su radio no cambia. El beneficio se reduce entonces al cociente de dos
+relaciones pico/media, ambas medibles:
 
-Los parámetros de la tabla~\ref{tab:geometria} no proceden de una medición, sino de un ajuste sobre
-los propios ensayos, y conviene ser explícito sobre su alcance. Ajustando sólo contra la señal de la
-célula se obtienen los valores que usa la configuración actual, con $R^2 \approx 0{,}93$. Al repetir
-el ajuste incluyendo el par, el optimizador se marcha a valores sin sentido físico ---radio final de
-\SI{7}{\milli\metre}, desplazamiento de la salida del cable de \SI{200}{\milli\metre}, reducción
-\num{3.5}--- aunque mejore formalmente los coeficientes ($R^2$ de \num{0.99} y \num{0.97}).
+\begin{table}[H]
+\centering
+\caption{Relación pico/media sobre el tramo con carga. Como el par medio es el mismo para todos los
+tambores que recorren lo mismo en las mismas vueltas, el cociente de estas relaciones es
+directamente lo que se ahorra en par de pico.}
+\label{tab:picomedia}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Magnitud & mín. & media & pico & pico/media \\
+\midrule
+Par medido (caracola real) & 35,8 & 38,5 & 40,5 & \textbf{1,052} \\
+Tensión medida (célula) & 32,9 & 38,5 & 42,1 & 1,094 \\
+Tensión del modelo & 36,7 & 40,0 & 41,5 & 1,037 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-Esa divergencia es en sí misma un resultado: significa que el modelo, con la parametrización
-elegida, no puede reproducir a la vez la fuerza y el par medidos. Faltan datos independientes, y los
-que faltan son precisamente los que no se han medido: las cotas del mecanismo y la calibración de la
-célula. Mientras no se midan, cualquier juego de parámetros ajustado es una descripción de los datos,
-no una verificación del modelo.
+El resultado es modesto y conviene no adornarlo: \textbf{el ahorro en par de pico está entre
+\SI{-1.5}{\percent} y \SI{+4}{\percent}}, según se tome la tensión del modelo o la de la célula. Con
+el modelo completo, comparando a igual recorrido, el cilindro equivalente (\SI{54.0}{\milli\metre})
+pide un \SI{1.5}{\percent} más de pico que la caracola real. En la práctica, en este banco la
+caracola no ahorra motor.
 
-\section{Comparación con la campaña preliminar}
+La horquilla es, además, otra consecuencia de la discrepancia abierta de la sección anterior: si la
+tensión varía el \SI{13}{\percent} que dice el modelo, no hay nada que compensar y la caracola
+incluso estorba levemente; si varía el \SI{28}{\percent} que dice la célula, el ahorro es de un
+\SI{4}{\percent}. Resolver esa discrepancia es, por tanto, también lo que fijaría el beneficio real.
 
-La campaña del 14 y 15 de septiembre, analizada con el modelo anterior (salida del cable en la
-vertical, tensión proporcional al cable) y con el ciclo A$\rightarrow$B$\rightarrow$A, sugería lo
-contrario: en el tramo central del recorrido la tensión variaba un \SI{17}{\percent} y el par
-gravitatorio sólo un \SI{6.4}{\percent}, lo que se interpretó como una compensación parcial. Aquel
-resultado no se sostiene, por tres motivos que conviene dejar escritos:
+\subsection{Y el cilindro pequeño, cuantificado}
 
-\begin{enumerate}
-  \item el modelo de tensión era el del caso particular $dx=0$, que no corresponde al montaje;
-  \item el sentido del recorrido era el opuesto y el ciclo no empezaba en el extremo del mecanismo,
-        de modo que el tramo analizado no es el mismo;
-  \item la calibración de la célula que entonces se daba por buena tenía incluso el signo contrario
-        al que se deduce ahora, lo que confirma que la fuerza no estaba midiendo lo que se creía.
-\end{enumerate}
+Queda la objeción natural que plantea la sección~\ref{sec:mod-criterio}: si lo que se busca es menos
+par, ¿no bastaría un cilindro más pequeño? La respuesta general es que bajar el radio baja también
+el cable por vuelta, y cuesta vueltas. Aquí se puede poner número: el cilindro que iguala el par de
+pico de la caracola tiene \SI{53.3}{\milli\metre} y necesita \SI{1.80}{rev} de motor frente a las
+\SI{1.77}{rev} de la caracola, es decir, \textbf{un \SI{1}{\percent} más de vueltas}.
 
-La lección metodológica es la que recoge la sección~\ref{sec:prob-signo}: un ajuste con buen $R^2$
-sobre una única magnitud sin calibrar puede confirmar una hipótesis equivocada.
+Ese \SI{1}{\percent} es la medida exacta de lo que aporta el tambor de radio variable en este banco,
+y es despreciable. No porque el principio falle, sino porque \emph{aquí no hay nada que repartir}:
+la tensión apenas varía. En un mecanismo donde la tensión variase el doble o el triple ---una barra
+que arrancase más abajo, un cable con menos brazo, un muelle en el lazo--- el mismo tambor recortaría
+el motor en esa misma proporción. El banco, por tanto, no refuta el principio: lo que demuestra es
+que esta geometría concreta no es el caso de uso donde el principio paga.
+
+La conclusión de diseño es que una espiral mucho más suave ---del orden de \num{52} a
+\SI{44}{\milli\metre}--- daría a la vez el rizado más bajo (\SI{5.5}{\percent}) y el par de pico más
+bajo. Es un cambio barato de aplicar y es la recomendación que se traslada al
+capítulo~\ref{chap:conclusiones}.
 
 \section{Limitaciones de las medidas}
 \label{sec:res-limitaciones}
 
 \begin{itemize}
-  \item \textbf{Célula sin calibrar.} La constante cuentas/newton ha salido distinta en cada intento
-        (\num{14.41} en la configuración, \num{20.5} ajustando contra el modelo, \numrange{27}{28} en
-        los ensayos limpios) y con signo cambiante entre campañas. Los valores absolutos de fuerza de
-        esta memoria son, por tanto, orientativos.
-  \item \textbf{Cotas sin medir.} Toda la tensión del modelo depende de $L_2$, $dx$, $L_3$, $L_4$ y
-        $\alpha_0$, que son ajustados y no medidos.
-  \item \textbf{Escala del par desconocida.} Por eso todos los resultados se expresan en variaciones
-        relativas, que no dependen de ella.
-  \item \textbf{Tramo sin carga.} La primera media revolución no aporta información y obliga a
-        recortar el recorrido analizado.
-  \item \textbf{Filtro de la célula.} La media móvil de ocho lecturas introduce un retardo que sólo
-        se compensa en primera aproximación al promediar los dos sentidos.
-  \item \textbf{Una sola masa y un solo montaje.} No se ha estudiado la dependencia con la carga.
+  \item La célula no está calibrada con masas patrón. Todo lo que se dice de la fuerza depende de una
+        escala ajustada, y por eso el criterio de contraste es el par y no la fuerza.
+  \item Las cotas del mecanismo proceden del CAD y de medidas sobre el banco. La más sensible,
+        $e_2$, se puede fijar midiendo $\theta_{\text{libre}}$ con un inclinómetro, y conviene
+        hacerlo.
+  \item La escala del par del accionamiento es un ajuste, no una medida. Un ensayo con un par
+        conocido ---una masa colgada de un brazo conocido directamente del eje--- la fijaría.
+  \item El modelo es estático y los ensayos se hacen a velocidad constante; el tramo de arranque y
+        las inversiones quedan fuera del análisis.
+  \item El perfil del tambor se ha tomado de la sección del CAD, no medido sobre la pieza
+        fabricada. La meseta ajustada (\SI{61}{\degree}) y la del CAD (\SI{50}{\degree}) difieren en
+        una decena de grados, y medir el perfil real cerraría esa diferencia.
 \end{itemize}
 
 \section{Trabajo pendiente para cerrar la validación}
 
+Tres medidas, ninguna costosa, convertirían el acuerdo actual en una validación cerrada:
+
 \begin{enumerate}
-  \item \textbf{Medir las cotas} del mecanismo ($L_2$, $dx$, $L_3$, $L_4$) y el ángulo de la barra en
-        B, e introducirlas en la configuración en lugar de los valores ajustados.
-  \item \textbf{Medir el perfil de la caracola}: radios inicial y final, sentido de enrollamiento y
-        barrido, que es la magnitud que el análisis deduce de forma indirecta.
-  \item \textbf{Calibrar la célula} con masas patrón: escalones crecientes y decrecientes que cubran
-        el rango de uso, ajuste por mínimos cuadrados, linealidad, histéresis y repetibilidad, y
-        estimación de la incertidumbre con $k=2$.
-  \item \textbf{Eliminar la holgura inicial} o, al menos, medirla, para que el recorrido con carga
-        sea el recorrido completo.
-  \item \textbf{Repetir la campaña} con todo lo anterior y contrastar de nuevo cilindro frente a
-        caracola, que es una comparación que el banco ya sabe hacer.
+  \item \textbf{Calibrar la célula} con masas patrón, en el rango de \numrange{0}{60}{} newton. Es
+        lo que falta para que la fuerza sea una medida independiente y no una curva escalada.
+  \item \textbf{Medir $\theta_{\text{libre}}$} con el cable flojo, y de ahí $e_2$. Es la cota a la
+        que más responde el modelo y la que mejor explicaría la discrepancia de pendiente.
+  \item \textbf{Levantar el perfil real del tambor}, aunque sea con un calibre y un divisor angular,
+        para contrastar la meseta y la ley de la espiral.
 \end{enumerate}

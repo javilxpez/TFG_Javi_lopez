@@ -4,23 +4,29 @@
 Este capítulo sitúa el trabajo frente a lo publicado sobre tambores de radio variable y mecanismos
 de compensación, y frente a las plataformas con las que se ensayan.
 
-\section{Del \emph{fusee} a los tambores de radio variable}
+\section{Antecedentes: variar el radio para repartir el par}
 
-El problema de convertir una fuerza variable en un par constante es antiguo. En los relojes de
-muelle, el par del muelle real disminuye a medida que se desenrolla, y eso altera la marcha. El
-\emph{fusee} lo resolvió con un cono de perfil curvo y una ranura helicoidal por la que se enrolla
-una cadena: con el muelle tenso la cadena tira del radio pequeño, y al debilitarse pasa al radio
-grande, de manera que el par entregado al tren se mantiene aproximadamente constante
-\cite{landes1983}. La condición de diseño es simplemente que el producto fuerza por radio se
-conserve a lo largo del recorrido. Lloyd \cite{lloyd1951} sitúa su origen en el siglo XV, y resulta
-llamativo que el dispositivo estuviera en uso casi cinco siglos antes de recibir un tratamiento
-teórico riguroso: Weaver \cite{weaver1980} es quien plantea por primera vez la ecuación diferencial
-del perfil y discute las condiciones en que admite solución. Aquel análisis y el de este trabajo son
-formalmente el mismo problema, con la diferencia de que allí la fuerza variable la da un muelle que
-se relaja y aquí la da el peso de una barra que cambia de brazo.
+La idea de hacer variable el radio con que trabaja un cable, para que el par no siga ciegamente a la
+fuerza, tiene un antecedente conocido en relojería. En los relojes de muelle el par disminuye a
+medida que el muelle se desenrolla, y el \emph{fusee} lo corrige con un cono de perfil curvo y una
+ranura helicoidal por la que trepa una cadena: con el muelle tenso la cadena tira del radio pequeño
+y, al debilitarse, pasa al radio grande \cite{landes1983}. Lloyd \cite{lloyd1951} sitúa su origen en
+el siglo XV, y Weaver \cite{weaver1980} fue quien, casi cinco siglos después, planteó por primera vez
+la ecuación diferencial de su perfil.
 
-La misma idea se ha formalizado en robótica con el nombre de tambores de radio variable
-(\emph{Variable Radius Drums}, VRD). Seriani y Gallina \cite{seriani2016} plantean la síntesis del
+Conviene ser preciso con el alcance de ese parecido, porque es más superficial de lo que sugiere la
+analogía. El mecanismo de este trabajo \textbf{no es un fusee} ni lo imita. Un fusee es un cuerpo de
+revolución cónico en el que el radio cambia \emph{axialmente}, a medida que la cadena avanza por la
+hélice; aquí el tambor es una leva plana y el cable trabaja siempre en el mismo plano, con el radio
+cambiando con el ángulo girado. Y, sobre todo, el problema físico es distinto: el fusee compensa una
+fuerza que \emph{decae} de forma monótona, mientras que en este banco la tensión del cable no decae
+---el capítulo~\ref{chap:modelo} muestra que crece---, de modo que ni el sentido de la corrección ni
+la ley del perfil se trasladan. Lo único que comparten es el principio general de modular el brazo.
+
+La familia a la que este mecanismo sí pertenece es la de los tambores de radio variable
+(\emph{Variable Radius Drums}, VRD) y las poleas no circulares, formalizada en robótica.
+
+Seriani y Gallina \cite{seriani2016} plantean la síntesis del
 perfil de un tambor para que la carga siga una ley prescrita y obtienen soluciones analíticas
 cerradas para varios casos. En los robots paralelos accionados por cables, Bieber \emph{et al.}
 \cite{bieber2023} diseñan el perfil a partir del perfil de carga máxima del espacio de trabajo, de
@@ -47,30 +53,35 @@ El mecanismo de este trabajo comparte el principio, con una diferencia important
 muelle que almacene energía, sino un motor que aporta todo el trabajo de elevación. El tambor no
 ahorra energía, sino que reparte el par.
 
-\section{El tambor excéntrico como caso particular}
-\label{sec:arte-excentrico}
+\section{Lo que el cable impone al perfil}
+\label{sec:arte-convexidad}
 
 La literatura anterior sintetiza perfiles \emph{libres}: dada una ley de par, se obtiene la curva
-$r(\varphi)$ que la produce, y se fabrica. Ese planteamiento es general pero caro, porque exige
-mecanizar o imprimir un perfil a medida y, como muestra Johnston \emph{et al.} \cite{johnston2023}
-al analizar la sensibilidad de estos mecanismos a las tolerancias, la ventaja teórica se degrada con
-los errores de fabricación. Gao \emph{et al.} \cite{gao2018} plantean el mismo problema inverso
----del par deseado al perfil de la leva--- en mecanismos leva-muelle.
+$r(\varphi)$ que la produce, y se fabrica. El planteamiento es general, pero arrastra dos
+restricciones que no siempre se hacen explícitas y que en este trabajo resultan decisivas.
 
-Existe, sin embargo, un caso degenerado que la literatura de tambores de radio variable apenas
-recoge: el de un \emph{cilindro con el eje desplazado}. Su brazo efectivo es exactamente sinusoidal,
-$r(\varphi) = R - e\cos(\varphi+\varphi_0)$ ---el primer armónico de cualquier perfil periódico---,
-y no requiere mecanizar forma alguna: basta con taladrar el alojamiento del eje fuera del centro. La
-idea de modular la relación de transmisión con una excentricidad es antigua en el campo de los
-engranajes no circulares, donde Litvin \emph{et al.} \cite{litvin2008} la usan para generar
-funciones de transmisión variables, pero no se ha encontrado un trabajo que la aplique a un tambor
-de cable para compensar una barra articulada, ni que cuantifique lo bien que un único armónico
-aproxima al perfil de par constante.
+La primera es de tolerancias. Johnston \emph{et al.} \cite{johnston2023} analizan la sensibilidad de
+los mecanismos de leva enrollada a la incertidumbre en los parámetros y muestran que la ventaja
+teórica de un perfil optimizado se degrada con los errores de fabricación y montaje. Gao \emph{et
+al.} \cite{gao2018} resuelven el mismo problema inverso ---del par deseado al perfil--- en
+mecanismos leva-muelle, y Litvin \emph{et al.} \cite{litvin2008} tratan la generación de funciones
+de transmisión variables en engranajes no circulares.
 
-Ése es el hueco que aborda el capítulo~\ref{chap:modelo}, y la respuesta resulta favorable: sobre el
-recorrido de este mecanismo la aproximación sinusoidal deja un rizado de par inferior al
-\SI{1}{\percent}. El resultado interesa más allá del prototipo, porque convierte un problema de
-mecanizado de perfil en un problema de taladrado y calado.
+La segunda es más fundamental, y es la que marca el límite de lo que se puede pedir a un tambor
+accionado por cable: \textbf{un cable tenso sólo se asienta sobre un perfil convexo y de pendiente
+suave}. En un tramo cóncavo, o en uno cuyo radio varíe demasiado rápido, el cable puentea el perfil
+como una cuerda y el brazo que trabaja deja de ser el del perfil. Arsenault \cite{arsenault2018}
+establece precisamente las condiciones de convexidad que debe cumplir un tambor de radio variable
+para que el cable se apoye sobre él sin despegarse; en la práctica se traduce en mantener el ángulo
+de presión $\arctan(|r'|/r)$ por debajo de unos \SI{25}{\degree}.
+
+Esta condición es la que, en el capítulo~\ref{chap:modelo}, acaba descartando el perfil de par
+exactamente constante para este banco: los perfiles que resuelven $r = \tau_0/T$ con un radio de
+arranque alto exigen al cable pendientes de \SIrange{60}{80}{\degree}, que no puede seguir. La
+aportación de este trabajo en ese punto no es un perfil nuevo, sino una cuantificación: sobre un
+mecanismo real se muestra que, una vez impuesta la restricción del cable y comparando a igual
+recorrido, la diferencia de par de pico entre todos los perfiles admisibles cae por debajo del
+rozamiento del propio banco.
 
 \section{Transmisiones por cable: el \emph{capstan drive}}
 \label{sec:arte-capstan}
@@ -145,11 +156,11 @@ Los tambores de radio variable están bien estudiados como principio y existen m
 su perfil, igual que están bien caracterizadas las transmisiones por cable y las fibras sintéticas
 que las hacen viables. De ese panorama se desprenden las dos líneas que sigue este trabajo.
 
-La primera es de diseño: frente al perfil libre que propone la literatura, se estudia si basta el
-caso más simple de todos ---un cilindro con el eje desplazado, cuyo brazo efectivo es el primer
-armónico--- para obtener prácticamente toda la compensación. No se ha encontrado un trabajo previo
-que lo cuantifique para un tambor de cable, y el capítulo~\ref{chap:modelo} muestra que la
-aproximación es excelente sobre recorridos limitados como el de este mecanismo.
+La primera es de diseño: casi toda la literatura da por supuesto que afinar el perfil merece la
+pena, y lo demuestra sobre el perfil de par. Aquí se compara a igual recorrido y midiendo lo que de
+verdad dimensiona el accionamiento, que es el par de pico; el capítulo~\ref{chap:modelo} muestra que
+en este mecanismo la diferencia entre todos los perfiles admisibles queda por debajo del rozamiento
+del banco, de modo que la elección del perfil importa mucho menos de lo esperado.
 
 La segunda es experimental: falta una plataforma asequible que permita medir en un prototipo real
 cómo se reparte el par y contrastarlo con el modelo. Para ello hay que integrar un accionamiento

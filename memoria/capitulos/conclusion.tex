@@ -44,24 +44,47 @@ conclusiones más interesantes del trabajo.
 \begin{enumerate}\setcounter{enumi}{6}
   \item \textbf{Medir sólo la fuerza no permite validar el modelo.} Con la célula sin calibrar, el
         ajuste incluye la sensibilidad como incógnita y el coeficiente de determinación es el
-        cuadrado de la correlación: no distingue el signo. Tres hipótesis de tambor muy distintas
-        ---cilindro, caracola y caracola invertida--- ajustan la señal de la célula con
-        $R^2$ entre \num{0.93} y \num{0.97}. Un buen ajuste no es una validación.
-  \item \textbf{El par del accionamiento sí decide}, porque no depende de ninguna calibración
-        pendiente. Y al usarlo, la comparación es concluyente: un tambor cilíndrico obligaría al par
-        a bajar un \SI{20}{\percent} a lo largo del tramo con carga, mientras que el par medido sube
-        un \SI{56}{\percent}. \textbf{El tambor no se comporta como un cilindro}: su radio efectivo
-        crece un \SI{93}{\percent} a lo largo del recorrido.
-  \item \textbf{La caracola, sin embargo, no compensa: sobrecompensa.} Para mantener el par constante
-        bastaría con que el radio creciera un \SI{26}{\percent}. Con el crecimiento real, el par
-        queda peor repartido que con un cilindro equivalente, y además en el sentido contrario al que
-        describe la configuración del banco.
-  \item Las pérdidas del mecanismo son de tipo Coulomb: constantes a lo largo del recorrido y del
-        orden del \SI{19}{\percent} del par gravitatorio.
-  \item El resultado anterior no cierra la validación, y es importante decirlo con claridad: mientras
-        no se midan las cotas del mecanismo y no se calibre la célula con masas patrón, cualquier
-        juego de parámetros es una descripción de los datos y no una verificación del modelo. El
-        trabajo deja el procedimiento montado y el diagnóstico hecho.
+        cuadrado de la correlación: no distingue el signo ni la amplitud. El par del accionamiento
+        sí decide, porque su escala y su signo son propios del equipo y no dependen de ninguna
+        calibración pendiente. Es el criterio que se ha adoptado.
+  \item \textbf{El tambor actúa, y se mide.} Sobre el tramo con carga el par gravitatorio es
+        prácticamente plano ---varía un \SI{-5}{\percent}, con un rizado del \SI{12.1}{\percent}---
+        donde un cilindro equivalente lo haría crecer un \SI{15}{\percent}. El brazo efectivo cae un
+        \SI{16}{\percent}. El cilindro queda descartado sin ambigüedad ($R^2 = \num{-1.78}$) y la
+        orientación invertida de la espiral, aún más ($R^2 = \num{-20.1}$).
+  \item \textbf{El perfil que explica la medida incluye la meseta de la pieza.} La espiral tal y
+        como está descrita en la configuración sobrecompensa ($R^2 = \num{-1.23}$). Añadiendo el
+        arco de radio constante que la pieza tiene antes de la espiral, y ajustando su longitud como
+        único parámetro, el acuerdo sube a $R^2 = \num{0.84}$. El valor ajustado, \SI{61}{\degree},
+        coincide con los \SI{50}{\degree} medidos sobre el CAD: una confirmación independiente,
+        porque el ajuste sólo ha visto pares del accionamiento.
+  \item \textbf{El tambor no ahorra motor en este banco, y eso es el resultado.} El criterio
+        correcto es el par de pico, porque es lo que dimensiona el accionamiento, lo que calienta el
+        motor ---las pérdidas van con la corriente al cuadrado--- y lo que el lazo de velocidad ve
+        como perturbación. Como todos los tambores que recorren lo mismo en las mismas vueltas
+        entregan el mismo par medio, el ahorro es el cociente de las relaciones pico/media:
+        \num{1.052} para el par medido frente a \num{1.094} de la tensión medida o \num{1.037} de
+        la del modelo. Sale entre \SI{-1.5}{\percent} y \SI{+4}{\percent}. Y el cilindro que
+        iguala el pico de la caracola sólo necesita un \SI{1}{\percent} más de vueltas.
+  \item \textbf{La razón no es que el principio falle, sino que aquí no hay nada que repartir.} La
+        tensión sólo varía un \SI{13}{\percent} (modelo) o un \SI{28}{\percent} (célula) sobre el
+        tramo útil, porque el brazo del peso y el del cable crecen a la vez. Donde la tensión variase
+        el doble o el triple, el mismo tambor recortaría el motor en esa proporción. Perseguir
+        además un perfil de par exactamente constante no compensa, y choca con el hecho de que el
+        cable sólo se asienta sobre perfiles convexos de pendiente suave.
+  \item Las pérdidas del mecanismo son de tipo Coulomb: constantes a lo largo del recorrido
+        (entre \num{5.2} y \num{8.0} unidades de accionamiento) y del orden del \SI{18}{\percent}
+        del par gravitatorio.
+  \item La escala del accionamiento, obtenida del ajuste, es de \SI{0.0553}{\newton\metre} por
+        unidad, y coincide dentro del \SI{1}{\percent} con la que daba un ajuste independiente sobre
+        la campaña anterior. Con ella el par de pico en el eje del motor es de
+        \SI{0.45}{\newton\metre}, un \SI{35}{\percent} del nominal.
+  \item Queda una discrepancia abierta: la célula crece un \SI{28}{\percent} donde el modelo predice
+        un \SI{13}{\percent}, de forma sistemática en los diez ensayos y también en la campaña
+        anterior. Coinciden en nivel (factor \num{1.04}) pero no en pendiente. Mientras no se calibre la célula con masas patrón y no se
+        mida el ángulo de reposo libre de la barra, de donde sale el parámetro más sensible del
+        modelo, esa diferencia no se puede atribuir. El trabajo deja el procedimiento montado y el
+        diagnóstico hecho.
 \end{enumerate}
 
 \subsection{Grado de cumplimiento de los objetivos}
@@ -71,7 +94,7 @@ conclusiones más interesantes del trabajo.
 \textbf{Obj.} & \textbf{Resultado} & \textbf{Estado} \\
 \midrule
 \endhead
-O1 & Modelo estático general, perfil ideal de par constante y demostración de que minimiza el par de pico (capítulo~\ref{chap:modelo}). & Cumplido \\
+O1 & Modelo estático con salida tangente y contacto exacto sobre el perfil, verificado contra el balance de energía; perfil de par constante deducido y descartado con criterio (capítulo~\ref{chap:modelo}). & Cumplido \\
 O2 & Placa adaptadora con RS-485, entradas y salidas y dos zócalos mikroBUS; revisión A analizada y corregida en la revisión B (capítulo~\ref{chap:hardware}). & Cumplido; falta versionar la revisión B \\
 O3 & Firmware determinista con Modbus, célula, \emph{homing}, ciclo B$\rightarrow$A$\rightarrow$B y protecciones (capítulo~\ref{chap:firmware}). & Cumplido \\
 O4 & Protocolo binario con CRC-8, telemetría por lotes y compatibilidad entre versiones (capítulo~\ref{chap:comunicaciones}). & Cumplido \\

@@ -129,17 +129,34 @@ colocado desplazaba el recorrido; con los finales, el ensayo recorre siempre lo 
 articulación, la curva teórica no encajaba con los ensayos: el recorrido angular que predecía no era
 el que hacía la barra, y el ajuste sólo cuadraba forzando valores poco creíbles de la reducción.
 
-\paragraph{Causa.} La salida del cable no está sobre la vertical de la articulación, sino desplazada
-horizontalmente. Ese desplazamiento no es un detalle de dibujo: con la salida en la vertical, el
-coseno del ángulo de la barra se cancela con el seno del ángulo del cable y la tensión resulta
-proporcional a la longitud de cable, que es el resultado elegante de la
-ecuación~\eqref{eq:tension0}. Con la salida desplazada esa cancelación desaparece
-(sección~\ref{sec:mod-tension}).
+\paragraph{Primer intento, y por qué tampoco cerró.} La primera corrección fue admitir que la salida
+del cable no está sobre la vertical de la articulación y meter un desplazamiento horizontal $dx$ como
+parámetro. Mejoró, pero no cerró, y el modo en que falló resultó revelador: para cuadrar con la
+medida, el ajuste tenía que invertir el sentido de la espiral y llevar la reducción a valores poco
+creíbles. La razón de fondo era que, midiendo el ángulo de la barra entre la línea articulación
+$\to$ salida y la propia barra, y acotándolo a \SIrange{0}{180}{\degree}, el modelo \emph{no podía
+representar la barra colgando} por debajo de cierto ángulo. Como el ensayo arranca precisamente ahí,
+el ajuste compensaba esa imposibilidad con la única libertad que le quedaba, que era el perfil del
+tambor.
 
-\paragraph{Solución.} Se reescribió el modelo con el desplazamiento $dx$ como parámetro y con el
-ángulo medido entre la línea que une articulación y salida y la propia barra, que además elimina la
-ambigüedad que tenía medir desde la horizontal. El modelo pasó a estar implementado una sola vez y a
-alimentarse de una configuración guardada en el servidor.
+\paragraph{Causa real.} El cable no sale de un punto: sale \emph{tangente} al tambor. El punto de
+salida está a $r$ del eje y se desplaza cuando el radio cambia, de modo que a lo largo del recorrido
+se mueve tanto como $r_1-r_0$, unos \SI{28}{\milli\metre} en la pieza medida. Un punto fijo, con o
+sin $dx$, no puede representar ese desplazamiento. Y hay un segundo efecto del mismo orden: al
+moverse la barra, el punto de tangencia \emph{migra} por la superficie del tambor y enrolla cable
+que el tambor no ha pagado, lo que obliga a trabajar con el cable equivalente de la
+sección~\ref{sec:mod-equivalente} en lugar del cable libre.
+
+\paragraph{Solución.} Se reescribió el modelo con el eje del tambor como referencia
+(sección~\ref{sec:mod-tension}), con el ángulo de la barra medido desde la horizontal ---que es lo
+que se puede comprobar con un inclinómetro, sin modelo de por medio--- y resolviendo el contacto
+sobre el perfil real. Al no haber ya relación cerrada entre giro y ángulo, la trayectoria se integra
+paso a paso. La comprobación de que esta vez sí cierra no es un ajuste sino una identidad física: el
+balance de energía se cumple en la cuarta cifra significativa sin tocar ningún parámetro.
+
+\paragraph{Lección.} Un ajuste que sólo cuadra forzando un parámetro a un valor poco creíble no está
+midiendo ese parámetro: está avisando de que al modelo le falta un grado de libertad en otro sitio.
+Aquí el aviso fue la espiral invertida, y señalaba a la cinemática del cable, no al tambor.
 
 \section{Lo que la fuerza no puede decidir}
 \label{sec:prob-signo}

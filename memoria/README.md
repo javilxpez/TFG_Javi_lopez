@@ -34,14 +34,17 @@ Las figuras de resultados y los ficheros `datos*.json` se generan a partir de `c
 
 ```
 pip install matplotlib numpy scipy
-python figuras/generar_figuras.py      # campaña preliminar (14-15 sept)
-python figuras/generar_figuras21.py    # campaña del 21 de septiembre
-python figuras/modelo_excentrico.py    # tambor excéntrico: ajuste, diseño y pieza real
+python figuras/modelo_mecanismo.py     # valida el modelo (balance de energía)
+python figuras/generar_campana.py      # los 10 ensayos más recientes: figuras n14_* y datos14.json
 ```
 
-`modelo_excentrico.py` produce `n_excentrico.pdf` y `datos_exc.json`, de donde salen las cifras del
-excéntrico en los capítulos 4 y 11. Las cotas de la pieza real (`R_MIN_CAD`, `R_MAX_CAD`) están al
-principio del fichero: si cambian en el CAD, actualízalas ahí y vuelve a ejecutarlo.
+`modelo_mecanismo.py` es un **port fiel de `static/mecanismo.js`**, que es la fuente de verdad del
+modelo: cable tangente al tambor, cable equivalente y contacto exacto con el perfil. Si cambias la
+geometría, cámbiala en el JS y vuelve a ejecutar el port, que comprueba el balance de energía.
+
+El modelo anterior (salida del cable en un punto fijo con un desplazamiento `dx`) está superado, y
+con él las conclusiones de las campañas de septiembre. `generar_figuras.py` sigue en el repositorio
+pero usa ese modelo viejo: sus cifras no se citan en la memoria.
 
 La versión para Overleaf se genera con:
 
@@ -51,11 +54,6 @@ python figuras/generar_overleaf.py
 
 que rasteriza los diagramas, incrusta la bibliografía resuelta y deja `TFG_overleaf.zip` en la raíz
 del repositorio.
-
-`figuras/modelo_mecanismo.py` es el modelo del capítulo 4 portado a Python. Sus parámetros
-(`L2`, `dx`, `L3`, `L4`, `a0`, `red`, `r0`, `r1`, `barr`) deben coincidir con los de
-`mecanismo.json`. Si cambias las cotas, vuelve a ejecutar los dos programas y actualiza a mano las
-cifras que cita el texto en los capítulos 4 y 11.
 
 ## Pendientes
 

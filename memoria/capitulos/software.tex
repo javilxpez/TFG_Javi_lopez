@@ -132,12 +132,13 @@ La página principal (\fichero{index.html}) se organiza en tres zonas:
 La página \codigo{/sim} (figura~\ref{fig:sim}) reúne la edición de la geometría y un simulador:
 
 \begin{itemize}
-  \item \textbf{Formulario} con el tipo de tambor (caracola o cilindro), radios y barrido, reducción,
-        sentido, cotas $L_2$, $dx$, $L_3$, $L_4$, masa y $\alpha_0$. Los cambios no se aplican hasta
-        pulsar \emph{Guardar y propagar}, y se pueden descartar.
-  \item \textbf{Comprobaciones} automáticas: distancia e inclinación de la línea O$\to$D, ángulo y
-        cable en B, ángulo en el extremo del recorrido, recorrido angular total y avisos cuando la
-        geometría pide a la barra pasar de 0° o de 180°, que es donde la tensión se hace singular.
+  \item \textbf{Formulario} con el tipo de tambor (caracola, cilindro o leva), radios y barrido,
+        reducción, sentido, cotas $L_2$, $x_t$, $L_3$, $e_1$, $L_4$, $e_2$, masa y $\theta_0$. Los
+        cambios no se aplican hasta pulsar \emph{Guardar y propagar}, y se pueden descartar.
+  \item \textbf{Comprobaciones} automáticas: distancia e inclinación de la línea O$\to$C, ángulo y
+        cable en B, ángulo en el extremo del recorrido, recorrido angular total y avisos cuando
+        $\theta_0$ queda fuera del margen entre el punto muerto y la barra vertical, que es donde la
+        tensión se hace singular.
         También calcula la inversa: cuántas revoluciones de motor hacen falta para llevar la barra a
         un ángulo dado, que es el recorrido B$\rightarrow$A que tendría que hacer el ciclo.
   \item \textbf{Dibujo a escala} del mecanismo en un \codigo{canvas}, con un cursor que recorre el
